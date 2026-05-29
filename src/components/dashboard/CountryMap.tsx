@@ -23,11 +23,11 @@ interface GeoCollection {
 }
 
 const GEO_DATA: Partial<Record<CountryCode, GeoCollection>> = {
-  fr: geoFR as GeoCollection,
-  es: geoES as GeoCollection,
-  it: geoIT as GeoCollection,
-  de: geoDE as GeoCollection,
-  br: geoBR as GeoCollection,
+  fr: geoFR as unknown as GeoCollection,
+  es: geoES as unknown as GeoCollection,
+  it: geoIT as unknown as GeoCollection,
+  de: geoDE as unknown as GeoCollection,
+  br: geoBR as unknown as GeoCollection,
 };
 
 interface Props {
