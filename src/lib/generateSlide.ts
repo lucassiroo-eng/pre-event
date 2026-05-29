@@ -119,11 +119,12 @@ export async function generateRegionSlide(code: RegionCode, deals: WonDeal[], se
     topModule: string;
     top3Companies: string[];
   };
-  const industryMap = new Map<string, { count: number; deals: WonDeal[]; modules: Map<string, number> }>();
+  type IndAcc = { count: number; deals: WonDeal[]; modules: Map<string, number> };
+  const industryMap = new Map<string, IndAcc>();
   for (const d of regionDeals) {
     const g = groupIndustry(d.sector);
     if (g === "Other" || g === "Unknown") continue;
-    const cur = industryMap.get(g) ?? { count: 0, deals: [], modules: new Map() };
+    const cur: IndAcc = industryMap.get(g) ?? { count: 0, deals: [] as WonDeal[], modules: new Map<string, number>() };
     cur.count += 1;
     cur.deals.push(d);
     const mod = simplifyPlan(d.planName);
