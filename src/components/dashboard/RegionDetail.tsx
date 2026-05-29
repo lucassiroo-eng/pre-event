@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { X, FileImage, Maximize2, TrendingUp, Layers } from "lucide-react";
-import { formatEUR, REGIONS, type RegionCode, type WonDeal } from "@/lib/csvStore";
+import { formatEUR, REGIONS, type WonDeal } from "@/lib/csvStore";
 import { groupIndustry, industryColorClass } from "@/lib/industryGroups";
 import { cn } from "@/lib/utils";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -10,7 +10,7 @@ const REGION_NAME: Record<string, string> = Object.fromEntries(
 );
 
 interface Props {
-  code: RegionCode;
+  code: string;
   deals: WonDeal[];
   allDeals: WonDeal[];
   onClose: () => void;

@@ -11,11 +11,11 @@ export interface CountryConfig {
 
 const CONFIGS: Record<CountryCode, CountryConfig> = {
   fr: { code: "fr", name: "France", flag: "\u{1F1EB}\u{1F1F7}", hasMap: true, hue: 260, primary: "oklch(0.55 0.18 260)" },
-  es: { code: "es", name: "España", flag: "\u{1F1EA}\u{1F1F8}", hasMap: false, hue: 25, primary: "oklch(0.6 0.22 25)" },
-  it: { code: "it", name: "Italia", flag: "\u{1F1EE}\u{1F1F9}", hasMap: false, hue: 155, primary: "oklch(0.55 0.15 155)" },
-  de: { code: "de", name: "Deutschland", flag: "\u{1F1E9}\u{1F1EA}", hasMap: false, hue: 55, primary: "oklch(0.6 0.15 55)" },
+  es: { code: "es", name: "España", flag: "\u{1F1EA}\u{1F1F8}", hasMap: true, hue: 25, primary: "oklch(0.6 0.22 25)" },
+  it: { code: "it", name: "Italia", flag: "\u{1F1EE}\u{1F1F9}", hasMap: true, hue: 155, primary: "oklch(0.55 0.15 155)" },
+  de: { code: "de", name: "Deutschland", flag: "\u{1F1E9}\u{1F1EA}", hasMap: true, hue: 55, primary: "oklch(0.6 0.15 55)" },
   pt: { code: "pt", name: "Portugal", flag: "\u{1F1F5}\u{1F1F9}", hasMap: false, hue: 145, primary: "oklch(0.55 0.18 145)" },
-  br: { code: "br", name: "Brasil", flag: "\u{1F1E7}\u{1F1F7}", hasMap: false, hue: 135, primary: "oklch(0.6 0.18 135)" },
+  br: { code: "br", name: "Brasil", flag: "\u{1F1E7}\u{1F1F7}", hasMap: true, hue: 135, primary: "oklch(0.6 0.18 135)" },
   mx: { code: "mx", name: "México", flag: "\u{1F1F2}\u{1F1FD}", hasMap: false, hue: 160, primary: "oklch(0.55 0.15 160)" },
   gb: { code: "gb", name: "United Kingdom", flag: "\u{1F1EC}\u{1F1E7}", hasMap: false, hue: 240, primary: "oklch(0.5 0.18 240)" },
   ar: { code: "ar", name: "Argentina", flag: "\u{1F1E6}\u{1F1F7}", hasMap: false, hue: 200, primary: "oklch(0.6 0.15 200)" },

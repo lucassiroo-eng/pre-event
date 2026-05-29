@@ -19,7 +19,8 @@ export function CountryPicker() {
   const countries = useMemo(() => {
     return Object.entries(stats)
       .filter(([c]) => c !== "unknown" && c.length === 2)
-      .sort((a, b) => b[1].count - a[1].count);
+      .sort((a, b) => b[1].count - a[1].count)
+      .slice(0, 7);
   }, [stats]);
 
   const onFile = useCallback(async (file: File) => {

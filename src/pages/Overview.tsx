@@ -1,14 +1,14 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { PageHeader } from "@/components/layout/PageHeader";
-import { FranceMap } from "@/components/dashboard/FranceMap";
+import { CountryMap } from "@/components/dashboard/CountryMap";
 import { RegionDetail } from "@/components/dashboard/RegionDetail";
-import { readDeals, dealsByCountry, formatEUR, regionName, type WonDeal, type RegionCode } from "@/lib/csvStore";
+import { readDeals, dealsByCountry, formatEUR, type WonDeal } from "@/lib/csvStore";
 import { getCountryConfig, applyCountryTheme, type CountryCode } from "@/lib/countryConfig";
 import { groupIndustry } from "@/lib/industryGroups";
 import { generateRegionSlide } from "@/lib/generateSlide";
 import { cn } from "@/lib/utils";
-import { Target } from "lucide-react";
+import { Target, MapPin } from "lucide-react";
 
 type MapMetric = "wons" | "mrr";
 
@@ -26,24 +26,22 @@ export function OverviewPage() {
   const deals = useMemo(() => dealsByCountry(allDeals, country), [allDeals, country]);
 
   const [metric, setMetric] = useState<MapMetric>("wons");
-  const [selected, setSelected] = useState<RegionCode | undefined>(undefined);
+  const [selected, setSelected] = useState<string | undefined>(undefined);
 
   const wonsPerRegion = useMemo(() => {
-    const m: Partial<Record<RegionCode, number>> = {};
+    const m: Record<string, number> = {};
     for (const d of deals) {
       if (d.regionCode === "unknown") continue;
-      const code = d.regionCode as RegionCode;
-      m[code] = (m[code] ?? 0) + 1;
+      m[d.regionCode] = (m[d.regionCode] ?? 0) + 1;
     }
     return m;
   }, [deals]);
 
   const mrrPerRegion = useMemo(() => {
-    const m: Partial<Record<RegionCode, number>> = {};
+    const m: Record<string, number> = {};
     for (const d of deals) {
       if (d.regionCode === "unknown") continue;
-      const code = d.regionCode as RegionCode;
-      m[code] = (m[code] ?? 0) + d.totalActualMrr;
+      m[d.regionCode] = (m[d.regionCode] ?? 0) + d.totalActualMrr;
     }
     return m;
   }, [deals]);
@@ -57,20 +55,22 @@ export function OverviewPage() {
       (counts[d.regionCode] ??= {});
       counts[d.regionCode][g] = (counts[d.regionCode][g] ?? 0) + 1;
     }
-    const out: Partial<Record<RegionCode, string>> = {};
+    const out: Record<string, string> = {};
     for (const [code, map] of Object.entries(counts)) {
       const top = Object.entries(map).sort((a, b) => b[1] - a[1])[0];
-      if (top) out[code as RegionCode] = top[0];
+      if (top) out[code] = top[0];
     }
     return out;
   }, [deals]);
 
   const totalWons = deals.length;
   const totalMrr = deals.reduce((s, d) => s + d.totalActualMrr, 0);
+  const withRegion = deals.filter((d) => d.regionCode !== "unknown").length;
+  const pctMapped = totalWons > 0 ? ((withRegion / totalWons) * 100).toFixed(0) : "0";
 
   const handleGenerateSlide = () => {
     if (!selected) return;
-    generateRegionSlide(selected, deals);
+    generateRegionSlide(selected as any, deals);
   };
 
   const hasSelection = !!selected;
@@ -82,6 +82,12 @@ export function OverviewPage() {
       <PageHeader
         title={`${cfg.flag} ${cfg.name}`}
         subtitle={`${totalWons.toLocaleString()} wons · MRR ${formatEUR(totalMrr)}`}
+        actions={
+          <div className="flex items-center gap-1.5 rounded-full bg-white/15 px-3 py-1.5 text-xs text-white backdrop-blur">
+            <MapPin className="h-3 w-3" />
+            {pctMapped}% mapeados ({withRegion}/{totalWons})
+          </div>
+        }
       />
 
       {cfg.hasMap ? (
@@ -104,12 +110,13 @@ export function OverviewPage() {
                     {cfg.name} · Wons
                   </h2>
                   <p className="text-xs text-muted-foreground">
-                    {totalWons} wons · MRR {formatEUR(totalMrr)}
+                    {withRegion} wons con región de {totalWons} totales ({pctMapped}%)
                   </p>
                 </div>
               </div>
             )}
-            <FranceMap
+            <CountryMap
+              country={country as CountryCode}
               metric={metric}
               onMetricChange={setMetric}
               selected={selected}
@@ -126,7 +133,7 @@ export function OverviewPage() {
               className="overflow-hidden rounded-2xl border border-border bg-card shadow-[var(--shadow-pink-soft)] animate-[fade-in_0.5s_ease-out,scale-in_0.5s_cubic-bezier(0.22,1,0.36,1)]"
             >
               <RegionDetail
-                code={selected!}
+                code={selected! as any}
                 deals={deals.filter((d) => d.regionCode === selected)}
                 allDeals={deals}
                 onClose={() => setSelected(undefined)}
