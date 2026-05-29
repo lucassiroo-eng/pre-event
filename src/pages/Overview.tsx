@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { FranceMap } from "@/components/dashboard/FranceMap";
-import { RegionDetail, type SlideSection } from "@/components/dashboard/RegionDetail";
+import { RegionDetail } from "@/components/dashboard/RegionDetail";
 import { readDeals, dealsByCountry, formatEUR, regionName, type WonDeal, type RegionCode } from "@/lib/csvStore";
 import { getCountryConfig, applyCountryTheme, type CountryCode } from "@/lib/countryConfig";
 import { groupIndustry } from "@/lib/industryGroups";
@@ -68,9 +68,9 @@ export function OverviewPage() {
   const totalWons = deals.length;
   const totalMrr = deals.reduce((s, d) => s + d.totalActualMrr, 0);
 
-  const handleGenerateSlide = (sections: SlideSection[]) => {
+  const handleGenerateSlide = () => {
     if (!selected) return;
-    generateRegionSlide(selected, deals, sections);
+    generateRegionSlide(selected, deals);
   };
 
   const hasSelection = !!selected;

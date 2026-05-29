@@ -1,8 +1,7 @@
 import type PptxGenJSType from "pptxgenjs";
-import { REGIONS, type RegionCode, type WonDeal, regionName } from "@/lib/csvStore";
+import { REGIONS, type RegionCode, type WonDeal, regionName, formatEUR } from "@/lib/csvStore";
 import { groupIndustry } from "@/lib/industryGroups";
 import { recordPptDownload } from "@/lib/enrichmentStore";
-import type { SlideSection } from "@/components/dashboard/RegionDetail";
 
 const COLOR = {
   bg: "FFF5F7", card: "FFFFFF", ink: "1A1130", sub: "8A8295", subStrong: "6B6478",
@@ -97,28 +96,14 @@ async function svgToPngDataUrl(svg: string, w = 800, h = 800): Promise<string | 
   });
 }
 
-export async function generateRegionSlide(code: RegionCode, deals: WonDeal[], sections: SlideSection[]) {
+export async function generateRegionSlide(code: RegionCode, deals: WonDeal[]) {
   const regionDeals = deals.filter((d) => d.regionCode === code);
   const name = regionName(code);
-  const n = Math.max(1, sections.length);
-  const maxRows = n === 1 ? 6 : n === 2 ? 4 : 3;
+  const totalMrr = regionDeals.reduce((s, d) => s + d.totalActualMrr, 0);
 
-  const seenCompany = new Set<string>();
-  const topDeals: WonDeal[] = [];
-  for (const d of [...regionDeals].sort((a, b) => b.totalActualMrr - a.totalActualMrr)) {
-    const key = d.companyName.trim().toLowerCase();
-    if (seenCompany.has(key)) continue;
-    seenCompany.add(key);
-    topDeals.push(d);
-    if (topDeals.length >= maxRows) break;
-  }
+  // --- Data prep ---
 
-  type IndustryInfo = {
-    industry: string;
-    count: number;
-    topModule: string;
-    top3Companies: string[];
-  };
+  // Top 3 industries (excluding Other/Unknown)
   type IndAcc = { count: number; deals: WonDeal[]; modules: Map<string, number> };
   const industryMap = new Map<string, IndAcc>();
   for (const d of regionDeals) {
@@ -131,45 +116,62 @@ export async function generateRegionSlide(code: RegionCode, deals: WonDeal[], se
     if (mod) cur.modules.set(mod, (cur.modules.get(mod) ?? 0) + 1);
     industryMap.set(g, cur);
   }
-  const topIndustries: IndustryInfo[] = Array.from(industryMap.entries())
-    .map(([industry, v]) => {
-      const topMod = Array.from(v.modules.entries()).sort((a, b) => b[1] - a[1])[0];
-      const seen = new Set<string>();
-      const top3: string[] = [];
-      for (const d of [...v.deals].sort((a, b) => b.totalActualMrr - a.totalActualMrr)) {
-        const key = d.companyName.trim().toLowerCase();
-        if (seen.has(key)) continue;
-        seen.add(key);
-        top3.push(d.companyName);
-        if (top3.length >= 3) break;
-      }
-      return { industry, count: v.count, topModule: topMod?.[0] ?? "—", top3Companies: top3 };
-    })
-    .sort((a, b) => b.count - a.count)
+  const top3Industries = Array.from(industryMap.entries())
+    .sort((a, b) => b[1].count - a[1].count)
     .slice(0, 3);
+
+  // Top modules across those 3 industries
+  const moduleCount = new Map<string, number>();
+  for (const [, v] of top3Industries) {
+    for (const [mod, cnt] of v.modules) {
+      moduleCount.set(mod, (moduleCount.get(mod) ?? 0) + cnt);
+    }
+  }
+  const topModules = Array.from(moduleCount.entries())
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 3);
+
+  // Top 3 companies from those 3 industries (deduped, sorted by MRR)
+  const allDealsFrom3 = top3Industries.flatMap(([, v]) => v.deals);
+  const seenCompany = new Set<string>();
+  const topCompanies: { name: string; industry: string; mrr: number }[] = [];
+  for (const d of [...allDealsFrom3].sort((a, b) => b.totalActualMrr - a.totalActualMrr)) {
+    const key = d.companyName.trim().toLowerCase();
+    if (seenCompany.has(key)) continue;
+    seenCompany.add(key);
+    topCompanies.push({ name: d.companyName, industry: groupIndustry(d.sector), mrr: d.totalActualMrr });
+    if (topCompanies.length >= 3) break;
+  }
+
+  // --- Slide ---
 
   const svg = getMapSvg(code);
   const mapPng = svg ? await svgToPngDataUrl(svg, 1000, 1000) : null;
 
   const PptxMod = (await import("pptxgenjs")).default as unknown as new () => PptxGenJSType;
   const pptx = new PptxMod();
-  pptx.layout = "LAYOUT_WIDE";
+  pptx.layout = "LAYOUT_WIDE"; // 13.33 x 7.5 in
   pptx.title = `${name} · Wons`;
 
   const slide = pptx.addSlide();
   slide.background = { color: COLOR.bg };
+
+  // Top accent bar
   slide.addShape("rect", { x: 0, y: 0, w: 13.33, h: 0.12, fill: { color: COLOR.primary }, line: { type: "none" } });
 
+  // Header
   slide.addText("WONS · PRE-EVENT", {
     x: 0.5, y: 0.35, w: 8, h: 0.3, fontSize: 10, bold: true, color: COLOR.primary, charSpacing: 3, fontFace: "Inter",
   });
   slide.addText(name, {
     x: 0.5, y: 0.6, w: 9, h: 0.85, fontSize: 40, bold: true, color: COLOR.ink, fontFace: "Inter",
   });
-  slide.addText(`${regionDeals.length} client${regionDeals.length > 1 ? "s" : ""} en région ${name}.`, {
-    x: 0.5, y: 1.5, w: 9, h: 0.35, fontSize: 13, color: COLOR.subStrong, fontFace: "Inter", italic: true,
-  });
+  slide.addText(
+    `${regionDeals.length} client${regionDeals.length > 1 ? "s" : ""} · MRR ${formatEUR(totalMrr)}`,
+    { x: 0.5, y: 1.5, w: 9, h: 0.35, fontSize: 13, color: COLOR.subStrong, fontFace: "Inter", italic: true },
+  );
 
+  // Stat pill
   slide.addShape("roundRect", {
     x: 11.1, y: 0.5, w: 1.8, h: 0.5, fill: { color: COLOR.primarySoft }, line: { type: "none" }, rectRadius: 0.25,
   });
@@ -177,112 +179,158 @@ export async function generateRegionSlide(code: RegionCode, deals: WonDeal[], se
     x: 11.1, y: 0.5, w: 1.8, h: 0.5, fontSize: 13, bold: true, color: COLOR.primaryDark, align: "center", valign: "middle", fontFace: "Inter",
   });
 
+  // Map panel (left)
   slide.addShape("roundRect", {
     x: 0.5, y: 1.95, w: 4.2, h: 5.4, fill: { color: COLOR.card }, line: { color: COLOR.border, width: 1 }, rectRadius: 0.2,
   });
   if (mapPng) slide.addImage({ data: mapPng, x: 0.65, y: 2.1, w: 3.9, h: 5.1 });
 
+  // --- 3 blocks on the right ---
   const contentX = 5.0;
   const contentW = 7.83;
   const topY = 1.95;
   const bottomY = 7.35;
   const available = bottomY - topY;
-  const blockGap = n === 1 ? 0 : 0.25;
-  const perBlockH = (available - blockGap * (n - 1)) / n;
-  const padX = 0.3; const padTop = 0.25; const padBottom = 0.3;
-  const headerH = n === 1 ? 0.65 : 0.5;
-  const headerFs = n === 1 ? 18 : 15;
-  const cellFs = n === 1 ? 13 : 12;
-  const headLabelFs = n === 1 ? 10 : 9;
+  const blockGap = 0.18;
+  const perBlockH = (available - blockGap * 2) / 3;
+  const padX = 0.25;
+  const padTop = 0.18;
+  const headerH = 0.4;
+  const headerFs = 13;
+  const cellFs = 11;
+  const headLabelFs = 8;
+  const headOpts = { bold: true, color: COLOR.subStrong, fontSize: headLabelFs, fill: { color: COLOR.primarySoft }, valign: "middle" as const, charSpacing: 1 };
 
-  let blockY = topY;
-
-  const padRows = <T,>(arr: T[], blank: T): T[] => {
-    if (arr.length >= maxRows) return arr.slice(0, maxRows);
-    return [...arr, ...Array(maxRows - arr.length).fill(blank)];
+  const drawCard = (y: number) => {
+    slide.addShape("roundRect", {
+      x: contentX, y, w: contentW, h: perBlockH,
+      fill: { color: COLOR.card }, line: { color: COLOR.border, width: 1 }, rectRadius: 0.14,
+    });
   };
 
-  for (const s of sections) {
-    slide.addShape("roundRect", {
-      x: contentX, y: blockY, w: contentW, h: perBlockH,
-      fill: { color: COLOR.card }, line: { color: COLOR.border, width: 1 }, rectRadius: 0.16,
-    });
-
+  const drawAccent = (y: number) => {
     slide.addShape("rect", {
-      x: contentX + padX, y: blockY + padTop + 0.06, w: 0.14, h: headerH - 0.16,
+      x: contentX + padX, y: y + padTop + 0.04, w: 0.12, h: headerH - 0.12,
       fill: { color: COLOR.primary }, line: { type: "none" },
     });
+  };
 
-    const headOpts = { bold: true, color: COLOR.subStrong, fontSize: headLabelFs, fill: { color: COLOR.primarySoft }, valign: "middle" as const, charSpacing: 1 };
-    const rowH = (perBlockH - padTop - headerH - 0.1 - padBottom) / (maxRows + 1);
+  const drawTitle = (y: number, title: string) => {
+    slide.addText(title, {
+      x: contentX + padX + 0.22, y: y + padTop - 0.02, w: contentW - padX * 2 - 0.22, h: headerH,
+      fontSize: headerFs, bold: true, color: COLOR.ink, fontFace: "Inter",
+    });
+  };
 
-    if (s === "topMrr") {
-      slide.addText("Top Wons", {
-        x: contentX + padX + 0.28, y: blockY + padTop - 0.02, w: contentW - padX * 2 - 0.28, h: headerH,
-        fontSize: headerFs, bold: true, color: COLOR.ink, fontFace: "Inter",
-      });
-      const padded = padRows<WonDeal | null>(topDeals, null);
-      const rows = [
-        [{ text: "ENTREPRISE", options: headOpts }, { text: "SECTEUR", options: headOpts }, { text: "MRR", options: { ...headOpts, align: "right" as const } }],
-        ...padded.map((d, i) => {
-          const fill = i % 2 === 1 ? { color: COLOR.rowAlt } : { color: "FFFFFF" };
-          const base = { fontSize: cellFs, valign: "middle" as const, fill };
-          if (!d) return [{ text: "", options: base }, { text: "", options: base }, { text: "", options: base }];
-          return [
-            { text: d.companyName, options: { ...base, bold: true, color: COLOR.ink } },
-            { text: trIndustry(groupIndustry(d.sector)), options: { ...base, color: COLOR.primaryDark, bold: true } },
-            { text: `€${Math.round(d.totalActualMrr)}`, options: { ...base, color: COLOR.ink, align: "right" as const } },
-          ];
-        }),
+  const tableY = (blockY: number) => blockY + padTop + headerH + 0.06;
+  const rowH = (perBlockH - padTop - headerH - 0.06 - 0.15) / 4; // 1 header + 3 rows
+
+  // --- Block 1: Top 3 Industries ---
+  let y = topY;
+  drawCard(y);
+  drawAccent(y);
+  drawTitle(y, "Top 3 Secteurs");
+
+  const indRows: any[][] = [
+    [
+      { text: "SECTEUR", options: headOpts },
+      { text: "WONS", options: { ...headOpts, align: "right" as const } },
+      { text: "MRR", options: { ...headOpts, align: "right" as const } },
+    ],
+    ...top3Industries.map(([ind, v], i) => {
+      const fill = i % 2 === 1 ? { color: COLOR.rowAlt } : { color: "FFFFFF" };
+      const base = { fontSize: cellFs, valign: "middle" as const, fill };
+      const mrr = v.deals.reduce((s: number, d: WonDeal) => s + d.totalActualMrr, 0);
+      return [
+        { text: trIndustry(ind), options: { ...base, bold: true, color: COLOR.primaryDark } },
+        { text: String(v.count), options: { ...base, color: COLOR.ink, bold: true, align: "right" as const } },
+        { text: formatEUR(mrr), options: { ...base, color: COLOR.ink, align: "right" as const } },
       ];
-      slide.addTable(rows as any, {
-        x: contentX + padX, y: blockY + padTop + headerH + 0.1, w: contentW - padX * 2,
-        colW: [contentW - padX * 2 - 2.5 - 1.5, 2.5, 1.5],
-        fontFace: "Inter", border: [{ type: "none" }, { type: "none" }, { type: "none" }, { type: "none" }], rowH, margin: 0.1,
-      });
-    } else if (s === "topIndustries") {
-      slide.addText("Top secteurs × Módulos", {
-        x: contentX + padX + 0.28, y: blockY + padTop - 0.02, w: contentW - padX * 2 - 0.28, h: headerH,
-        fontSize: headerFs, bold: true, color: COLOR.ink, fontFace: "Inter",
-      });
-      const blank: IndustryInfo = { industry: "", count: 0, topModule: "", top3Companies: [] };
-      const padded = padRows(topIndustries, blank);
-      const rows = [
-        [
-          { text: "SECTEUR", options: headOpts },
-          { text: "WONS", options: { ...headOpts, align: "right" as const } },
-          { text: "TOP MÓDULO", options: headOpts },
-          { text: "TOP 3 EMPRESAS", options: headOpts },
-        ],
-        ...padded.map((r, i) => {
-          const fill = i % 2 === 1 ? { color: COLOR.rowAlt } : { color: "FFFFFF" };
-          const base = { fontSize: cellFs, valign: "middle" as const, fill };
-          if (!r.industry) return [
-            { text: "", options: base }, { text: "", options: base },
-            { text: "", options: base }, { text: "", options: base },
-          ];
-          return [
-            { text: trIndustry(r.industry), options: { ...base, bold: true, color: COLOR.primaryDark } },
-            { text: String(r.count), options: { ...base, color: COLOR.ink, bold: true, align: "right" as const } },
-            { text: r.topModule, options: { ...base, color: COLOR.subStrong, fontSize: cellFs - 1 } },
-            { text: r.top3Companies.join("  ·  "), options: { ...base, color: COLOR.ink, fontSize: cellFs - 1 } },
-          ];
-        }),
-      ];
-      const innerW = contentW - padX * 2;
-      slide.addTable(rows as any, {
-        x: contentX + padX, y: blockY + padTop + headerH + 0.1, w: innerW,
-        colW: [1.8, 0.7, 2.0, innerW - 1.8 - 0.7 - 2.0],
-        fontFace: "Inter", border: [{ type: "none" }, { type: "none" }, { type: "none" }, { type: "none" }], rowH, margin: 0.1,
-      });
-    }
-
-    blockY += perBlockH + blockGap;
+    }),
+  ];
+  while (indRows.length < 4) {
+    const fill = (indRows.length - 1) % 2 === 1 ? { color: COLOR.rowAlt } : { color: "FFFFFF" };
+    const base = { fontSize: cellFs, valign: "middle" as const, fill };
+    indRows.push([{ text: "", options: base }, { text: "", options: base }, { text: "", options: base }]);
   }
+  const innerW = contentW - padX * 2;
+  slide.addTable(indRows, {
+    x: contentX + padX, y: tableY(y), w: innerW,
+    colW: [innerW - 1.2 - 1.5, 1.2, 1.5],
+    fontFace: "Inter", border: [{ type: "none" }, { type: "none" }, { type: "none" }, { type: "none" }], rowH, margin: 0.08,
+  });
+
+  // --- Block 2: Top Modules ---
+  y += perBlockH + blockGap;
+  drawCard(y);
+  drawAccent(y);
+  drawTitle(y, "Top Módulos contratados");
+
+  const modRows: any[][] = [
+    [
+      { text: "MÓDULO", options: headOpts },
+      { text: "CONTRATOS", options: { ...headOpts, align: "right" as const } },
+      { text: "% DEL TOTAL", options: { ...headOpts, align: "right" as const } },
+    ],
+    ...topModules.map(([mod, cnt], i) => {
+      const fill = i % 2 === 1 ? { color: COLOR.rowAlt } : { color: "FFFFFF" };
+      const base = { fontSize: cellFs, valign: "middle" as const, fill };
+      const total = top3Industries.reduce((s, [, v]) => s + v.count, 0);
+      const pct = total > 0 ? ((cnt / total) * 100).toFixed(0) + "%" : "—";
+      return [
+        { text: mod, options: { ...base, bold: true, color: COLOR.ink } },
+        { text: String(cnt), options: { ...base, color: COLOR.ink, bold: true, align: "right" as const } },
+        { text: pct, options: { ...base, color: COLOR.subStrong, align: "right" as const } },
+      ];
+    }),
+  ];
+  while (modRows.length < 4) {
+    const fill = (modRows.length - 1) % 2 === 1 ? { color: COLOR.rowAlt } : { color: "FFFFFF" };
+    const base = { fontSize: cellFs, valign: "middle" as const, fill };
+    modRows.push([{ text: "", options: base }, { text: "", options: base }, { text: "", options: base }]);
+  }
+  slide.addTable(modRows, {
+    x: contentX + padX, y: tableY(y), w: innerW,
+    colW: [innerW - 1.4 - 1.4, 1.4, 1.4],
+    fontFace: "Inter", border: [{ type: "none" }, { type: "none" }, { type: "none" }, { type: "none" }], rowH, margin: 0.08,
+  });
+
+  // --- Block 3: Top 3 Companies (logos) ---
+  y += perBlockH + blockGap;
+  drawCard(y);
+  drawAccent(y);
+  drawTitle(y, "Top 3 Entreprises");
+
+  const compRows: any[][] = [
+    [
+      { text: "ENTREPRISE", options: headOpts },
+      { text: "SECTEUR", options: headOpts },
+      { text: "MRR", options: { ...headOpts, align: "right" as const } },
+    ],
+    ...topCompanies.map((c, i) => {
+      const fill = i % 2 === 1 ? { color: COLOR.rowAlt } : { color: "FFFFFF" };
+      const base = { fontSize: cellFs, valign: "middle" as const, fill };
+      return [
+        { text: c.name, options: { ...base, bold: true, color: COLOR.ink } },
+        { text: trIndustry(c.industry), options: { ...base, color: COLOR.primaryDark, bold: true } },
+        { text: formatEUR(c.mrr), options: { ...base, color: COLOR.ink, align: "right" as const } },
+      ];
+    }),
+  ];
+  while (compRows.length < 4) {
+    const fill = (compRows.length - 1) % 2 === 1 ? { color: COLOR.rowAlt } : { color: "FFFFFF" };
+    const base = { fontSize: cellFs, valign: "middle" as const, fill };
+    compRows.push([{ text: "", options: base }, { text: "", options: base }, { text: "", options: base }]);
+  }
+  slide.addTable(compRows, {
+    x: contentX + padX, y: tableY(y), w: innerW,
+    colW: [innerW - 2.2 - 1.5, 2.2, 1.5],
+    fontFace: "Inter", border: [{ type: "none" }, { type: "none" }, { type: "none" }, { type: "none" }], rowH, margin: 0.08,
+  });
 
   await pptx.writeFile({ fileName: `${name.replace(/\s+/g, "-")}-wons.pptx` });
 
   const user = window.localStorage.getItem("factorial.session.email") ?? "unknown";
   const country = window.localStorage.getItem("pre-event-country") ?? "fr";
-  recordPptDownload({ timestamp: new Date().toISOString(), region: name, country, user, sections });
+  recordPptDownload({ timestamp: new Date().toISOString(), region: name, country, user, sections: ["industries", "modules", "companies"] });
 }

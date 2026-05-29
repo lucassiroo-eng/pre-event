@@ -9,14 +9,12 @@ const REGION_NAME: Record<string, string> = Object.fromEntries(
   REGIONS.map((r) => [r.code, r.name]),
 );
 
-export type SlideSection = "topMrr" | "topIndustries";
-
 interface Props {
   code: RegionCode;
   deals: WonDeal[];
   allDeals: WonDeal[];
   onClose: () => void;
-  onGenerateSlide: (sections: SlideSection[]) => void;
+  onGenerateSlide: () => void;
 }
 
 function IndustryPill({ value }: { value: string }) {
@@ -76,7 +74,7 @@ export function RegionDetail({ code, deals, onClose, onGenerateSlide }: Props) {
         </div>
         <div className="flex items-center gap-2">
           <button
-            onClick={() => onGenerateSlide(["topMrr", "topIndustries"])}
+            onClick={() => onGenerateSlide()}
             className="inline-flex items-center gap-1.5 rounded-md border border-border bg-background px-3 py-1.5 text-xs font-medium text-foreground hover:bg-muted"
           >
             <FileImage className="h-3.5 w-3.5" /> Generate slide
