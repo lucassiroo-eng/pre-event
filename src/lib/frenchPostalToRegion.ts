@@ -3,7 +3,9 @@
 // This is deterministic and covers 100% of metropolitan France + Corsica.
 // Overseas DOM/TOM (971-988) → "unknown" (we don't show them on the map).
 
-import type { RegionCode } from "@/data/mockData";
+type RegionCode =
+  | "11" | "24" | "27" | "28" | "32" | "44" | "52"
+  | "53" | "75" | "76" | "84" | "93" | "94";
 
 // département (2-digit string) → region code
 const DEP_REGION: Record<string, RegionCode> = {};

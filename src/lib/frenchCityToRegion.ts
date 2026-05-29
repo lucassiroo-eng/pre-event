@@ -1,7 +1,9 @@
 // Maps a French city name to a region code (matches RegionCode in mockData.ts).
 // Comprehensive enough for the largest ~200 communes; falls back to "unknown".
 
-import type { RegionCode } from "@/data/mockData";
+type RegionCode =
+  | "11" | "24" | "27" | "28" | "32" | "44" | "52"
+  | "53" | "75" | "76" | "84" | "93" | "94";
 
 // Normalize: lowercase, strip accents, remove arrondissement suffix, trim.
 export function normalizeCity(raw: string | null | undefined): string {
