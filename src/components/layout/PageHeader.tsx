@@ -1,34 +1,10 @@
-import { LAST_SYNC, formatDate } from "@/data/mockData";
-import { RefreshCw, Zap } from "lucide-react";
-
 interface Props {
-  title?: string;
+  title: string;
   subtitle?: string;
   actions?: React.ReactNode;
-  variant?: "hero" | "compact";
 }
 
-export function PageHeader({
-  title = "Blitz Day – Factorial France",
-  subtitle = "Regional performance dashboard for sales teams",
-  actions,
-  variant = "hero",
-}: Props) {
-  if (variant === "compact") {
-    return (
-      <header className="flex flex-wrap items-end justify-between gap-4 pb-6">
-        <div>
-          <h1 className="text-2xl font-semibold tracking-tight text-foreground">{title}</h1>
-          {subtitle && <p className="mt-1 text-sm text-muted-foreground">{subtitle}</p>}
-        </div>
-        <div className="flex items-center gap-3">
-          <SyncBadge />
-          {actions}
-        </div>
-      </header>
-    );
-  }
-
+export function PageHeader({ title, subtitle, actions }: Props) {
   return (
     <header
       className="relative overflow-hidden rounded-2xl px-6 py-8 text-white shadow-sm sm:px-10 sm:py-10"
@@ -53,36 +29,8 @@ export function PageHeader({
             )}
           </div>
         </div>
-        <div className="flex items-center gap-3">
-          <SyncBadge dark />
-          {actions}
-        </div>
+        {actions && <div className="flex items-center gap-3">{actions}</div>}
       </div>
     </header>
-  );
-}
-
-function SyncBadge({ dark = false }: { dark?: boolean }) {
-  return (
-    <div
-      className={
-        dark
-          ? "hidden sm:flex items-center gap-1.5 rounded-full bg-white/15 px-3 py-1.5 text-xs text-white backdrop-blur"
-          : "hidden sm:flex items-center gap-1.5 rounded-full border border-border bg-card px-3 py-1.5 text-xs text-muted-foreground"
-      }
-    >
-      <span className={`inline-block h-1.5 w-1.5 rounded-full ${dark ? "bg-white" : "bg-success"}`} />
-      Last HubSpot sync · {formatDate(LAST_SYNC)}
-      <button
-        className={
-          dark
-            ? "ml-1 rounded p-0.5 text-white/80 hover:text-white"
-            : "ml-1 rounded p-0.5 text-muted-foreground hover:text-foreground"
-        }
-        title="Refresh"
-      >
-        <RefreshCw className="h-3 w-3" />
-      </button>
-    </div>
   );
 }

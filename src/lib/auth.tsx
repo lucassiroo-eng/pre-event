@@ -20,11 +20,9 @@ type AuthCtx = {
 const Ctx = createContext<AuthCtx | null>(null);
 
 const SESSION_KEY = "factorial.session.email";
-const USERS_KEY = "factorial.users.v1"; // { [email]: passwordHash }
+const USERS_KEY = "factorial.users.v1";
+const USERS_LIST_KEY = "pre-event-users-list-v1";
 
-// Tiny non-cryptographic hash. This is a *mock* auth (data only in
-// localStorage, no server). Don't use this for anything that needs real
-// security — see chat.
 function hash(input: string): string {
   let h = 5381;
   for (let i = 0; i < input.length; i++) {
@@ -34,7 +32,6 @@ function hash(input: string): string {
 }
 
 function readUsers(): Record<string, string> {
-  if (typeof window === "undefined") return {};
   try {
     return JSON.parse(window.localStorage.getItem(USERS_KEY) ?? "{}");
   } catch {
@@ -43,8 +40,35 @@ function readUsers(): Record<string, string> {
 }
 
 function writeUsers(users: Record<string, string>) {
-  if (typeof window === "undefined") return;
   window.localStorage.setItem(USERS_KEY, JSON.stringify(users));
+}
+
+export interface UserEntry {
+  email: string;
+  lastLogin: string;
+  loginCount: number;
+}
+
+export function readUsersList(): UserEntry[] {
+  try {
+    return JSON.parse(window.localStorage.getItem(USERS_LIST_KEY) ?? "[]");
+  } catch {
+    return [];
+  }
+}
+
+function recordLogin(email: string) {
+  const list = readUsersList();
+  const existing = list.find((u) => u.email === email);
+  if (existing) {
+    existing.lastLogin = new Date().toISOString();
+    existing.loginCount += 1;
+  } else {
+    list.push({ email, lastLogin: new Date().toISOString(), loginCount: 1 });
+  }
+  try {
+    window.localStorage.setItem(USERS_LIST_KEY, JSON.stringify(list));
+  } catch { /* quota */ }
 }
 
 function normalizeEmail(e: string) {
@@ -64,13 +88,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [hydrated, setHydrated] = useState(false);
 
   useEffect(() => {
-    if (typeof window === "undefined") return;
     const stored = window.localStorage.getItem(SESSION_KEY);
-    // Only accept stored sessions that still match the domain rule.
     if (stored && stored.endsWith(EMAIL_DOMAIN)) {
-      // Seed admin accounts on first run so they can sign in with any password
-      // they later choose (no — they still need to sign up; we just preserve
-      // whatever's in the users map).
       setEmail(stored);
     }
     setHydrated(true);
@@ -86,6 +105,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (users[e] !== hash(password)) return { ok: false, error: "Contraseña incorrecta" };
     window.localStorage.setItem(SESSION_KEY, e);
     setEmail(e);
+    recordLogin(e);
     return { ok: true };
   };
 
@@ -102,11 +122,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     writeUsers(users);
     window.localStorage.setItem(SESSION_KEY, e);
     setEmail(e);
+    recordLogin(e);
     return { ok: true };
   };
 
   const logout = () => {
-    if (typeof window !== "undefined") window.localStorage.removeItem(SESSION_KEY);
+    window.localStorage.removeItem(SESSION_KEY);
     setEmail(null);
   };
 

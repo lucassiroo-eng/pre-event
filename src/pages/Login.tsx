@@ -1,40 +1,28 @@
 import { useState } from "react";
-import { createFileRoute, useNavigate, useSearch } from "@tanstack/react-router";
+import { useNavigate } from "react-router-dom";
 import { useAuth, EMAIL_DOMAIN } from "@/lib/auth";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card } from "@/components/ui/card";
 
-export const Route = createFileRoute("/login")({
-  validateSearch: (s: Record<string, unknown>) => ({
-    redirect: typeof s.redirect === "string" ? s.redirect : "/",
-  }),
-  head: () => ({ meta: [{ title: "Iniciar sesión · Factorial France" }] }),
-  component: LoginPage,
-});
-
-function LoginPage() {
+export function LoginPage() {
   const { login, signup } = useAuth();
   const navigate = useNavigate();
-  const { redirect } = useSearch({ from: "/login" });
   const [mode, setMode] = useState<"login" | "signup">("login");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
-  const [submitting, setSubmitting] = useState(false);
 
   const submit = (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
-    setSubmitting(true);
     const result = mode === "login" ? login(email, password) : signup(email, password);
-    setSubmitting(false);
     if (!result.ok) {
       setError(result.error);
       return;
     }
-    navigate({ to: redirect || "/" });
+    navigate("/");
   };
 
   return (
@@ -44,8 +32,8 @@ function LoginPage() {
           <div className="mx-auto grid h-10 w-10 place-items-center rounded-lg bg-primary text-primary-foreground font-bold">
             F
           </div>
-          <h1 className="text-lg font-semibold">Factorial France</h1>
-          <p className="text-xs text-muted-foreground">Partner Dashboard · acceso restringido a {EMAIL_DOMAIN}</p>
+          <h1 className="text-lg font-semibold">Pre-Event</h1>
+          <p className="text-xs text-muted-foreground">Acceso restringido a {EMAIL_DOMAIN}</p>
         </div>
 
         <div className="flex rounded-md border p-0.5 text-xs">
@@ -95,14 +83,10 @@ function LoginPage() {
             </div>
           )}
 
-          <Button type="submit" className="w-full" disabled={submitting}>
+          <Button type="submit" className="w-full">
             {mode === "login" ? "Iniciar sesión" : "Crear cuenta"}
           </Button>
         </form>
-
-        <p className="text-[11px] text-muted-foreground text-center leading-relaxed">
-          Auth local (mock) — los datos viven en el navegador. No conectado a backend.
-        </p>
       </Card>
     </div>
   );

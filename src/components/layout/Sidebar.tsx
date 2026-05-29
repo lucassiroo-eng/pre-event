@@ -1,33 +1,34 @@
 import { useState } from "react";
-import { Link, useLocation, useNavigate } from "@tanstack/react-router";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 import {
-  LayoutDashboard, Settings as SettingsIcon, FlaskConical, ChevronDown, Search, Activity, Sparkles, LogOut, Filter,
+  LayoutDashboard, Table2, Sparkles, Shield, LogOut, Globe, ChevronDown, FlaskConical,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/lib/auth";
 
-type NavItem = { to: string; label: string; icon: typeof LayoutDashboard; exact?: boolean };
+type NavItem = { to: string; label: string; icon: typeof LayoutDashboard };
 
 const MAIN_NAV: NavItem[] = [
-  { to: "/", label: "Overview", icon: LayoutDashboard, exact: true },
-  { to: "/table", label: "Detail", icon: Search },
+  { to: "/", label: "Countries", icon: Globe },
+  { to: "/overview", label: "Overview", icon: LayoutDashboard },
+  { to: "/table", label: "Detail", icon: Table2 },
 ];
 
-const WIP_NAV: NavItem[] = [
-  { to: "/settings", label: "HubSpot & Settings", icon: SettingsIcon },
-  { to: "/hubspot-usage", label: "HubSpot usage", icon: Activity },
-  { to: "/enrichment", label: "Enrichment SIRENE", icon: Sparkles },
-  { to: "/data-cleaning", label: "Data cleaning", icon: Filter },
+const ADMIN_NAV: NavItem[] = [
+  { to: "/enrichment", label: "Enrichment", icon: Sparkles },
+  { to: "/admin", label: "Admin", icon: Shield },
 ];
 
 export function Sidebar() {
   const { pathname } = useLocation();
   const { email, isAdmin, logout } = useAuth();
   const navigate = useNavigate();
-  const [wipOpen, setWipOpen] = useState(false);
+  const [adminOpen, setAdminOpen] = useState(false);
+
+  const selectedCountry = window.localStorage.getItem("pre-event-country") ?? "";
 
   const renderItem = (item: NavItem) => {
-    const active = item.exact ? pathname === item.to : pathname.startsWith(item.to);
+    const active = item.to === "/" ? pathname === "/" : pathname.startsWith(item.to);
     const Icon = item.icon;
     return (
       <Link
@@ -53,8 +54,10 @@ export function Sidebar() {
           F
         </div>
         <div className="flex flex-col leading-tight">
-          <span className="text-sm font-semibold">Factorial France</span>
-          <span className="text-[11px] text-sidebar-foreground/60">Partner Dashboard</span>
+          <span className="text-sm font-semibold">Pre-Event</span>
+          <span className="text-[11px] text-sidebar-foreground/60">
+            {selectedCountry ? selectedCountry.toUpperCase() : "Select country"}
+          </span>
         </div>
       </div>
 
@@ -66,19 +69,16 @@ export function Sidebar() {
         <div className="border-t border-sidebar-border px-3 py-3">
           <button
             type="button"
-            onClick={() => setWipOpen((v) => !v)}
+            onClick={() => setAdminOpen((v) => !v)}
             className="flex w-full items-center gap-1.5 rounded-md px-3 py-1.5 text-[10px] font-semibold uppercase tracking-wider text-sidebar-foreground/55 hover:bg-sidebar-accent/40"
           >
             <FlaskConical className="h-3 w-3" />
-            WIP
-            <span className="ml-1 rounded-sm bg-sidebar-accent/40 px-1.5 py-0.5 text-[9px] font-medium normal-case tracking-normal text-sidebar-foreground/60">
-              Admin
-            </span>
-            <ChevronDown className={cn("ml-auto h-3.5 w-3.5 transition-transform", wipOpen && "rotate-180")} />
+            Admin
+            <ChevronDown className={cn("ml-auto h-3.5 w-3.5 transition-transform", adminOpen && "rotate-180")} />
           </button>
-          {wipOpen && (
+          {adminOpen && (
             <div className="mt-1 space-y-0.5">
-              {WIP_NAV.map(renderItem)}
+              {ADMIN_NAV.map(renderItem)}
             </div>
           )}
         </div>
@@ -91,12 +91,9 @@ export function Sidebar() {
         <div className="w-full rounded-md border border-sidebar-border bg-sidebar-accent/30 px-2 py-1.5 text-xs text-sidebar-foreground truncate">
           {email ?? "—"}
         </div>
-        <div className="text-[11px] text-sidebar-foreground/55">
-          {isAdmin ? "Admin · WIP tabs visible" : "Standard user · Overview only"}
-        </div>
         <button
           type="button"
-          onClick={() => { logout(); navigate({ to: "/login" }); }}
+          onClick={() => { logout(); navigate("/login"); }}
           className="flex w-full items-center justify-center gap-2 rounded-md border border-sidebar-border bg-sidebar-accent/20 px-2 py-1.5 text-xs text-sidebar-foreground/75 hover:bg-sidebar-accent/50 hover:text-sidebar-foreground transition-colors"
         >
           <LogOut className="h-3.5 w-3.5" />
