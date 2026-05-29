@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { X, FileImage, Check, Maximize2, TrendingUp, Layers } from "lucide-react";
+import { X, FileImage, Maximize2, TrendingUp, Layers } from "lucide-react";
 import { formatEUR, REGIONS, type RegionCode, type WonDeal } from "@/lib/csvStore";
 import { groupIndustry, industryColorClass } from "@/lib/industryGroups";
 import { cn } from "@/lib/utils";
@@ -53,12 +53,6 @@ export function RegionDetail({ code, deals, onClose, onGenerateSlide }: Props) {
 
   const totalMrr = deals.reduce((acc, d) => acc + d.totalActualMrr, 0);
 
-  const [picker, setPicker] = useState(false);
-  const [selected, setSelected] = useState<Record<SlideSection, boolean>>({
-    topMrr: true, topIndustries: true,
-  });
-  const toggle = (k: SlideSection) => setSelected((s) => ({ ...s, [k]: !s[k] }));
-
   const [openDialog, setOpenDialog] = useState<null | "topMrr" | "topIndustries">(null);
 
   return (
@@ -82,7 +76,7 @@ export function RegionDetail({ code, deals, onClose, onGenerateSlide }: Props) {
         </div>
         <div className="flex items-center gap-2">
           <button
-            onClick={() => setPicker((p) => !p)}
+            onClick={() => onGenerateSlide(["topMrr", "topIndustries"])}
             className="inline-flex items-center gap-1.5 rounded-md border border-border bg-background px-3 py-1.5 text-xs font-medium text-foreground hover:bg-muted"
           >
             <FileImage className="h-3.5 w-3.5" /> Generate slide
@@ -92,38 +86,6 @@ export function RegionDetail({ code, deals, onClose, onGenerateSlide }: Props) {
           </button>
         </div>
       </div>
-
-      {picker && (
-        <div className="border-b border-border bg-muted/30 px-6 py-3">
-          <div className="mb-2 text-xs font-medium text-muted-foreground">Secciones del slide</div>
-          <div className="flex flex-wrap items-center gap-2">
-            {([["topMrr", "Top clients"], ["topIndustries", "Top sectores"]] as [SlideSection, string][]).map(([k, label]) => (
-              <button
-                key={k}
-                onClick={() => toggle(k)}
-                className={cn(
-                  "inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-medium transition",
-                  selected[k]
-                    ? "border-primary bg-primary text-primary-foreground"
-                    : "border-border bg-background text-foreground hover:bg-muted",
-                )}
-              >
-                {selected[k] && <Check className="h-3 w-3" />} {label}
-              </button>
-            ))}
-            <div className="flex-1" />
-            <button
-              onClick={() => {
-                const sections = (Object.keys(selected) as SlideSection[]).filter((k) => selected[k]);
-                if (sections.length > 0) onGenerateSlide(sections);
-              }}
-              className="rounded-md bg-primary px-3 py-1 text-xs font-medium text-primary-foreground hover:bg-primary/90"
-            >
-              Generate
-            </button>
-          </div>
-        </div>
-      )}
 
       <div className="min-h-0 flex-1 overflow-y-auto bg-muted/20 px-6 py-5 space-y-4">
         <ClickableBlock
