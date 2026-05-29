@@ -31,14 +31,14 @@ export function EnrichmentPage() {
   const hsPending = useMemo(() => frDeals.filter((d) => {
     const rec = store[d.companyId];
     if (!rec) return true;
-    if (rec.status === "error") return true;
+    if (rec.status === "error" || rec.status === "pending") return true;
     return false;
   }), [frDeals, store]);
 
   const sirenePending = useMemo(() => frDeals.filter((d) => {
     const rec = store[d.companyId];
     if (!rec) return true;
-    if (rec.status === "error") return true;
+    if (rec.status === "error" || rec.status === "pending") return true;
     if (rec.status === "hs-matched" && rec.regionCode === "unknown") return true;
     if (rec.status === "no-match") return true;
     return false;
