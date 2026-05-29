@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
-import { Upload, Play, Square, Download, Trash2 } from "lucide-react";
+import { Upload, Play, Square, Download, Trash2, Database, Search } from "lucide-react";
 import { readDeals, writeDeals, parseCsv, mergeDeals, writeMeta, countryStats, type WonDeal, type CsvMeta } from "@/lib/csvStore";
 import { readEnrichmentStore, writeEnrichmentStore, addTrackingEntry, readTracking, recordApiCall, type EnrichmentRecord, type EnrichmentStore, type TrackingEntry } from "@/lib/enrichmentStore";
 import { regionFromCity } from "@/lib/frenchCityToRegion";
@@ -14,21 +14,50 @@ import { regionFromPostalCode } from "@/lib/frenchPostalToRegion";
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL ?? "";
 const SUPABASE_ANON = import.meta.env.VITE_SUPABASE_ANON_KEY ?? "";
 
+type RunType = "hubspot" | "sirene" | null;
+
 export function EnrichmentPage() {
   const [deals, setDeals] = useState(() => readDeals());
   const [store, setStore] = useState<EnrichmentStore>(() => readEnrichmentStore());
   const [tracking, setTracking] = useState<TrackingEntry[]>(() => readTracking());
-  const [running, setRunning] = useState(false);
+  const [running, setRunning] = useState<RunType>(null);
   const [progress, setProgress] = useState({ done: 0, total: 0 });
   const [filter, setFilter] = useState("");
   const cancelRef = useRef(false);
   const fileRef = useRef<HTMLInputElement>(null);
 
   const frDeals = useMemo(() => deals.filter((d) => d.country === "fr"), [deals]);
-  const pending = useMemo(() => frDeals.filter((d) => !store[d.companyId]), [frDeals, store]);
-  const enriched = useMemo(() => frDeals.filter((d) => store[d.companyId]), [frDeals, store]);
-  const matched = useMemo(() => enriched.filter((d) => store[d.companyId]?.status === "hs-matched" || store[d.companyId]?.status === "sirene-enriched"), [enriched, store]);
-  const withRegion = useMemo(() => enriched.filter((d) => store[d.companyId]?.regionCode !== "unknown"), [enriched, store]);
+
+  const hsPending = useMemo(() => frDeals.filter((d) => {
+    const rec = store[d.companyId];
+    if (!rec) return true;
+    if (rec.status === "error") return true;
+    return false;
+  }), [frDeals, store]);
+
+  const sirenePending = useMemo(() => frDeals.filter((d) => {
+    const rec = store[d.companyId];
+    if (!rec) return true;
+    if (rec.status === "error") return true;
+    if (rec.status === "hs-matched" && rec.regionCode === "unknown") return true;
+    if (rec.status === "no-match") return true;
+    return false;
+  }), [frDeals, store]);
+
+  const enrichedCount = useMemo(() => frDeals.filter((d) => {
+    const rec = store[d.companyId];
+    return rec && rec.status !== "error" && rec.status !== "pending";
+  }).length, [frDeals, store]);
+
+  const matchedCount = useMemo(() => frDeals.filter((d) => {
+    const rec = store[d.companyId];
+    return rec && (rec.status === "hs-matched" || rec.status === "sirene-enriched");
+  }).length, [frDeals, store]);
+
+  const withRegionCount = useMemo(() => frDeals.filter((d) => {
+    const rec = store[d.companyId];
+    return rec && rec.regionCode !== "unknown";
+  }).length, [frDeals, store]);
 
   const onFile = useCallback(async (file: File) => {
     try {
@@ -36,7 +65,7 @@ export function EnrichmentPage() {
       const parsed = parseCsv(text);
       if (parsed.length === 0) throw new Error("CSV vacío");
       const existing = readDeals();
-      const { merged, newCount } = mergeDeals(existing, parsed);
+      const { merged } = mergeDeals(existing, parsed);
       writeDeals(merged);
       const cs = countryStats(merged);
       const meta: CsvMeta = {
@@ -50,150 +79,140 @@ export function EnrichmentPage() {
     } catch { /* ignore */ }
   }, []);
 
-  const runEnrichment = useCallback(async () => {
-    if (running || pending.length === 0) return;
+  const runHubspot = useCallback(async () => {
+    if (running || hsPending.length === 0 || !SUPABASE_URL) return;
     cancelRef.current = false;
-    setRunning(true);
-    setProgress({ done: 0, total: pending.length });
+    setRunning("hubspot");
+    setProgress({ done: 0, total: hsPending.length });
 
     const next = { ...store };
     const BATCH = 25;
-    let hsMatched = 0;
-    let sireneMatched = 0;
+    let matched = 0;
     let errors = 0;
 
-    for (let i = 0; i < pending.length; i += BATCH) {
+    for (let i = 0; i < hsPending.length; i += BATCH) {
       if (cancelRef.current) break;
-      const batch = pending.slice(i, i + BATCH);
+      const batch = hsPending.slice(i, i + BATCH);
       const names = batch.map((d) => d.companyName);
 
-      // Step 1: HubSpot lookup
-      if (SUPABASE_URL) {
-        try {
-          const res = await fetch(`${SUPABASE_URL}/functions/v1/hubspot-lookup`, {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-              Authorization: `Bearer ${SUPABASE_ANON}`,
-            },
-            body: JSON.stringify({ names }),
-          });
-          if (res.ok) {
-            const data = await res.json() as { results: Array<{ query: string; found: boolean; city: string | null; zip: string | null; hubspotId: string | null }> };
-            recordApiCall("hubspot", data.results.length);
-            for (const hit of data.results) {
-              const deal = batch.find((d) => d.companyName === hit.query);
-              if (!deal) continue;
-              if (hit.found) {
-                hsMatched++;
-                const byPostal = regionFromPostalCode(hit.zip);
-                const region = byPostal !== "unknown" ? byPostal : regionFromCity(hit.city);
-                next[deal.companyId] = {
-                  companyId: deal.companyId,
-                  companyName: deal.companyName,
-                  hubspotId: hit.hubspotId,
-                  hubspotCity: hit.city,
-                  hubspotZip: hit.zip,
-                  sireneCity: null, sirenePostal: null, sireneSiren: null,
-                  regionCode: region,
-                  status: "hs-matched",
-                  enrichedAt: new Date().toISOString(),
-                  error: null,
-                };
-              }
+      try {
+        const res = await fetch(`${SUPABASE_URL}/functions/v1/hubspot-lookup`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Authorization: `Bearer ${SUPABASE_ANON}` },
+          body: JSON.stringify({ names }),
+        });
+        if (res.ok) {
+          const data = await res.json() as { results: Array<{ query: string; found: boolean; city: string | null; zip: string | null; hubspotId: string | null }> };
+          recordApiCall("hubspot", data.results.length);
+          for (const hit of data.results) {
+            const deal = batch.find((d) => d.companyName === hit.query);
+            if (!deal) continue;
+            if (hit.found) {
+              matched++;
+              const byPostal = regionFromPostalCode(hit.zip);
+              const region = byPostal !== "unknown" ? byPostal : regionFromCity(hit.city);
+              next[deal.companyId] = {
+                companyId: deal.companyId, companyName: deal.companyName,
+                hubspotId: hit.hubspotId, hubspotCity: hit.city, hubspotZip: hit.zip,
+                sireneCity: null, sirenePostal: null, sireneSiren: null,
+                regionCode: region, status: "hs-matched",
+                enrichedAt: new Date().toISOString(), error: null,
+              };
+            } else {
+              next[deal.companyId] = {
+                companyId: deal.companyId, companyName: deal.companyName,
+                hubspotId: null, hubspotCity: null, hubspotZip: null,
+                sireneCity: null, sirenePostal: null, sireneSiren: null,
+                regionCode: "unknown", status: "no-match",
+                enrichedAt: new Date().toISOString(), error: null,
+              };
             }
           }
-        } catch { errors++; }
-      }
-
-      // Step 2: SIRENE lookup for unresolved
-      const unresolved = batch.filter((d) => !next[d.companyId] || next[d.companyId].regionCode === "unknown");
-      if (unresolved.length > 0 && SUPABASE_URL) {
-        try {
-          const res = await fetch(`${SUPABASE_URL}/functions/v1/sirene-lookup`, {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-              Authorization: `Bearer ${SUPABASE_ANON}`,
-            },
-            body: JSON.stringify({ names: unresolved.map((d) => d.companyName) }),
-          });
-          if (res.ok) {
-            const data = await res.json() as { results: Array<{ query: string; found: boolean; city: string | null; postalCode: string | null; siren: string | null }> };
-            recordApiCall("sirene", data.results.length);
-            for (const hit of data.results) {
-              const deal = unresolved.find((d) => d.companyName === hit.query);
-              if (!deal) continue;
-              const existing = next[deal.companyId];
-              if (hit.found) {
-                sireneMatched++;
-                const byPostal = regionFromPostalCode(hit.postalCode);
-                const region = byPostal !== "unknown" ? byPostal : regionFromCity(hit.city);
-                next[deal.companyId] = {
-                  ...existing ?? {
-                    companyId: deal.companyId, companyName: deal.companyName,
-                    hubspotId: null, hubspotCity: null, hubspotZip: null, error: null,
-                  },
-                  sireneCity: hit.city,
-                  sirenePostal: hit.postalCode,
-                  sireneSiren: hit.siren,
-                  regionCode: region,
-                  status: "sirene-enriched",
-                  enrichedAt: new Date().toISOString(),
-                };
-              } else if (!existing) {
-                next[deal.companyId] = {
-                  companyId: deal.companyId, companyName: deal.companyName,
-                  hubspotId: null, hubspotCity: null, hubspotZip: null,
-                  sireneCity: null, sirenePostal: null, sireneSiren: null,
-                  regionCode: "unknown", status: "no-match",
-                  enrichedAt: new Date().toISOString(), error: null,
-                };
-              }
-            }
-          }
-        } catch { errors++; }
-      }
-
-      // Mark remaining as no-match
-      for (const d of batch) {
-        if (!next[d.companyId]) {
-          next[d.companyId] = {
-            companyId: d.companyId, companyName: d.companyName,
-            hubspotId: null, hubspotCity: null, hubspotZip: null,
-            sireneCity: null, sirenePostal: null, sireneSiren: null,
-            regionCode: "unknown", status: SUPABASE_URL ? "no-match" : "pending",
-            enrichedAt: SUPABASE_URL ? new Date().toISOString() : null,
-            error: SUPABASE_URL ? null : "Supabase not configured",
-          };
+        } else {
+          errors++;
         }
-      }
+      } catch { errors++; }
 
       writeEnrichmentStore(next);
       setStore({ ...next });
-      setProgress({ done: Math.min(i + batch.length, pending.length), total: pending.length });
+      setProgress({ done: Math.min(i + batch.length, hsPending.length), total: hsPending.length });
     }
 
-    // Update deals with enrichment data
+    applyEnrichmentToDeals(next);
+    addTrackingEntry({ timestamp: new Date().toISOString(), type: "hubspot", batchSize: hsPending.length, matched, errors });
+    setTracking(readTracking());
+    setRunning(null);
+  }, [running, hsPending, store]);
+
+  const runSirene = useCallback(async () => {
+    if (running || sirenePending.length === 0 || !SUPABASE_URL) return;
+    cancelRef.current = false;
+    setRunning("sirene");
+    setProgress({ done: 0, total: sirenePending.length });
+
+    const next = { ...store };
+    const BATCH = 25;
+    let matched = 0;
+    let errors = 0;
+
+    for (let i = 0; i < sirenePending.length; i += BATCH) {
+      if (cancelRef.current) break;
+      const batch = sirenePending.slice(i, i + BATCH);
+
+      try {
+        const res = await fetch(`${SUPABASE_URL}/functions/v1/sirene-lookup`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Authorization: `Bearer ${SUPABASE_ANON}` },
+          body: JSON.stringify({ names: batch.map((d) => d.companyName) }),
+        });
+        if (res.ok) {
+          const data = await res.json() as { results: Array<{ query: string; found: boolean; city: string | null; postalCode: string | null; siren: string | null }> };
+          recordApiCall("sirene", data.results.length);
+          for (const hit of data.results) {
+            const deal = batch.find((d) => d.companyName === hit.query);
+            if (!deal) continue;
+            const existing = next[deal.companyId];
+            if (hit.found) {
+              matched++;
+              const byPostal = regionFromPostalCode(hit.postalCode);
+              const region = byPostal !== "unknown" ? byPostal : regionFromCity(hit.city);
+              next[deal.companyId] = {
+                ...existing ?? {
+                  companyId: deal.companyId, companyName: deal.companyName,
+                  hubspotId: null, hubspotCity: null, hubspotZip: null, error: null,
+                },
+                sireneCity: hit.city, sirenePostal: hit.postalCode, sireneSiren: hit.siren,
+                regionCode: (existing?.regionCode !== "unknown" ? existing.regionCode : region),
+                status: "sirene-enriched",
+                enrichedAt: new Date().toISOString(),
+              };
+            }
+          }
+        } else {
+          errors++;
+        }
+      } catch { errors++; }
+
+      writeEnrichmentStore(next);
+      setStore({ ...next });
+      setProgress({ done: Math.min(i + batch.length, sirenePending.length), total: sirenePending.length });
+    }
+
+    applyEnrichmentToDeals(next);
+    addTrackingEntry({ timestamp: new Date().toISOString(), type: "sirene", batchSize: sirenePending.length, matched, errors });
+    setTracking(readTracking());
+    setRunning(null);
+  }, [running, sirenePending, store]);
+
+  const applyEnrichmentToDeals = (enrichStore: EnrichmentStore) => {
     const updatedDeals = readDeals().map((d) => {
-      const rec = next[d.companyId];
+      const rec = enrichStore[d.companyId];
       if (!rec || rec.regionCode === "unknown") return d;
       return { ...d, regionCode: rec.regionCode, city: rec.hubspotCity ?? rec.sireneCity ?? d.city };
     });
     writeDeals(updatedDeals);
     setDeals(updatedDeals);
-
-    const entry: TrackingEntry = {
-      timestamp: new Date().toISOString(),
-      type: "hubspot",
-      batchSize: pending.length,
-      matched: hsMatched + sireneMatched,
-      errors,
-    };
-    addTrackingEntry(entry);
-    setTracking(readTracking());
-    setRunning(false);
-  }, [running, pending, store]);
+  };
 
   const clearStore = () => {
     if (!confirm("Borrar todos los resultados de enrichment?")) return;
@@ -254,21 +273,27 @@ export function EnrichmentPage() {
           <TabsContent value="companies" className="mt-4 space-y-4">
             <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
               <MiniStat label="Total FR" value={frDeals.length.toLocaleString()} />
-              <MiniStat label="Enriched" value={enriched.length.toLocaleString()} />
-              <MiniStat label="Matched" value={matched.length.toLocaleString()} />
-              <MiniStat label="Con región" value={withRegion.length.toLocaleString()} hint={`${frDeals.length ? ((withRegion.length / frDeals.length) * 100).toFixed(0) : 0}%`} />
-              <MiniStat label="Pendientes" value={pending.length.toLocaleString()} />
+              <MiniStat label="Enriched" value={enrichedCount.toLocaleString()} />
+              <MiniStat label="Matched" value={matchedCount.toLocaleString()} />
+              <MiniStat label="Con región" value={withRegionCount.toLocaleString()} hint={`${frDeals.length ? ((withRegionCount / frDeals.length) * 100).toFixed(0) : 0}%`} />
+              <MiniStat label="Pendientes HS" value={hsPending.length.toLocaleString()} />
             </div>
 
             <Card className="p-4 flex flex-wrap items-center gap-3">
-              {!running ? (
-                <Button onClick={runEnrichment} disabled={pending.length === 0}>
-                  <Play className="h-4 w-4 mr-2" />
-                  {pending.length === 0 ? "Sin pendientes" : `Procesar ${pending.length}`}
-                </Button>
+              {running === null ? (
+                <>
+                  <Button onClick={runHubspot} disabled={hsPending.length === 0 || !SUPABASE_URL}>
+                    <Database className="h-4 w-4 mr-2" />
+                    {hsPending.length === 0 ? "HS: sin pendientes" : `HubSpot (${hsPending.length})`}
+                  </Button>
+                  <Button onClick={runSirene} disabled={sirenePending.length === 0 || !SUPABASE_URL} variant="outline">
+                    <Search className="h-4 w-4 mr-2" />
+                    {sirenePending.length === 0 ? "SIRENE: sin pendientes" : `SIRENE (${sirenePending.length})`}
+                  </Button>
+                </>
               ) : (
                 <Button variant="destructive" onClick={() => { cancelRef.current = true; }}>
-                  <Square className="h-4 w-4 mr-2" /> Cancelar
+                  <Square className="h-4 w-4 mr-2" /> Cancelar {running === "hubspot" ? "HubSpot" : "SIRENE"}
                 </Button>
               )}
               <Button variant="outline" onClick={exportCsv} disabled={frDeals.length === 0}>
@@ -279,6 +304,7 @@ export function EnrichmentPage() {
               </Button>
               {running && (
                 <div className="flex items-center gap-3 ml-auto text-sm">
+                  <span className="text-xs font-medium text-primary">{running === "hubspot" ? "HubSpot" : "SIRENE"}</span>
                   <div className="w-48 h-2 bg-muted rounded overflow-hidden">
                     <div className="h-full bg-primary transition-all" style={{ width: `${progress.total ? (progress.done / progress.total) * 100 : 0}%` }} />
                   </div>
@@ -324,7 +350,8 @@ export function EnrichmentPage() {
                             : row.record.status === "hs-matched" ? <span className="text-blue-600">HubSpot</span>
                             : row.record.status === "sirene-enriched" ? <span className="text-emerald-600">SIRENE</span>
                             : row.record.status === "no-match" ? <span className="text-amber-600">No match</span>
-                            : <span className="text-destructive">Error</span>}
+                            : row.record.status === "error" ? <span className="text-destructive">Error</span>
+                            : <span className="text-muted-foreground">Pendiente</span>}
                         </td>
                       </tr>
                     ))}
@@ -355,7 +382,7 @@ export function EnrichmentPage() {
                       {tracking.map((t, i) => (
                         <tr key={i} className="border-t">
                           <td className="px-3 py-1.5 tabular-nums">{new Date(t.timestamp).toLocaleString()}</td>
-                          <td className="px-3 py-1.5">{t.type}</td>
+                          <td className="px-3 py-1.5">{t.type === "hubspot" ? "HubSpot" : "SIRENE"}</td>
                           <td className="px-3 py-1.5 text-right tabular-nums">{t.batchSize}</td>
                           <td className="px-3 py-1.5 text-right tabular-nums">{t.matched}</td>
                           <td className="px-3 py-1.5 text-right tabular-nums">{t.errors}</td>
