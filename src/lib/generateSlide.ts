@@ -22,6 +22,16 @@ const INDUSTRY_FR: Record<string, string> = {
 };
 const trIndustry = (s: string) => INDUSTRY_FR[s] ?? s;
 
+function simplifyPlan(plan: string): string {
+  if (!plan) return "";
+  return plan
+    .replace(/^f25_/i, "")
+    .replace(/_(e|b)-(month|year).*$/i, "")
+    .replace(/_/g, " ")
+    .replace(/\b\w/g, (c) => c.toUpperCase())
+    .trim();
+}
+
 function getMapSvg(code: RegionCode): string | null {
   const node = document.querySelector<SVGSVGElement>("svg[data-france-map]");
   if (!node) return null;
@@ -103,19 +113,39 @@ export async function generateRegionSlide(code: RegionCode, deals: WonDeal[], se
     if (topDeals.length >= maxRows) break;
   }
 
-  const industryMap = new Map<string, { count: number; biggest: WonDeal | null }>();
+  type IndustryInfo = {
+    industry: string;
+    count: number;
+    topModule: string;
+    top3Companies: string[];
+  };
+  const industryMap = new Map<string, { count: number; deals: WonDeal[]; modules: Map<string, number> }>();
   for (const d of regionDeals) {
     const g = groupIndustry(d.sector);
     if (g === "Other" || g === "Unknown") continue;
-    const cur = industryMap.get(g) ?? { count: 0, biggest: null };
+    const cur = industryMap.get(g) ?? { count: 0, deals: [], modules: new Map() };
     cur.count += 1;
-    if (!cur.biggest || d.totalActualMrr > cur.biggest.totalActualMrr) cur.biggest = d;
+    cur.deals.push(d);
+    const mod = simplifyPlan(d.planName);
+    if (mod) cur.modules.set(mod, (cur.modules.get(mod) ?? 0) + 1);
     industryMap.set(g, cur);
   }
-  const topIndustries = Array.from(industryMap.entries())
-    .map(([industry, v]) => ({ industry, ...v }))
+  const topIndustries: IndustryInfo[] = Array.from(industryMap.entries())
+    .map(([industry, v]) => {
+      const topMod = Array.from(v.modules.entries()).sort((a, b) => b[1] - a[1])[0];
+      const seen = new Set<string>();
+      const top3: string[] = [];
+      for (const d of [...v.deals].sort((a, b) => b.totalActualMrr - a.totalActualMrr)) {
+        const key = d.companyName.trim().toLowerCase();
+        if (seen.has(key)) continue;
+        seen.add(key);
+        top3.push(d.companyName);
+        if (top3.length >= 3) break;
+      }
+      return { industry, count: v.count, topModule: topMod?.[0] ?? "—", top3Companies: top3 };
+    })
     .sort((a, b) => b.count - a.count)
-    .slice(0, maxRows);
+    .slice(0, 3);
 
   const svg = getMapSvg(code);
   const mapPng = svg ? await svgToPngDataUrl(svg, 1000, 1000) : null;
@@ -210,28 +240,38 @@ export async function generateRegionSlide(code: RegionCode, deals: WonDeal[], se
         fontFace: "Inter", border: [{ type: "none" }, { type: "none" }, { type: "none" }, { type: "none" }], rowH, margin: 0.1,
       });
     } else if (s === "topIndustries") {
-      slide.addText("Top secteurs", {
+      slide.addText("Top secteurs × Módulos", {
         x: contentX + padX + 0.28, y: blockY + padTop - 0.02, w: contentW - padX * 2 - 0.28, h: headerH,
         fontSize: headerFs, bold: true, color: COLOR.ink, fontFace: "Inter",
       });
-      const blank = { industry: "", count: 0, biggest: null as WonDeal | null };
+      const blank: IndustryInfo = { industry: "", count: 0, topModule: "", top3Companies: [] };
       const padded = padRows(topIndustries, blank);
       const rows = [
-        [{ text: "SECTEUR", options: headOpts }, { text: "WONS", options: { ...headOpts, align: "right" as const } }, { text: "TOP CLIENT", options: headOpts }],
+        [
+          { text: "SECTEUR", options: headOpts },
+          { text: "WONS", options: { ...headOpts, align: "right" as const } },
+          { text: "TOP MÓDULO", options: headOpts },
+          { text: "TOP 3 EMPRESAS", options: headOpts },
+        ],
         ...padded.map((r, i) => {
           const fill = i % 2 === 1 ? { color: COLOR.rowAlt } : { color: "FFFFFF" };
           const base = { fontSize: cellFs, valign: "middle" as const, fill };
-          if (!r.industry) return [{ text: "", options: base }, { text: "", options: base }, { text: "", options: base }];
+          if (!r.industry) return [
+            { text: "", options: base }, { text: "", options: base },
+            { text: "", options: base }, { text: "", options: base },
+          ];
           return [
             { text: trIndustry(r.industry), options: { ...base, bold: true, color: COLOR.primaryDark } },
             { text: String(r.count), options: { ...base, color: COLOR.ink, bold: true, align: "right" as const } },
-            { text: r.biggest?.companyName ?? "—", options: { ...base, color: COLOR.subStrong } },
+            { text: r.topModule, options: { ...base, color: COLOR.subStrong, fontSize: cellFs - 1 } },
+            { text: r.top3Companies.join("  ·  "), options: { ...base, color: COLOR.ink, fontSize: cellFs - 1 } },
           ];
         }),
       ];
+      const innerW = contentW - padX * 2;
       slide.addTable(rows as any, {
-        x: contentX + padX, y: blockY + padTop + headerH + 0.1, w: contentW - padX * 2,
-        colW: [2.6, 1.1, contentW - padX * 2 - 2.6 - 1.1],
+        x: contentX + padX, y: blockY + padTop + headerH + 0.1, w: innerW,
+        colW: [1.8, 0.7, 2.0, innerW - 1.8 - 0.7 - 2.0],
         fontFace: "Inter", border: [{ type: "none" }, { type: "none" }, { type: "none" }, { type: "none" }], rowH, margin: 0.1,
       });
     }
