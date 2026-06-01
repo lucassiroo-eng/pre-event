@@ -98,7 +98,7 @@ function getFeatureCentroidLon(f: GeoFeature): number {
   let coords: number[][] = [];
   if (geom.type === "Polygon") coords = geom.coordinates[0] as number[][];
   else if (geom.type === "MultiPolygon")
-    for (const p of geom.coordinates as number[][][]) coords.push(...p[0]);
+    for (const p of geom.coordinates as number[][][][]) coords.push(...p[0]);
   if (!coords.length) return 0;
   return coords.reduce((s, c) => s + c[0], 0) / coords.length;
 }

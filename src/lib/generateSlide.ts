@@ -91,7 +91,7 @@ function featureCentroidLon(geom: unknown): number {
   let coords: number[][] = [];
   if (g.type === "Polygon") coords = (g.coordinates[0] as number[][]);
   else if (g.type === "MultiPolygon")
-    for (const poly of g.coordinates as number[][][]) coords.push(...poly[0]);
+    for (const poly of g.coordinates as number[][][][]) coords.push(...poly[0]);
   if (!coords.length) return 0;
   return coords.reduce((s, c) => s + c[0], 0) / coords.length;
 }
