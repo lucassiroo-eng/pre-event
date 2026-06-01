@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
-import { Upload, Square, Download, Trash2, Database, Search, FlaskConical } from "lucide-react";
+import { Upload, Square, Download, Trash2, Database, Search, FlaskConical, Globe } from "lucide-react";
 import { readDeals, parseCsv, mergeDeals, writeMeta, countryStats, type WonDeal, type CsvMeta } from "@/lib/csvStore";
 import { useDeals } from "@/lib/useDeals";
 import { readEnrichmentStore, writeEnrichmentStore, addTrackingEntry, readTracking, recordApiCall, type EnrichmentRecord, type EnrichmentStore, type TrackingEntry } from "@/lib/enrichmentStore";
@@ -15,7 +15,7 @@ import { postalToRegion } from "@/lib/postalToRegionByCountry";
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL ?? "";
 const SUPABASE_ANON = import.meta.env.VITE_SUPABASE_ANON_KEY ?? "";
 
-type RunType = "hubspot" | "sirene" | null;
+type RunType = "hubspot" | "sirene" | "all" | null;
 
 export function EnrichmentPage() {
   const { deals, setDeals, refresh } = useDeals();
@@ -244,6 +244,77 @@ export function EnrichmentPage() {
     setRunning(null);
   }, [running, sirenePending, store, deals, refresh]);
 
+  const runAllCountries = useCallback(async () => {
+    if (running || !SUPABASE_URL) return;
+    const allPending = deals.filter((d) => {
+      const rec = store[d.companyId];
+      return !rec || rec.status === "error" || rec.status === "pending";
+    });
+    if (allPending.length === 0) return;
+    cancelRef.current = false;
+    setRunning("all");
+    setTestResult(null);
+    const startedAt = Date.now();
+    setProgress({ done: 0, total: allPending.length, matched: 0, errors: 0, startedAt });
+
+    const next = { ...store };
+    const BATCH = 100;
+    const PARALLEL = 6;
+    let matched = 0;
+    let errors = 0;
+    let done = 0;
+
+    const chunks: WonDeal[][] = [];
+    for (let i = 0; i < allPending.length; i += BATCH) chunks.push(allPending.slice(i, i + BATCH));
+
+    const processBatch = async (batch: WonDeal[]) => {
+      if (cancelRef.current) return;
+      try {
+        const data = await callHubspotLookup(batch);
+        recordApiCall("hubspot", data.results.length);
+        for (const hit of data.results) {
+          const deal = batch.find((d) => d.companyName === hit.query);
+          if (!deal) continue;
+          if (hit.found) {
+            matched++;
+            const byPostal = postalToRegion(deal.country, hit.zip);
+            const region = byPostal !== "unknown" ? byPostal : cityToRegion(deal.country, hit.city);
+            next[deal.companyId] = {
+              companyId: deal.companyId, companyName: deal.companyName,
+              hubspotId: hit.hubspotId, hubspotCity: hit.city, hubspotZip: hit.zip,
+              sireneCity: null, sirenePostal: null, sireneSiren: null,
+              regionCode: region as any, status: "hs-matched",
+              enrichedAt: new Date().toISOString(), error: null,
+            };
+          } else {
+            next[deal.companyId] = {
+              companyId: deal.companyId, companyName: deal.companyName,
+              hubspotId: null, hubspotCity: null, hubspotZip: null,
+              sireneCity: null, sirenePostal: null, sireneSiren: null,
+              regionCode: "unknown", status: "no-match",
+              enrichedAt: new Date().toISOString(), error: null,
+            };
+          }
+        }
+      } catch { errors++; }
+      done += batch.length;
+      writeEnrichmentStore(next);
+      setStore({ ...next });
+      setProgress({ done: Math.min(done, allPending.length), total: allPending.length, matched, errors, startedAt });
+    };
+
+    for (let i = 0; i < chunks.length; i += PARALLEL) {
+      if (cancelRef.current) break;
+      await Promise.all(chunks.slice(i, i + PARALLEL).map(processBatch));
+    }
+
+    applyEnrichmentToDeals(next);
+    refresh();
+    addTrackingEntry({ timestamp: new Date().toISOString(), type: "hubspot", batchSize: allPending.length, matched, errors });
+    setTracking(readTracking());
+    setRunning(null);
+  }, [running, deals, store, refresh, callHubspotLookup]);
+
   const applyEnrichmentToDeals = (enrichStore: EnrichmentStore) => {
     const fresh = readDeals();
     const updatedDeals = fresh.map((d) => {
@@ -323,9 +394,22 @@ export function EnrichmentPage() {
               <div className="flex flex-wrap items-center gap-3">
                 {running === null ? (
                   <>
-                    <Button onClick={runHubspot} disabled={hsPending.length === 0 || !SUPABASE_URL}>
+                    {(() => {
+                      const allPendingCount = deals.filter((d) => {
+                        const rec = store[d.companyId];
+                        return !rec || rec.status === "error" || rec.status === "pending";
+                      }).length;
+                      return (
+                        <Button onClick={runAllCountries} disabled={allPendingCount === 0 || !SUPABASE_URL} variant="default">
+                          <Globe className="h-4 w-4 mr-2" />
+                          Enrich all países ({allPendingCount.toLocaleString()})
+                        </Button>
+                      );
+                    })()}
+                    <div className="h-5 w-px bg-border" />
+                    <Button onClick={runHubspot} disabled={hsPending.length === 0 || !SUPABASE_URL} variant="outline">
                       <Database className="h-4 w-4 mr-2" />
-                      {hsPending.length === 0 ? "HS: sin pendientes" : `HubSpot (${hsPending.length})`}
+                      {hsPending.length === 0 ? "HS: sin pendientes" : `HS ${selectedCountry.toUpperCase()} (${hsPending.length})`}
                     </Button>
                     <Button variant="outline" onClick={runTest} disabled={hsPending.length === 0 || !SUPABASE_URL} title="Prueba con 20 empresas para ver si el enrich funciona en este país">
                       <FlaskConical className="h-4 w-4 mr-2" />
@@ -340,7 +424,7 @@ export function EnrichmentPage() {
                   </>
                 ) : (
                   <Button variant="destructive" onClick={() => { cancelRef.current = true; }}>
-                    <Square className="h-4 w-4 mr-2" /> Cancelar {running === "hubspot" ? "HubSpot" : "SIRENE"}
+                    <Square className="h-4 w-4 mr-2" /> Cancelar {running === "all" ? "Enrich All" : running === "hubspot" ? "HubSpot" : "SIRENE"}
                   </Button>
                 )}
                 <Button variant="outline" onClick={exportCsv} disabled={frDeals.length === 0}>
