@@ -120,7 +120,7 @@ export function EnrichmentPage() {
                 companyId: deal.companyId, companyName: deal.companyName,
                 hubspotId: hit.hubspotId, hubspotCity: hit.city, hubspotZip: hit.zip,
                 sireneCity: null, sirenePostal: null, sireneSiren: null,
-                regionCode: region, status: "hs-matched",
+                regionCode: region as any, status: "hs-matched",
                 enrichedAt: new Date().toISOString(), error: null,
               };
             } else {
@@ -193,7 +193,7 @@ export function EnrichmentPage() {
                   hubspotId: null, hubspotCity: null, hubspotZip: null, error: null,
                 },
                 sireneCity: hit.city, sirenePostal: hit.postalCode, sireneSiren: hit.siren,
-                regionCode: (existing?.regionCode !== "unknown" ? existing.regionCode : region),
+                regionCode: (existing?.regionCode !== "unknown" ? existing.regionCode : region) as any,
                 status: "sirene-enriched",
                 enrichedAt: new Date().toISOString(),
               };
