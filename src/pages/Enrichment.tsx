@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
-import { Upload, Play, Square, Download, Trash2, Database, Search } from "lucide-react";
+import { Upload, Square, Download, Trash2, Database, Search, FlaskConical } from "lucide-react";
 import { readDeals, parseCsv, mergeDeals, writeMeta, countryStats, type WonDeal, type CsvMeta } from "@/lib/csvStore";
 import { useDeals } from "@/lib/useDeals";
 import { readEnrichmentStore, writeEnrichmentStore, addTrackingEntry, readTracking, recordApiCall, type EnrichmentRecord, type EnrichmentStore, type TrackingEntry } from "@/lib/enrichmentStore";
@@ -23,7 +23,8 @@ export function EnrichmentPage() {
   const [store, setStore] = useState<EnrichmentStore>(() => readEnrichmentStore());
   const [tracking, setTracking] = useState<TrackingEntry[]>(() => readTracking());
   const [running, setRunning] = useState<RunType>(null);
-  const [progress, setProgress] = useState({ done: 0, total: 0 });
+  const [progress, setProgress] = useState({ done: 0, total: 0, matched: 0, errors: 0, startedAt: 0 });
+  const [testResult, setTestResult] = useState<{ total: number; found: number; withRegion: number; samples: { name: string; city: string | null; region: string }[] } | null>(null);
   const [filter, setFilter] = useState("");
   const cancelRef = useRef(false);
   const fileRef = useRef<HTMLInputElement>(null);
@@ -79,68 +80,69 @@ export function EnrichmentPage() {
     } catch { /* ignore */ }
   }, []);
 
+  const callHubspotLookup = useCallback(async (batch: WonDeal[]) => {
+    const names = batch.map((d) => d.companyName);
+    const res = await fetch(`${SUPABASE_URL}/functions/v1/hubspot-lookup`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${SUPABASE_ANON}` },
+      body: JSON.stringify({ names }),
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    return res.json() as Promise<{ results: Array<{ query: string; found: boolean; city: string | null; zip: string | null; hubspotId: string | null }> }>;
+  }, []);
+
   const runHubspot = useCallback(async () => {
     if (running || hsPending.length === 0 || !SUPABASE_URL) return;
     cancelRef.current = false;
     setRunning("hubspot");
-    setProgress({ done: 0, total: hsPending.length });
+    setTestResult(null);
+    const startedAt = Date.now();
+    setProgress({ done: 0, total: hsPending.length, matched: 0, errors: 0, startedAt });
 
     const next = { ...store };
-    const BATCH = 50;
-    const PARALLEL = 3;
+    const BATCH = 100;
+    const PARALLEL = 6;
     let matched = 0;
     let errors = 0;
     let done = 0;
 
     const chunks: WonDeal[][] = [];
-    for (let i = 0; i < hsPending.length; i += BATCH) {
-      chunks.push(hsPending.slice(i, i + BATCH));
-    }
+    for (let i = 0; i < hsPending.length; i += BATCH) chunks.push(hsPending.slice(i, i + BATCH));
 
     const processBatch = async (batch: WonDeal[]) => {
       if (cancelRef.current) return;
-      const names = batch.map((d) => d.companyName);
       try {
-        const res = await fetch(`${SUPABASE_URL}/functions/v1/hubspot-lookup`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json", Authorization: `Bearer ${SUPABASE_ANON}` },
-          body: JSON.stringify({ names }),
-        });
-        if (res.ok) {
-          const data = await res.json() as { results: Array<{ query: string; found: boolean; city: string | null; zip: string | null; hubspotId: string | null; hubspotName?: string | null }> };
-          recordApiCall("hubspot", data.results.length);
-          for (const hit of data.results) {
-            const deal = batch.find((d) => d.companyName === hit.query);
-            if (!deal) continue;
-            if (hit.found) {
-              matched++;
-              const byPostal = postalToRegion(deal.country, hit.zip);
-              const region = byPostal !== "unknown" ? byPostal : cityToRegion(deal.country, hit.city);
-              next[deal.companyId] = {
-                companyId: deal.companyId, companyName: deal.companyName,
-                hubspotId: hit.hubspotId, hubspotCity: hit.city, hubspotZip: hit.zip,
-                sireneCity: null, sirenePostal: null, sireneSiren: null,
-                regionCode: region as any, status: "hs-matched",
-                enrichedAt: new Date().toISOString(), error: null,
-              };
-            } else {
-              next[deal.companyId] = {
-                companyId: deal.companyId, companyName: deal.companyName,
-                hubspotId: null, hubspotCity: null, hubspotZip: null,
-                sireneCity: null, sirenePostal: null, sireneSiren: null,
-                regionCode: "unknown", status: "no-match",
-                enrichedAt: new Date().toISOString(), error: null,
-              };
-            }
+        const data = await callHubspotLookup(batch);
+        recordApiCall("hubspot", data.results.length);
+        for (const hit of data.results) {
+          const deal = batch.find((d) => d.companyName === hit.query);
+          if (!deal) continue;
+          if (hit.found) {
+            matched++;
+            const byPostal = postalToRegion(deal.country, hit.zip);
+            const region = byPostal !== "unknown" ? byPostal : cityToRegion(deal.country, hit.city);
+            next[deal.companyId] = {
+              companyId: deal.companyId, companyName: deal.companyName,
+              hubspotId: hit.hubspotId, hubspotCity: hit.city, hubspotZip: hit.zip,
+              sireneCity: null, sirenePostal: null, sireneSiren: null,
+              regionCode: region as any, status: "hs-matched",
+              enrichedAt: new Date().toISOString(), error: null,
+            };
+          } else {
+            next[deal.companyId] = {
+              companyId: deal.companyId, companyName: deal.companyName,
+              hubspotId: null, hubspotCity: null, hubspotZip: null,
+              sireneCity: null, sirenePostal: null, sireneSiren: null,
+              regionCode: "unknown", status: "no-match",
+              enrichedAt: new Date().toISOString(), error: null,
+            };
           }
-        } else {
-          errors++;
         }
       } catch { errors++; }
       done += batch.length;
       writeEnrichmentStore(next);
       setStore({ ...next });
-      setProgress({ done: Math.min(done, hsPending.length), total: hsPending.length });
+      setProgress({ done: Math.min(done, hsPending.length), total: hsPending.length, matched, errors, startedAt });
     };
 
     for (let i = 0; i < chunks.length; i += PARALLEL) {
@@ -153,7 +155,33 @@ export function EnrichmentPage() {
     addTrackingEntry({ timestamp: new Date().toISOString(), type: "hubspot", batchSize: hsPending.length, matched, errors });
     setTracking(readTracking());
     setRunning(null);
-  }, [running, hsPending, store, deals, refresh]);
+  }, [running, hsPending, store, deals, refresh, callHubspotLookup]);
+
+  const runTest = useCallback(async () => {
+    if (running || hsPending.length === 0 || !SUPABASE_URL) return;
+    setRunning("hubspot");
+    setTestResult(null);
+    const sample = hsPending.slice(0, 20);
+    try {
+      const data = await callHubspotLookup(sample);
+      let found = 0;
+      let withRegion = 0;
+      const samples: { name: string; city: string | null; region: string }[] = [];
+      for (const hit of data.results) {
+        const deal = sample.find((d) => d.companyName === hit.query);
+        if (!deal) continue;
+        if (hit.found) {
+          found++;
+          const byPostal = postalToRegion(deal.country, hit.zip);
+          const region = byPostal !== "unknown" ? byPostal : cityToRegion(deal.country, hit.city);
+          if (region !== "unknown") withRegion++;
+          samples.push({ name: hit.query, city: hit.city, region });
+        }
+      }
+      setTestResult({ total: sample.length, found, withRegion, samples });
+    } catch { /* ignore */ }
+    setRunning(null);
+  }, [running, hsPending, callHubspotLookup]);
 
   const runSirene = useCallback(async () => {
     if (running || sirenePending.length === 0 || !SUPABASE_URL) return;
@@ -284,55 +312,101 @@ export function EnrichmentPage() {
 
           <TabsContent value="companies" className="mt-4 space-y-4">
             <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
-              <MiniStat label="Total FR" value={frDeals.length.toLocaleString()} />
+              <MiniStat label={`Total ${selectedCountry.toUpperCase()}`} value={frDeals.length.toLocaleString()} />
               <MiniStat label="Enriched" value={enrichedCount.toLocaleString()} />
               <MiniStat label="Matched" value={matchedCount.toLocaleString()} />
               <MiniStat label="Con región" value={withRegionCount.toLocaleString()} hint={`${frDeals.length ? ((withRegionCount / frDeals.length) * 100).toFixed(0) : 0}%`} />
               <MiniStat label="Pendientes HS" value={hsPending.length.toLocaleString()} />
             </div>
 
-            <Card className="p-4 flex flex-wrap items-center gap-3">
-              {running === null ? (
-                <>
-                  <Button onClick={runHubspot} disabled={hsPending.length === 0 || !SUPABASE_URL}>
-                    <Database className="h-4 w-4 mr-2" />
-                    {hsPending.length === 0 ? "HS: sin pendientes" : `HubSpot (${hsPending.length})`}
-                  </Button>
-                  {selectedCountry === "fr" && (
-                    <Button onClick={runSirene} disabled={sirenePending.length === 0 || !SUPABASE_URL} variant="outline">
-                      <Search className="h-4 w-4 mr-2" />
-                      {sirenePending.length === 0 ? "SIRENE: sin pendientes" : `SIRENE (${sirenePending.length})`}
+            <Card className="p-4 space-y-3">
+              <div className="flex flex-wrap items-center gap-3">
+                {running === null ? (
+                  <>
+                    <Button onClick={runHubspot} disabled={hsPending.length === 0 || !SUPABASE_URL}>
+                      <Database className="h-4 w-4 mr-2" />
+                      {hsPending.length === 0 ? "HS: sin pendientes" : `HubSpot (${hsPending.length})`}
                     </Button>
-                  )}
-                </>
-              ) : (
-                <Button variant="destructive" onClick={() => { cancelRef.current = true; }}>
-                  <Square className="h-4 w-4 mr-2" /> Cancelar {running === "hubspot" ? "HubSpot" : "SIRENE"}
+                    <Button variant="outline" onClick={runTest} disabled={hsPending.length === 0 || !SUPABASE_URL} title="Prueba con 20 empresas para ver si el enrich funciona en este país">
+                      <FlaskConical className="h-4 w-4 mr-2" />
+                      Probar 20
+                    </Button>
+                    {selectedCountry === "fr" && (
+                      <Button onClick={runSirene} disabled={sirenePending.length === 0 || !SUPABASE_URL} variant="outline">
+                        <Search className="h-4 w-4 mr-2" />
+                        {sirenePending.length === 0 ? "SIRENE: sin pendientes" : `SIRENE (${sirenePending.length})`}
+                      </Button>
+                    )}
+                  </>
+                ) : (
+                  <Button variant="destructive" onClick={() => { cancelRef.current = true; }}>
+                    <Square className="h-4 w-4 mr-2" /> Cancelar {running === "hubspot" ? "HubSpot" : "SIRENE"}
+                  </Button>
+                )}
+                <Button variant="outline" onClick={exportCsv} disabled={frDeals.length === 0}>
+                  <Download className="h-4 w-4 mr-2" /> Export CSV
                 </Button>
-              )}
-              <Button variant="outline" onClick={exportCsv} disabled={frDeals.length === 0}>
-                <Download className="h-4 w-4 mr-2" /> Export CSV
-              </Button>
-              <Button variant="ghost" onClick={clearStore} disabled={Object.keys(store).length === 0}>
-                <Trash2 className="h-4 w-4 mr-2" /> Limpiar cache
-              </Button>
-              {running && (
-                <div className="flex items-center gap-3 ml-auto text-sm">
-                  <span className="text-xs font-medium text-primary">{running === "hubspot" ? "HubSpot" : "SIRENE"}</span>
-                  <div className="w-48 h-2 bg-muted rounded overflow-hidden">
-                    <div className="h-full bg-primary transition-all" style={{ width: `${progress.total ? (progress.done / progress.total) * 100 : 0}%` }} />
+                <Button variant="ghost" onClick={clearStore} disabled={Object.keys(store).length === 0}>
+                  <Trash2 className="h-4 w-4 mr-2" /> Limpiar cache
+                </Button>
+                {!SUPABASE_URL && (
+                  <span className="text-xs text-amber-600">Supabase no configurado (VITE_SUPABASE_URL)</span>
+                )}
+              </div>
+
+              {running && progress.total > 0 && (() => {
+                const pct = progress.total ? (progress.done / progress.total) * 100 : 0;
+                const elapsed = (Date.now() - progress.startedAt) / 1000;
+                const rate = progress.done > 0 ? progress.done / elapsed : 0;
+                const eta = rate > 0 ? Math.ceil((progress.total - progress.done) / rate) : null;
+                const matchRate = progress.done > 0 ? Math.round((progress.matched / progress.done) * 100) : null;
+                return (
+                  <div className="space-y-1.5">
+                    <div className="flex items-center justify-between text-xs text-muted-foreground">
+                      <span className="font-medium text-primary">{running === "hubspot" ? "HubSpot" : "SIRENE"}</span>
+                      <div className="flex gap-3 tabular-nums">
+                        {matchRate !== null && <span className="text-emerald-600 font-medium">{matchRate}% match</span>}
+                        <span>{progress.done} / {progress.total}</span>
+                        {eta !== null && <span>~{eta < 60 ? `${eta}s` : `${Math.ceil(eta / 60)}min`}</span>}
+                      </div>
+                    </div>
+                    <div className="h-2 w-full bg-muted rounded overflow-hidden">
+                      <div className="h-full bg-primary transition-all duration-300" style={{ width: `${pct}%` }} />
+                    </div>
                   </div>
-                  <span className="tabular-nums text-muted-foreground">{progress.done} / {progress.total}</span>
+                );
+              })()}
+
+              {testResult && (
+                <div className="rounded-lg border border-border bg-muted/30 p-3 text-xs space-y-2">
+                  <div className="flex items-center gap-3 font-medium">
+                    <span>Muestra: {testResult.total} empresas</span>
+                    <span className={testResult.found > 0 ? "text-emerald-600" : "text-red-500"}>
+                      {testResult.found} encontradas en HubSpot ({Math.round((testResult.found / testResult.total) * 100)}%)
+                    </span>
+                    <span className="text-blue-600">{testResult.withRegion} con región ({Math.round((testResult.withRegion / testResult.total) * 100)}%)</span>
+                  </div>
+                  {testResult.samples.length > 0 && (
+                    <div className="grid grid-cols-3 gap-1 mt-1">
+                      {testResult.samples.slice(0, 6).map((s) => (
+                        <div key={s.name} className="truncate text-muted-foreground">
+                          <span className="font-medium text-foreground">{s.name}</span>
+                          {s.city && <span> · {s.city}</span>}
+                          {s.region !== "unknown" && <span className="text-emerald-600"> [{s.region}]</span>}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  {testResult.found === 0 && (
+                    <p className="text-amber-600 font-medium">⚠ Sin matches. Las empresas de este país podrían no estar en HubSpot o tienen nombres distintos.</p>
+                  )}
                 </div>
-              )}
-              {!SUPABASE_URL && (
-                <span className="text-xs text-amber-600">Supabase no configurado (VITE_SUPABASE_URL)</span>
               )}
             </Card>
 
             <Card className="p-4">
               <div className="flex items-center justify-between mb-3">
-                <h3 className="text-sm font-semibold">Empresas FR ({filteredDeals.length})</h3>
+                <h3 className="text-sm font-semibold">Empresas {selectedCountry.toUpperCase()} ({filteredDeals.length})</h3>
                 <Input placeholder="Filtrar..." value={filter} onChange={(e) => setFilter(e.target.value)} className="max-w-xs" />
               </div>
               <div className="overflow-auto max-h-[640px] border rounded">
