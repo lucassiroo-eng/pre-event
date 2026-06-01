@@ -1,7 +1,8 @@
 import type PptxGenJSType from "pptxgenjs";
 import { type WonDeal, formatEUR } from "@/lib/csvStore";
 import { groupIndustry } from "@/lib/industryGroups";
-import { recordPptDownload } from "@/lib/enrichmentStore";
+import { recordPptDownload, type EnrichmentStore } from "@/lib/enrichmentStore";
+import { fetchLogos } from "@/lib/logoStore";
 
 import geoFR from "@/data/france-regions.geojson.json";
 import geoES from "@/data/spain-regions.geojson.json";
@@ -104,7 +105,7 @@ async function svgToPngDataUrl(svg: string, w = 800, h = 800): Promise<string | 
   });
 }
 
-export async function generateRegionSlide(code: string, deals: WonDeal[], country: string) {
+export async function generateRegionSlide(code: string, deals: WonDeal[], country: string, enrichStore?: EnrichmentStore) {
   const regionDeals = deals.filter((d) => d.regionCode === code);
   const name = getRegionName(country, code);
   const totalMrr = regionDeals.reduce((s, d) => s + d.totalActualMrr, 0);
@@ -141,14 +142,18 @@ export async function generateRegionSlide(code: string, deals: WonDeal[], countr
   // Top 3 companies from region (across top 3 industries), sorted by MRR
   const allDealsFrom3 = top3Industries.flatMap(([, v]) => v.deals);
   const seenCompany = new Set<string>();
-  const topCompanies: { name: string; industry: string; mrr: number }[] = [];
+  const topCompanies: { name: string; industry: string; mrr: number; companyId: string }[] = [];
   for (const d of [...allDealsFrom3].sort((a, b) => b.totalActualMrr - a.totalActualMrr)) {
     const key = d.companyName.trim().toLowerCase();
     if (seenCompany.has(key)) continue;
     seenCompany.add(key);
-    topCompanies.push({ name: d.companyName, industry: groupIndustry(d.sector), mrr: d.totalActualMrr });
+    topCompanies.push({ name: d.companyName, industry: groupIndustry(d.sector), mrr: d.totalActualMrr, companyId: d.companyId });
     if (topCompanies.length >= 3) break;
   }
+
+  // Logos: resolve domains from enrichStore then fetch from Brandfetch CDN
+  const companyDomains = topCompanies.map((c) => enrichStore?.[c.companyId]?.domain ?? "");
+  const logoCache = await fetchLogos(companyDomains.filter(Boolean));
 
   // --- Slide ---
 
@@ -296,8 +301,11 @@ export async function generateRegionSlide(code: string, deals: WonDeal[], countr
   y += perBlockH + blockGap;
   drawCard(y); drawAccent(y); drawTitle(y, "Top 3 Companies");
 
+  const logoColW = 0.38;
+  const logoSize = 0.22;
   const compRows: any[][] = [
     [
+      { text: "", options: headOpts },
       { text: "COMPANY", options: headOpts },
       { text: "SECTOR", options: headOpts },
       { text: "MRR", options: { ...headOpts, align: "right" as const } },
@@ -306,6 +314,7 @@ export async function generateRegionSlide(code: string, deals: WonDeal[], countr
       const fill = i % 2 === 1 ? { color: COLOR.rowAlt } : { color: "FFFFFF" };
       const base = { fontSize: cellFs, valign: "middle" as const, fill };
       return [
+        { text: "", options: { ...base } },
         { text: c.name, options: { ...base, bold: true, color: COLOR.ink } },
         { text: c.industry, options: { ...base, color: COLOR.primaryDark, bold: true } },
         { text: formatEUR(c.mrr), options: { ...base, color: COLOR.ink, align: "right" as const } },
@@ -315,12 +324,22 @@ export async function generateRegionSlide(code: string, deals: WonDeal[], countr
   while (compRows.length < 4) {
     const fill = (compRows.length - 1) % 2 === 1 ? { color: COLOR.rowAlt } : { color: "FFFFFF" };
     const base = { fontSize: cellFs, valign: "middle" as const, fill };
-    compRows.push([{ text: "", options: base }, { text: "", options: base }, { text: "", options: base }]);
+    compRows.push([{ text: "", options: base }, { text: "", options: base }, { text: "", options: base }, { text: "", options: base }]);
   }
   slide.addTable(compRows, {
     x: contentX + padX, y: tableY(y), w: innerW,
-    colW: [innerW - 2.2 - 1.5, 2.2, 1.5],
+    colW: [logoColW, innerW - logoColW - 2.0 - 1.5, 2.0, 1.5],
     fontFace: "Inter", border: [{ type: "none" }, { type: "none" }, { type: "none" }, { type: "none" }], rowH, margin: 0.08,
+  });
+
+  // Overlay logos on top of the logo column (skip header row = index 0)
+  const logoX = contentX + padX + (logoColW - logoSize) / 2;
+  topCompanies.forEach((c, i) => {
+    const domain = enrichStore?.[c.companyId]?.domain ?? "";
+    const dataUrl = domain ? (logoCache[domain] ?? "") : "";
+    if (!dataUrl) return;
+    const rowY = tableY(y) + (i + 1) * rowH + (rowH - logoSize) / 2;
+    slide.addImage({ data: dataUrl, x: logoX, y: rowY, w: logoSize, h: logoSize });
   });
 
   await pptx.writeFile({ fileName: `${name.replace(/\s+/g, "-")}-wons.pptx` });

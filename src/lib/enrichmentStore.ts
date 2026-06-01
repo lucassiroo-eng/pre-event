@@ -9,6 +9,7 @@ export interface EnrichmentRecord {
   hubspotId: string | null;
   hubspotCity: string | null;
   hubspotZip: string | null;
+  domain: string | null;
   sireneCity: string | null;
   sirenePostal: string | null;
   sireneSiren: string | null;

@@ -8,6 +8,7 @@ import { useDeals } from "@/lib/useDeals";
 import { getCountryConfig, applyCountryTheme, type CountryCode } from "@/lib/countryConfig";
 import { groupIndustry } from "@/lib/industryGroups";
 import { generateRegionSlide } from "@/lib/generateSlide";
+import { readEnrichmentStore } from "@/lib/enrichmentStore";
 import { cn } from "@/lib/utils";
 import { Target, MapPin, Zap } from "lucide-react";
 
@@ -71,7 +72,7 @@ export function OverviewPage() {
 
   const handleGenerateSlide = () => {
     if (!selected) return;
-    generateRegionSlide(selected, deals, country);
+    generateRegionSlide(selected, deals, country, readEnrichmentStore());
   };
 
   const hasSelection = !!selected;

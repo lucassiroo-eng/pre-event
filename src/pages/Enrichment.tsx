@@ -114,7 +114,7 @@ export function EnrichmentPage() {
       body: JSON.stringify({ names }),
     });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    return res.json() as Promise<{ results: Array<{ query: string; found: boolean; city: string | null; zip: string | null; hubspotId: string | null }> }>;
+    return res.json() as Promise<{ results: Array<{ query: string; found: boolean; city: string | null; zip: string | null; hubspotId: string | null; domain: string | null }> }>;
   }, []);
 
   const runHubspot = useCallback(async () => {
@@ -149,7 +149,7 @@ export function EnrichmentPage() {
             const region = byPostal !== "unknown" ? byPostal : cityToRegion(deal.country, hit.city);
             next[deal.companyId] = {
               companyId: deal.companyId, companyName: deal.companyName,
-              hubspotId: hit.hubspotId, hubspotCity: hit.city, hubspotZip: hit.zip,
+              hubspotId: hit.hubspotId, hubspotCity: hit.city, hubspotZip: hit.zip, domain: hit.domain ?? null,
               sireneCity: null, sirenePostal: null, sireneSiren: null,
               regionCode: region as any, status: "hs-matched",
               enrichedAt: new Date().toISOString(), error: null,
@@ -157,7 +157,7 @@ export function EnrichmentPage() {
           } else {
             next[deal.companyId] = {
               companyId: deal.companyId, companyName: deal.companyName,
-              hubspotId: null, hubspotCity: null, hubspotZip: null,
+              hubspotId: null, hubspotCity: null, hubspotZip: null, domain: null,
               sireneCity: null, sirenePostal: null, sireneSiren: null,
               regionCode: "unknown", status: "no-match",
               enrichedAt: new Date().toISOString(), error: null,
@@ -243,7 +243,7 @@ export function EnrichmentPage() {
               next[deal.companyId] = {
                 ...existing ?? {
                   companyId: deal.companyId, companyName: deal.companyName,
-                  hubspotId: null, hubspotCity: null, hubspotZip: null, error: null,
+                  hubspotId: null, hubspotCity: null, hubspotZip: null, domain: null, error: null,
                 },
                 sireneCity: hit.city, sirenePostal: hit.postalCode, sireneSiren: hit.siren,
                 regionCode: (existing?.regionCode !== "unknown" ? existing.regionCode : region) as any,
@@ -306,7 +306,7 @@ export function EnrichmentPage() {
             const region = byPostal !== "unknown" ? byPostal : cityToRegion(deal.country, hit.city);
             next[deal.companyId] = {
               companyId: deal.companyId, companyName: deal.companyName,
-              hubspotId: hit.hubspotId, hubspotCity: hit.city, hubspotZip: hit.zip,
+              hubspotId: hit.hubspotId, hubspotCity: hit.city, hubspotZip: hit.zip, domain: hit.domain ?? null,
               sireneCity: null, sirenePostal: null, sireneSiren: null,
               regionCode: region as any, status: "hs-matched",
               enrichedAt: new Date().toISOString(), error: null,
@@ -314,7 +314,7 @@ export function EnrichmentPage() {
           } else {
             next[deal.companyId] = {
               companyId: deal.companyId, companyName: deal.companyName,
-              hubspotId: null, hubspotCity: null, hubspotZip: null,
+              hubspotId: null, hubspotCity: null, hubspotZip: null, domain: null,
               sireneCity: null, sirenePostal: null, sireneSiren: null,
               regionCode: "unknown", status: "no-match",
               enrichedAt: new Date().toISOString(), error: null,
