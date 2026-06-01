@@ -1,5 +1,7 @@
 import { idbGet, idbSet } from "./idb";
 import type { CountryCode } from "./countryConfig";
+import { postalToRegion } from "./postalToRegionByCountry";
+import { cityToRegion } from "./cityToRegionByCountry";
 
 export interface WonDeal {
   companyId: string;
@@ -80,6 +82,10 @@ export function parseCsv(text: string): WonDeal[] {
   const iClosed = idx("deal_closed_date");
   const iOwner = idx("company_owner");
   const iTeam = idx("hubspot_team");
+  // optional geo columns — try several HubSpot export naming variants
+  const iCity = idx("city") >= 0 ? idx("city") : idx("company_city");
+  const iZip = idx("zip") >= 0 ? idx("zip") : idx("postal_code") >= 0 ? idx("postal_code") : idx("zipcode");
+  const iState = idx("state") >= 0 ? idx("state") : idx("province") >= 0 ? idx("province") : idx("region");
 
   if (iCompanyName === -1) throw new Error("CSV: column 'company_name' not found");
 
@@ -97,6 +103,15 @@ export function parseCsv(text: string): WonDeal[] {
     seen.add(key);
 
     const country = (cells[iCountry] ?? "").trim().toLowerCase();
+    const city = iCity >= 0 ? (cells[iCity] ?? "").trim() : "";
+    const zip = iZip >= 0 ? (cells[iZip] ?? "").trim() : "";
+    const state = iState >= 0 ? (cells[iState] ?? "").trim() : "";
+
+    // resolve region immediately from CSV geo columns, without needing enrichment
+    let regionCode = "unknown";
+    if (zip) regionCode = postalToRegion(country, zip);
+    if (regionCode === "unknown" && city) regionCode = cityToRegion(country, city);
+    if (regionCode === "unknown" && state) regionCode = cityToRegion(country, state);
 
     deals.push({
       companyId: companyId || `gen-${i}`,
@@ -114,8 +129,8 @@ export function parseCsv(text: string): WonDeal[] {
       dealClosedDate: (cells[iClosed] ?? "").trim(),
       companyOwner: (cells[iOwner] ?? "").trim(),
       hubspotTeam: (cells[iTeam] ?? "").trim(),
-      regionCode: "unknown",
-      city: "",
+      regionCode,
+      city,
     });
   }
 
