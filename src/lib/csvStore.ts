@@ -1,4 +1,5 @@
 import { regionFromCity } from "./frenchCityToRegion";
+import { idbGet, idbSet } from "./idb";
 import type { CountryCode } from "./countryConfig";
 
 export interface WonDeal {
@@ -122,20 +123,22 @@ export function parseCsv(text: string): WonDeal[] {
   return deals;
 }
 
+let _cache: WonDeal[] | null = null;
+
 export function readDeals(): WonDeal[] {
-  if (typeof window === "undefined") return [];
-  try {
-    const raw = window.localStorage.getItem(STORAGE_KEY);
-    return raw ? (JSON.parse(raw) as WonDeal[]) : [];
-  } catch {
-    return [];
-  }
+  return _cache ?? [];
 }
 
 export function writeDeals(deals: WonDeal[]) {
-  try {
-    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(deals));
-  } catch { /* quota */ }
+  _cache = deals;
+  idbSet(STORAGE_KEY, deals).catch(() => {});
+}
+
+export async function loadDeals(): Promise<WonDeal[]> {
+  if (_cache && _cache.length > 0) return _cache;
+  const stored = await idbGet<WonDeal[]>(STORAGE_KEY);
+  _cache = stored ?? [];
+  return _cache;
 }
 
 export function readMeta(): CsvMeta | null {

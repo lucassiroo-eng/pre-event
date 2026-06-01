@@ -11,7 +11,7 @@ const COUNTRY_KEY = "pre-event-country";
 
 export function CountryPicker() {
   const navigate = useNavigate();
-  const { deals, meta, setDeals, refresh } = useDeals();
+  const { deals, meta, loading, setDeals, refresh } = useDeals();
   const [error, setError] = useState<string | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
 
@@ -146,10 +146,15 @@ export function CountryPicker() {
         </div>
       )}
 
-      {deals.length === 0 && (
+      {!loading && deals.length === 0 && (
         <div className="mt-12 text-center text-muted-foreground">
           <p className="text-lg font-medium">Sin datos</p>
           <p className="mt-1 text-sm">Sube un CSV para empezar</p>
+        </div>
+      )}
+      {loading && (
+        <div className="mt-12 text-center text-muted-foreground">
+          <p className="text-sm">Cargando datos...</p>
         </div>
       )}
     </div>

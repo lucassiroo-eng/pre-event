@@ -1,5 +1,5 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
-import { readDeals, writeDeals, dealsByCountry, countryStats, type WonDeal, type CsvMeta, readMeta } from "./csvStore";
+import { loadDeals, readDeals, writeDeals, dealsByCountry, countryStats, type WonDeal, type CsvMeta, readMeta } from "./csvStore";
 import { readEnrichmentStore } from "./enrichmentStore";
 import { regionFromCity } from "./frenchCityToRegion";
 import { regionFromPostalCode } from "./frenchPostalToRegion";
@@ -12,18 +12,18 @@ function applyEnrichmentOverlay(deals: WonDeal[]): WonDeal[] {
     if (d.regionCode !== "unknown") return d;
     const rec = store[d.companyId];
     if (!rec) return d;
-    let region = rec.regionCode;
+    let region: string = rec.regionCode;
     if (region === "unknown" && rec.hubspotZip) {
-      region = regionFromPostalCode(rec.hubspotZip) as any;
+      region = regionFromPostalCode(rec.hubspotZip) ?? "unknown";
     }
     if (region === "unknown" && rec.hubspotCity) {
-      region = regionFromCity(rec.hubspotCity) as any;
+      region = regionFromCity(rec.hubspotCity) ?? "unknown";
     }
     if (region === "unknown" && rec.sirenePostal) {
-      region = regionFromPostalCode(rec.sirenePostal) as any;
+      region = regionFromPostalCode(rec.sirenePostal) ?? "unknown";
     }
     if (region === "unknown" && rec.sireneCity) {
-      region = regionFromCity(rec.sireneCity) as any;
+      region = regionFromCity(rec.sireneCity) ?? "unknown";
     }
     if (region === "unknown") return d;
     changed = true;
@@ -36,6 +36,7 @@ function applyEnrichmentOverlay(deals: WonDeal[]): WonDeal[] {
 interface DealsCtx {
   deals: WonDeal[];
   meta: CsvMeta | null;
+  loading: boolean;
   refresh: () => void;
   setDeals: (deals: WonDeal[]) => void;
   byCountry: (country: string) => WonDeal[];
@@ -45,21 +46,24 @@ interface DealsCtx {
 const Ctx = createContext<DealsCtx | null>(null);
 
 export function DealsProvider({ children }: { children: ReactNode }) {
-  const [deals, setDealsState] = useState<WonDeal[]>(() => applyEnrichmentOverlay(readDeals()));
+  const [deals, setDealsState] = useState<WonDeal[]>([]);
   const [meta, setMeta] = useState<CsvMeta | null>(() => readMeta());
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const handleStorage = () => {
-      setDealsState(applyEnrichmentOverlay(readDeals()));
-      setMeta(readMeta());
-    };
-    window.addEventListener("storage", handleStorage);
-    return () => window.removeEventListener("storage", handleStorage);
+    loadDeals().then((loaded) => {
+      const enriched = applyEnrichmentOverlay(loaded);
+      setDealsState(enriched);
+      setLoading(false);
+    });
   }, []);
 
   const refresh = useCallback(() => {
-    setDealsState(applyEnrichmentOverlay(readDeals()));
-    setMeta(readMeta());
+    loadDeals().then((loaded) => {
+      const enriched = applyEnrichmentOverlay(loaded);
+      setDealsState(enriched);
+      setMeta(readMeta());
+    });
   }, []);
 
   const setDeals = useCallback((newDeals: WonDeal[]) => {
@@ -76,7 +80,7 @@ export function DealsProvider({ children }: { children: ReactNode }) {
   const stats = useMemo(() => countryStats(deals), [deals]);
 
   return (
-    <Ctx.Provider value={{ deals, meta, refresh, setDeals, byCountry, stats }}>
+    <Ctx.Provider value={{ deals, meta, loading, refresh, setDeals, byCountry, stats }}>
       {children}
     </Ctx.Provider>
   );
