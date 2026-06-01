@@ -53,15 +53,36 @@ const METRIC_LABEL: Record<MapMetric, string> = {
   mrr: "MRR",
 };
 
+// Lon bounds for projection fitting — excludes outlier territories (e.g. Canary Islands in ES)
+const MAINLAND_LON: Partial<Record<CountryCode, [number, number]>> = {
+  es: [-9.5, 4.5],
+};
+
 export function CountryMap({ country, metric, onMetricChange, selected, onSelect, wonsPerRegion, mrrPerRegion, topVerticalByRegion }: Props) {
   const geo = GEO_DATA[country];
   if (!geo) return null;
 
   const features = geo.features;
 
+  // Filter outlier territories only for projection fitting; all features still rendered
+  const projFeatures = useMemo(() => {
+    const lonBounds = MAINLAND_LON[country];
+    if (!lonBounds) return features;
+    return features.filter((f) => {
+      const geom = f.geometry as { type: string; coordinates: unknown[] };
+      let coords: number[][] = [];
+      if (geom.type === "Polygon") coords = geom.coordinates[0] as number[][];
+      else if (geom.type === "MultiPolygon")
+        for (const p of geom.coordinates as number[][][]) coords.push(...p[0]);
+      if (!coords.length) return true;
+      const lon = coords.reduce((s, c) => s + c[0], 0) / coords.length;
+      return lon >= lonBounds[0] && lon <= lonBounds[1];
+    });
+  }, [features, country]);
+
   const projection = useMemo(
-    () => geoMercator().fitSize([WIDTH, HEIGHT - 20], { type: "FeatureCollection", features } as GeoJSON.FeatureCollection),
-    [features],
+    () => geoMercator().fitSize([WIDTH, HEIGHT - 20], { type: "FeatureCollection", features: projFeatures } as GeoJSON.FeatureCollection),
+    [projFeatures],
   );
   const path = useMemo(() => geoPath(projection), [projection]);
 

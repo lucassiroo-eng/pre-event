@@ -1,5 +1,6 @@
 import type PptxGenJSType from "pptxgenjs";
-import { type WonDeal, formatEUR } from "@/lib/csvStore";
+import { geoMercator, geoPath } from "d3-geo";
+import { type WonDeal } from "@/lib/csvStore";
 import { groupIndustry } from "@/lib/industryGroups";
 import { recordPptDownload, type EnrichmentStore } from "@/lib/enrichmentStore";
 import { fetchLogos } from "@/lib/logoStore";
@@ -12,10 +13,29 @@ import geoBR from "@/data/brazil-regions.geojson.json";
 import geoPT from "@/data/portugal-regions.geojson.json";
 import geoMX from "@/data/mexico-regions.geojson.json";
 
-type GeoCollection = { features: { properties: { code: unknown; nom: string } }[] };
+// ─── Palette ─────────────────────────────────────────────────────────────────
+const C = {
+  bg:         "0B0C14",
+  headerBg:   "06070D",
+  card:       "12131D",
+  cardBorder: "1C1E2C",
+  accent:     "FD4F6B",
+  accentMid:  "8C1E30",
+  accentDark: "1A090E",
+  white:      "EDEEF8",
+  sub:        "4E5168",
+  muted:      "1E202C",
+  sep:        "22242F",
+};
 
+// ─── Geo names ───────────────────────────────────────────────────────────────
+type GeoCollection = { features: { properties: { code: unknown; nom: string } }[] };
 const GEO_NAMES: Record<string, Record<string, string>> = {};
-for (const [c, geo] of Object.entries<GeoCollection>({ fr: geoFR as GeoCollection, es: geoES as GeoCollection, it: geoIT as GeoCollection, de: geoDE as GeoCollection, br: geoBR as GeoCollection, pt: geoPT as GeoCollection, mx: geoMX as GeoCollection })) {
+for (const [c, geo] of Object.entries<GeoCollection>({
+  fr: geoFR as GeoCollection, es: geoES as GeoCollection,
+  it: geoIT as GeoCollection, de: geoDE as GeoCollection,
+  br: geoBR as GeoCollection, pt: geoPT as GeoCollection, mx: geoMX as GeoCollection,
+})) {
   GEO_NAMES[c] = {};
   for (const f of geo.features) GEO_NAMES[c][String(f.properties.code)] = f.properties.nom;
 }
@@ -23,12 +43,6 @@ for (const [c, geo] of Object.entries<GeoCollection>({ fr: geoFR as GeoCollectio
 function getRegionName(country: string, code: string): string {
   return GEO_NAMES[country]?.[code] ?? code;
 }
-
-const COLOR = {
-  bg: "FFF5F7", card: "FFFFFF", ink: "1A1130", sub: "8A8295", subStrong: "6B6478",
-  border: "F5E1E6", rowAlt: "FFFAFB", primary: "FD4F6B", primaryDark: "D63E58",
-  primarySoft: "FFE3E9", accent: "FFB199",
-};
 
 function simplifyPlan(plan: string): string {
   if (!plan) return "";
@@ -40,84 +54,145 @@ function simplifyPlan(plan: string): string {
     .trim();
 }
 
-function getMapSvg(code: string): string | null {
-  const node = document.querySelector<SVGSVGElement>("svg[data-country-map]");
-  if (!node) return null;
-  const clone = node.cloneNode(true) as SVGSVGElement;
-  const svgNS = "http://www.w3.org/2000/svg";
-  const defs = document.createElementNS(svgNS, "defs");
-  defs.innerHTML = `
-    <filter id="region-shadow" x="-30%" y="-30%" width="160%" height="160%">
-      <feGaussianBlur in="SourceAlpha" stdDeviation="3"/>
-      <feOffset dx="0" dy="2" result="off"/>
-      <feComponentTransfer><feFuncA type="linear" slope="0.35"/></feComponentTransfer>
-      <feMerge><feMergeNode/><feMergeNode in="SourceGraphic"/></feMerge>
-    </filter>
-    <linearGradient id="region-grad" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0%" stop-color="#FF7088"/>
-      <stop offset="100%" stop-color="#FD4F6B"/>
-    </linearGradient>`;
-  clone.insertBefore(defs, clone.firstChild);
-  const originalPaths = node.querySelectorAll<SVGPathElement>("path");
-  const clonePaths = clone.querySelectorAll<SVGPathElement>("path");
-  let bbox: DOMRect | null = null;
-  clonePaths.forEach((p, i) => {
-    const o = originalPaths[i];
-    p.removeAttribute("class");
-    p.setAttribute("stroke", "#ffffff");
-    p.setAttribute("stroke-width", "0.5");
-    if (o) {
-      if (String(o.getAttribute("data-code")) === code) {
-        try { bbox = o.getBBox(); } catch { /* ignore */ }
-        p.setAttribute("stroke", "#ffffff"); p.setAttribute("stroke-width", "1.2");
-        p.setAttribute("fill", "url(#region-grad)"); p.setAttribute("filter", "url(#region-shadow)");
-      } else {
-        p.setAttribute("fill", "#F5E1E6"); p.setAttribute("opacity", "0.55");
-      }
+// ─── Map rendering (D3 → canvas, no DOM dependency) ─────────────────────────
+
+type RawFeature = { properties: { code: unknown; nom: string }; geometry: unknown };
+type RawGeo = { features: RawFeature[] };
+
+const GEO_MAP: Record<string, RawGeo> = {
+  fr: geoFR as RawGeo, es: geoES as RawGeo,
+  it: geoIT as RawGeo, de: geoDE as RawGeo,
+  br: geoBR as RawGeo, pt: geoPT as RawGeo, mx: geoMX as RawGeo,
+};
+
+// Bounding boxes for projection fitting — excludes island outliers (e.g. Canary Islands in ES)
+const MAINLAND_BBOX: Record<string, [number, number, number, number]> = {
+  es: [-9.5, 35.7, 4.5, 43.9],
+};
+
+function featureCentroidLon(geom: unknown): number {
+  const g = geom as { type: string; coordinates: unknown[] };
+  let coords: number[][] = [];
+  if (g.type === "Polygon") coords = (g.coordinates[0] as number[][]);
+  else if (g.type === "MultiPolygon")
+    for (const poly of g.coordinates as number[][][]) coords.push(...poly[0]);
+  if (!coords.length) return 0;
+  return coords.reduce((s, c) => s + c[0], 0) / coords.length;
+}
+
+async function renderMapPng(
+  country: string,
+  selectedCode: string,
+  size = 1600,
+): Promise<string | null> {
+  const raw = GEO_MAP[country];
+  if (!raw) return null;
+
+  const features = raw.features.map((f) => ({
+    type: "Feature" as const,
+    properties: f.properties,
+    geometry: f.geometry as GeoJSON.Geometry,
+  }));
+
+  // For countries with outlier territories, filter them out just for projection fitting
+  const bbox = MAINLAND_BBOX[country];
+  const mainlandFeatures = bbox
+    ? features.filter((f) => {
+        const lon = featureCentroidLon(f.geometry);
+        return lon >= bbox[0] && lon <= bbox[2];
+      })
+    : features;
+
+  const pad = size * 0.07;
+  const fc: GeoJSON.FeatureCollection = { type: "FeatureCollection", features: mainlandFeatures };
+  const projection = geoMercator().fitExtent([[pad, pad], [size - pad, size - pad]], fc);
+
+  const canvas = document.createElement("canvas");
+  canvas.width = size;
+  canvas.height = size;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) return null;
+
+  // Background
+  ctx.fillStyle = "#0B0C14";
+  ctx.fillRect(0, 0, size, size);
+
+  // Subtle vignette
+  const vignette = ctx.createRadialGradient(size / 2, size / 2, size * 0.25, size / 2, size / 2, size * 0.72);
+  vignette.addColorStop(0, "rgba(0,0,0,0)");
+  vignette.addColorStop(1, "rgba(0,0,0,0.35)");
+
+  const pathGen = geoPath().projection(projection).context(ctx);
+
+  // Draw all regions
+  for (const f of features) {
+    const isSelected = String(f.properties.code) === selectedCode;
+
+    if (isSelected) {
+      // Glow layer
+      ctx.save();
+      ctx.shadowColor = "#FD4F6B";
+      ctx.shadowBlur = size * 0.04;
+      ctx.beginPath();
+      pathGen(f);
+      ctx.fillStyle = "#FD4F6B";
+      ctx.fill();
+      ctx.restore();
+      // Crisp top layer
+      ctx.beginPath();
+      pathGen(f);
+      ctx.fillStyle = "#FF5C77";
+      ctx.fill();
+      ctx.strokeStyle = "#FFAAB8";
+      ctx.lineWidth = size * 0.002;
+      ctx.stroke();
+    } else {
+      ctx.beginPath();
+      pathGen(f);
+      ctx.fillStyle = "#191B2E";
+      ctx.fill();
+      ctx.strokeStyle = "#272A40";
+      ctx.lineWidth = size * 0.001;
+      ctx.stroke();
     }
-  });
-  if (bbox) {
-    const bb = bbox as DOMRect;
-    const pad = Math.max(bb.width, bb.height) * 0.2;
-    clone.setAttribute("viewBox", `${bb.x - pad} ${bb.y - pad} ${bb.width + pad * 2} ${bb.height + pad * 2}`);
   }
-  clone.setAttribute("preserveAspectRatio", "xMidYMid meet");
-  return new XMLSerializer().serializeToString(clone);
+
+  // Vignette overlay
+  ctx.fillStyle = vignette;
+  ctx.fillRect(0, 0, size, size);
+
+  return canvas.toDataURL("image/png");
 }
 
-async function svgToPngDataUrl(svg: string, w = 800, h = 800): Promise<string | null> {
-  return new Promise((resolve) => {
-    const blob = new Blob([svg], { type: "image/svg+xml;charset=utf-8" });
-    const url = URL.createObjectURL(blob);
-    const img = new Image();
-    img.onload = () => {
-      const canvas = document.createElement("canvas");
-      canvas.width = w; canvas.height = h;
-      const ctx = canvas.getContext("2d");
-      if (!ctx) { resolve(null); return; }
-      ctx.clearRect(0, 0, w, h);
-      ctx.drawImage(img, 0, 0, w, h);
-      URL.revokeObjectURL(url);
-      resolve(canvas.toDataURL("image/png"));
-    };
-    img.onerror = () => { URL.revokeObjectURL(url); resolve(null); };
-    img.src = url;
-  });
-}
-
-export async function generateRegionSlide(code: string, deals: WonDeal[], country: string, enrichStore?: EnrichmentStore) {
+// ─── Main export ─────────────────────────────────────────────────────────────
+export async function generateRegionSlide(
+  code: string,
+  deals: WonDeal[],
+  country: string,
+  enrichStore?: EnrichmentStore,
+) {
   const regionDeals = deals.filter((d) => d.regionCode === code);
   const name = getRegionName(country, code);
-  const totalMrr = regionDeals.reduce((s, d) => s + d.totalActualMrr, 0);
 
-  // Top 3 industries from the region
+  // Top 5 companies (region, by seats then MRR — most visible accounts)
+  const seenCompany = new Set<string>();
+  const top5Companies: { name: string; companyId: string }[] = [];
+  for (const d of [...regionDeals].sort((a, b) => b.seats - a.seats || b.totalActualMrr - a.totalActualMrr)) {
+    const key = d.companyName.trim().toLowerCase();
+    if (seenCompany.has(key)) continue;
+    seenCompany.add(key);
+    top5Companies.push({ name: d.companyName, companyId: d.companyId });
+    if (top5Companies.length >= 5) break;
+  }
+
+  // Top 3 industries (region)
   type IndAcc = { count: number; deals: WonDeal[] };
   const industryMap = new Map<string, IndAcc>();
   for (const d of regionDeals) {
     const g = groupIndustry(d.sector);
     if (g === "Other" || g === "Unknown") continue;
     const cur: IndAcc = industryMap.get(g) ?? { count: 0, deals: [] };
-    cur.count += 1;
+    cur.count++;
     cur.deals.push(d);
     industryMap.set(g, cur);
   }
@@ -125,225 +200,171 @@ export async function generateRegionSlide(code: string, deals: WonDeal[], countr
     .sort((a, b) => b[1].count - a[1].count)
     .slice(0, 3);
 
-  const top3Names = new Set(top3Industries.map(([name]) => name));
+  // Top module per industry (country-wide)
+  const industryTopModules = top3Industries.map(([industryName]) => {
+    const modCount = new Map<string, number>();
+    for (const d of deals) {
+      if (groupIndustry(d.sector) !== industryName) continue;
+      const mod = simplifyPlan(d.planName);
+      if (mod) modCount.set(mod, (modCount.get(mod) ?? 0) + 1);
+    }
+    const sorted = Array.from(modCount.entries()).sort((a, b) => b[1] - a[1]);
+    return { industry: industryName, module: sorted[0]?.[0] ?? "—" };
+  });
 
-  // Top modules from the WHOLE COUNTRY for those top 3 industries
-  const moduleCount = new Map<string, number>();
-  for (const d of deals) {
-    const g = groupIndustry(d.sector);
-    if (!top3Names.has(g)) continue;
-    const mod = simplifyPlan(d.planName);
-    if (mod) moduleCount.set(mod, (moduleCount.get(mod) ?? 0) + 1);
-  }
-  const topModules = Array.from(moduleCount.entries())
-    .sort((a, b) => b[1] - a[1])
-    .slice(0, 3);
+  // Logos for top 5
+  const domains = top5Companies.map((c) => enrichStore?.[c.companyId]?.domain ?? "");
+  const logoCache = await fetchLogos(domains.filter(Boolean));
 
-  // Top 3 companies from region (across top 3 industries), sorted by MRR
-  const allDealsFrom3 = top3Industries.flatMap(([, v]) => v.deals);
-  const seenCompany = new Set<string>();
-  const topCompanies: { name: string; industry: string; mrr: number; companyId: string }[] = [];
-  for (const d of [...allDealsFrom3].sort((a, b) => b.totalActualMrr - a.totalActualMrr)) {
-    const key = d.companyName.trim().toLowerCase();
-    if (seenCompany.has(key)) continue;
-    seenCompany.add(key);
-    topCompanies.push({ name: d.companyName, industry: groupIndustry(d.sector), mrr: d.totalActualMrr, companyId: d.companyId });
-    if (topCompanies.length >= 3) break;
-  }
+  const mapPng = await renderMapPng(country, code);
 
-  // Logos: resolve domains from enrichStore then fetch from Brandfetch CDN
-  const companyDomains = topCompanies.map((c) => enrichStore?.[c.companyId]?.domain ?? "");
-  const logoCache = await fetchLogos(companyDomains.filter(Boolean));
-
-  // --- Slide ---
-
-  const svg = getMapSvg(code);
-  const mapPng = svg ? await svgToPngDataUrl(svg, 1000, 1000) : null;
-
+  // ─── PPTX ─────────────────────────────────────────────────────────────────
   const PptxMod = (await import("pptxgenjs")).default as unknown as new () => PptxGenJSType;
   const pptx = new PptxMod();
   pptx.layout = "LAYOUT_WIDE";
-  pptx.title = `${name} · Wons`;
+  pptx.title = `${name} · Factorial`;
 
   const slide = pptx.addSlide();
-  slide.background = { color: COLOR.bg };
+  slide.background = { color: C.bg };
 
-  slide.addShape("rect", { x: 0, y: 0, w: 13.33, h: 0.12, fill: { color: COLOR.primary }, line: { type: "none" } });
+  // ── Layout ────────────────────────────────────────────────────────────────
+  const W = 13.33;
+  const H = 7.5;
+  const HEADER_H = 1.42;
+  const BODY_Y = HEADER_H + 0.08;  // 1.50
 
-  slide.addText("WONS · PRE-EVENT", {
-    x: 0.5, y: 0.35, w: 8, h: 0.3, fontSize: 10, bold: true, color: COLOR.primary, charSpacing: 3, fontFace: "Inter",
+  const MAP_W = 5.9;
+  const VDIV_X = MAP_W + 0.06;
+  const COL_X = VDIV_X + 0.012 + 0.2;   // ≈ 6.17
+  const COL_W = W - COL_X - 0.12;       // ≈ 7.04
+
+  // Logo row
+  const LOGO_LABEL_Y = BODY_Y + 0.08;   // 1.58
+  const LOGO_PILL_SZ = 1.02;            // square pill
+  const LOGO_IMG_SZ = 0.74;
+  const LOGO_Y = LOGO_LABEL_Y + 0.28;   // 1.86
+  const LOGO_GAP = (COL_W - 5 * LOGO_PILL_SZ) / 4;  // ≈ 0.505
+
+  // Industry rows
+  const HDIV_Y = LOGO_Y + LOGO_PILL_SZ + 0.22;  // ≈ 3.10
+  const IND_Y = HDIV_Y + 0.28;                   // ≈ 3.38
+  const IND_ROW_H = (H - IND_Y - 0.12) / 3;     // ≈ 1.33
+
+  // ── HEADER ────────────────────────────────────────────────────────────────
+  slide.addShape("rect", { x: 0, y: 0, w: W, h: HEADER_H, fill: { color: C.headerBg }, line: { type: "none" } });
+  slide.addShape("rect", { x: 0, y: HEADER_H - 0.04, w: W, h: 0.04, fill: { color: C.accent }, line: { type: "none" } });
+
+  // "factorial" wordmark (small, top-left)
+  slide.addText("factorial", {
+    x: 0.5, y: 0.28, w: 2, h: 0.22,
+    fontSize: 11, bold: true, color: C.accent, fontFace: "Inter",
   });
+
+  // Region name
   slide.addText(name, {
-    x: 0.5, y: 0.6, w: 9, h: 0.85, fontSize: 40, bold: true, color: COLOR.ink, fontFace: "Inter",
-  });
-  slide.addText(
-    `${regionDeals.length} client${regionDeals.length > 1 ? "s" : ""} · MRR ${formatEUR(totalMrr)}`,
-    { x: 0.5, y: 1.5, w: 9, h: 0.35, fontSize: 13, color: COLOR.subStrong, fontFace: "Inter", italic: true },
-  );
-
-  slide.addShape("roundRect", {
-    x: 11.1, y: 0.5, w: 1.8, h: 0.5, fill: { color: COLOR.primarySoft }, line: { type: "none" }, rectRadius: 0.25,
-  });
-  slide.addText(`${regionDeals.length} client${regionDeals.length > 1 ? "s" : ""}`, {
-    x: 11.1, y: 0.5, w: 1.8, h: 0.5, fontSize: 13, bold: true, color: COLOR.primaryDark, align: "center", valign: "middle", fontFace: "Inter",
+    x: 0.5, y: 0.48, w: 11, h: 0.78,
+    fontSize: 36, bold: true, color: C.white, fontFace: "Inter",
   });
 
-  slide.addShape("roundRect", {
-    x: 0.5, y: 1.95, w: 4.2, h: 5.4, fill: { color: COLOR.card }, line: { color: COLOR.border, width: 1 }, rectRadius: 0.2,
+  // Client count (right side, big)
+  slide.addText(String(regionDeals.length), {
+    x: 10.3, y: 0.15, w: 2.85, h: 0.82,
+    fontSize: 52, bold: true, color: C.accent, align: "right", valign: "bottom", fontFace: "Inter",
   });
-  if (mapPng) slide.addImage({ data: mapPng, x: 0.65, y: 2.1, w: 3.9, h: 5.1 });
+  slide.addText(regionDeals.length === 1 ? "CLIENT" : "CLIENTS", {
+    x: 10.3, y: 1.02, w: 2.85, h: 0.22,
+    fontSize: 8, bold: true, color: C.sub, charSpacing: 2.5, align: "right", fontFace: "Inter",
+  });
 
-  const contentX = 5.0;
-  const contentW = 7.83;
-  const topY = 1.95;
-  const bottomY = 7.35;
-  const available = bottomY - topY;
-  const blockGap = 0.18;
-  const perBlockH = (available - blockGap * 2) / 3;
-  const padX = 0.25;
-  const padTop = 0.18;
-  const headerH = 0.4;
-  const headerFs = 13;
-  const cellFs = 11;
-  const headLabelFs = 8;
-  const headOpts = { bold: true, color: COLOR.subStrong, fontSize: headLabelFs, fill: { color: COLOR.primarySoft }, valign: "middle" as const, charSpacing: 1 };
-
-  const drawCard = (y: number) => {
-    slide.addShape("roundRect", {
-      x: contentX, y, w: contentW, h: perBlockH,
-      fill: { color: COLOR.card }, line: { color: COLOR.border, width: 1 }, rectRadius: 0.14,
-    });
-  };
-  const drawAccent = (y: number) => {
-    slide.addShape("rect", {
-      x: contentX + padX, y: y + padTop + 0.04, w: 0.12, h: headerH - 0.12,
-      fill: { color: COLOR.primary }, line: { type: "none" },
-    });
-  };
-  const drawTitle = (y: number, title: string) => {
-    slide.addText(title, {
-      x: contentX + padX + 0.22, y: y + padTop - 0.02, w: contentW - padX * 2 - 0.22, h: headerH,
-      fontSize: headerFs, bold: true, color: COLOR.ink, fontFace: "Inter",
-    });
-  };
-
-  const tableY = (blockY: number) => blockY + padTop + headerH + 0.06;
-  const rowH = (perBlockH - padTop - headerH - 0.06 - 0.15) / 4;
-  const innerW = contentW - padX * 2;
-
-  // Block 1: Top 3 Industries (region)
-  let y = topY;
-  drawCard(y); drawAccent(y); drawTitle(y, "Top 3 Sectors");
-
-  const indRows: any[][] = [
-    [
-      { text: "SECTOR", options: headOpts },
-      { text: "WONS", options: { ...headOpts, align: "right" as const } },
-      { text: "MRR", options: { ...headOpts, align: "right" as const } },
-    ],
-    ...top3Industries.map(([ind, v], i) => {
-      const fill = i % 2 === 1 ? { color: COLOR.rowAlt } : { color: "FFFFFF" };
-      const base = { fontSize: cellFs, valign: "middle" as const, fill };
-      const mrr = v.deals.reduce((s: number, d: WonDeal) => s + d.totalActualMrr, 0);
-      return [
-        { text: ind, options: { ...base, bold: true, color: COLOR.primaryDark } },
-        { text: String(v.count), options: { ...base, color: COLOR.ink, bold: true, align: "right" as const } },
-        { text: formatEUR(mrr), options: { ...base, color: COLOR.ink, align: "right" as const } },
-      ];
-    }),
-  ];
-  while (indRows.length < 4) {
-    const fill = (indRows.length - 1) % 2 === 1 ? { color: COLOR.rowAlt } : { color: "FFFFFF" };
-    const base = { fontSize: cellFs, valign: "middle" as const, fill };
-    indRows.push([{ text: "", options: base }, { text: "", options: base }, { text: "", options: base }]);
+  // ── MAP ───────────────────────────────────────────────────────────────────
+  if (mapPng) {
+    slide.addImage({ data: mapPng, x: 0.08, y: BODY_Y, w: MAP_W - 0.08, h: H - BODY_Y - 0.08 });
   }
-  slide.addTable(indRows, {
-    x: contentX + padX, y: tableY(y), w: innerW,
-    colW: [innerW - 1.2 - 1.5, 1.2, 1.5],
-    fontFace: "Inter", border: [{ type: "none" }, { type: "none" }, { type: "none" }, { type: "none" }], rowH, margin: 0.08,
+
+  slide.addShape("rect", {
+    x: VDIV_X, y: HEADER_H, w: 0.012, h: H - HEADER_H,
+    fill: { color: C.sep }, line: { type: "none" },
   });
 
-  // Block 2: Top Modules (country-wide, for the top 3 industries of this region)
-  y += perBlockH + blockGap;
-  drawCard(y); drawAccent(y); drawTitle(y, "Top Modules · Country");
-
-  const countryTotalForIndustries = deals.filter((d) => top3Names.has(groupIndustry(d.sector))).length;
-
-  const modRows: any[][] = [
-    [
-      { text: "MODULE", options: headOpts },
-      { text: "CONTRACTS", options: { ...headOpts, align: "right" as const } },
-      { text: "% COUNTRY", options: { ...headOpts, align: "right" as const } },
-    ],
-    ...topModules.map(([mod, cnt], i) => {
-      const fill = i % 2 === 1 ? { color: COLOR.rowAlt } : { color: "FFFFFF" };
-      const base = { fontSize: cellFs, valign: "middle" as const, fill };
-      const pct = countryTotalForIndustries > 0 ? ((cnt / countryTotalForIndustries) * 100).toFixed(0) + "%" : "—";
-      return [
-        { text: mod, options: { ...base, bold: true, color: COLOR.ink } },
-        { text: String(cnt), options: { ...base, color: COLOR.ink, bold: true, align: "right" as const } },
-        { text: pct, options: { ...base, color: COLOR.subStrong, align: "right" as const } },
-      ];
-    }),
-  ];
-  while (modRows.length < 4) {
-    const fill = (modRows.length - 1) % 2 === 1 ? { color: COLOR.rowAlt } : { color: "FFFFFF" };
-    const base = { fontSize: cellFs, valign: "middle" as const, fill };
-    modRows.push([{ text: "", options: base }, { text: "", options: base }, { text: "", options: base }]);
-  }
-  slide.addTable(modRows, {
-    x: contentX + padX, y: tableY(y), w: innerW,
-    colW: [innerW - 1.4 - 1.4, 1.4, 1.4],
-    fontFace: "Inter", border: [{ type: "none" }, { type: "none" }, { type: "none" }, { type: "none" }], rowH, margin: 0.08,
+  // ── LOGO ROW ──────────────────────────────────────────────────────────────
+  slide.addText("NOS CLIENTS DANS LA RÉGION", {
+    x: COL_X, y: LOGO_LABEL_Y, w: COL_W, h: 0.2,
+    fontSize: 7.5, bold: true, color: C.sub, charSpacing: 2.5, fontFace: "Inter",
   });
 
-  // Block 3: Top 3 Companies (region)
-  y += perBlockH + blockGap;
-  drawCard(y); drawAccent(y); drawTitle(y, "Top 3 Companies");
-
-  const logoColW = 0.38;
-  const logoSize = 0.22;
-  const compRows: any[][] = [
-    [
-      { text: "", options: headOpts },
-      { text: "COMPANY", options: headOpts },
-      { text: "SECTOR", options: headOpts },
-      { text: "MRR", options: { ...headOpts, align: "right" as const } },
-    ],
-    ...topCompanies.map((c, i) => {
-      const fill = i % 2 === 1 ? { color: COLOR.rowAlt } : { color: "FFFFFF" };
-      const base = { fontSize: cellFs, valign: "middle" as const, fill };
-      return [
-        { text: "", options: { ...base } },
-        { text: c.name, options: { ...base, bold: true, color: COLOR.ink } },
-        { text: c.industry, options: { ...base, color: COLOR.primaryDark, bold: true } },
-        { text: formatEUR(c.mrr), options: { ...base, color: COLOR.ink, align: "right" as const } },
-      ];
-    }),
-  ];
-  while (compRows.length < 4) {
-    const fill = (compRows.length - 1) % 2 === 1 ? { color: COLOR.rowAlt } : { color: "FFFFFF" };
-    const base = { fontSize: cellFs, valign: "middle" as const, fill };
-    compRows.push([{ text: "", options: base }, { text: "", options: base }, { text: "", options: base }, { text: "", options: base }]);
-  }
-  slide.addTable(compRows, {
-    x: contentX + padX, y: tableY(y), w: innerW,
-    colW: [logoColW, innerW - logoColW - 2.0 - 1.5, 2.0, 1.5],
-    fontFace: "Inter", border: [{ type: "none" }, { type: "none" }, { type: "none" }, { type: "none" }], rowH, margin: 0.08,
-  });
-
-  // Overlay logos on top of the logo column (skip header row = index 0)
-  const logoX = contentX + padX + (logoColW - logoSize) / 2;
-  topCompanies.forEach((c, i) => {
+  top5Companies.forEach((c, i) => {
+    const px = COL_X + i * (LOGO_PILL_SZ + LOGO_GAP);
     const domain = enrichStore?.[c.companyId]?.domain ?? "";
     const dataUrl = domain ? (logoCache[domain] ?? "") : "";
-    if (!dataUrl) return;
-    const rowY = tableY(y) + (i + 1) * rowH + (rowH - logoSize) / 2;
-    slide.addImage({ data: dataUrl, x: logoX, y: rowY, w: logoSize, h: logoSize });
+
+    // pill background
+    slide.addShape("roundRect", {
+      x: px, y: LOGO_Y, w: LOGO_PILL_SZ, h: LOGO_PILL_SZ,
+      fill: { color: dataUrl ? "FFFFFF" : C.card },
+      line: { color: dataUrl ? "E8E8EC" : C.cardBorder, width: 0.5 },
+      rectRadius: 0.14,
+    });
+
+    if (dataUrl) {
+      const offset = (LOGO_PILL_SZ - LOGO_IMG_SZ) / 2;
+      slide.addImage({ data: dataUrl, x: px + offset, y: LOGO_Y + offset, w: LOGO_IMG_SZ, h: LOGO_IMG_SZ });
+    } else {
+      // Initial letter fallback
+      slide.addText(c.name.charAt(0).toUpperCase(), {
+        x: px, y: LOGO_Y, w: LOGO_PILL_SZ, h: LOGO_PILL_SZ,
+        fontSize: 24, bold: true, color: C.accent, align: "center", valign: "middle", fontFace: "Inter",
+      });
+    }
+
+    // Company name below pill (truncated)
+    const shortName = c.name.length > 14 ? c.name.slice(0, 13) + "…" : c.name;
+    slide.addText(shortName, {
+      x: px, y: LOGO_Y + LOGO_PILL_SZ + 0.06, w: LOGO_PILL_SZ, h: 0.2,
+      fontSize: 7.5, color: C.sub, align: "center", fontFace: "Inter",
+    });
   });
 
-  await pptx.writeFile({ fileName: `${name.replace(/\s+/g, "-")}-wons.pptx` });
+  // ── DIVIDER ───────────────────────────────────────────────────────────────
+  slide.addShape("rect", {
+    x: COL_X, y: HDIV_Y, w: COL_W, h: 0.012,
+    fill: { color: C.sep }, line: { type: "none" },
+  });
+
+  // ── INDUSTRY → MODULE ROWS ────────────────────────────────────────────────
+  slide.addText("SECTEUR PRINCIPAL  ·  MODULE CLÉ", {
+    x: COL_X, y: IND_Y - 0.2, w: COL_W, h: 0.18,
+    fontSize: 7.5, bold: true, color: C.sub, charSpacing: 2.5, fontFace: "Inter",
+  });
+
+  industryTopModules.forEach(({ industry, module }, i) => {
+    const iy = IND_Y + i * IND_ROW_H;
+
+    // Thin top separator for rows 1 and 2
+    if (i > 0) {
+      slide.addShape("rect", {
+        x: COL_X, y: iy, w: COL_W, h: 0.012,
+        fill: { color: C.muted }, line: { type: "none" },
+      });
+    }
+
+    // Industry label (small, muted)
+    slide.addText(industry.toUpperCase(), {
+      x: COL_X, y: iy + 0.22, w: COL_W * 0.5, h: 0.22,
+      fontSize: 8.5, bold: true, color: C.sub, charSpacing: 1.5, fontFace: "Inter",
+    });
+
+    // Module name (big, coral, right-aligned)
+    slide.addText(module, {
+      x: COL_X, y: iy + 0.48, w: COL_W, h: 0.65,
+      fontSize: 24, bold: true, color: C.accent, align: "right", valign: "top", fontFace: "Inter",
+    });
+  });
+
+  await pptx.writeFile({ fileName: `${name.replace(/\s+/g, "-")}-factorial.pptx` });
 
   const user = window.localStorage.getItem("factorial.session.email") ?? "unknown";
-  recordPptDownload({ timestamp: new Date().toISOString(), region: name, country, user, sections: ["industries", "modules-country", "companies"] });
+  recordPptDownload({
+    timestamp: new Date().toISOString(), region: name, country, user,
+    sections: ["logos", "industries-modules"],
+  });
 }
