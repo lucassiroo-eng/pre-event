@@ -9,6 +9,8 @@ import geoES from "@/data/spain-regions.geojson.json";
 import geoIT from "@/data/italy-regions.geojson.json";
 import geoDE from "@/data/germany-regions.geojson.json";
 import geoBR from "@/data/brazil-regions.geojson.json";
+import geoPT from "@/data/portugal-regions.geojson.json";
+import geoMX from "@/data/mexico-regions.geojson.json";
 
 type MapMetric = "wons" | "mrr";
 
@@ -28,6 +30,8 @@ const GEO_DATA: Partial<Record<CountryCode, GeoCollection>> = {
   it: geoIT as unknown as GeoCollection,
   de: geoDE as unknown as GeoCollection,
   br: geoBR as unknown as GeoCollection,
+  pt: geoPT as unknown as GeoCollection,
+  mx: geoMX as unknown as GeoCollection,
 };
 
 interface Props {

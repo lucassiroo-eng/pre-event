@@ -9,8 +9,8 @@ import { Upload, Play, Square, Download, Trash2, Database, Search } from "lucide
 import { readDeals, parseCsv, mergeDeals, writeMeta, countryStats, type WonDeal, type CsvMeta } from "@/lib/csvStore";
 import { useDeals } from "@/lib/useDeals";
 import { readEnrichmentStore, writeEnrichmentStore, addTrackingEntry, readTracking, recordApiCall, type EnrichmentRecord, type EnrichmentStore, type TrackingEntry } from "@/lib/enrichmentStore";
-import { regionFromCity } from "@/lib/frenchCityToRegion";
-import { regionFromPostalCode } from "@/lib/frenchPostalToRegion";
+import { cityToRegion } from "@/lib/cityToRegionByCountry";
+import { postalToRegion } from "@/lib/postalToRegionByCountry";
 
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL ?? "";
 const SUPABASE_ANON = import.meta.env.VITE_SUPABASE_ANON_KEY ?? "";
@@ -19,6 +19,7 @@ type RunType = "hubspot" | "sirene" | null;
 
 export function EnrichmentPage() {
   const { deals, setDeals, refresh } = useDeals();
+  const selectedCountry = window.localStorage.getItem("pre-event-country") ?? "fr";
   const [store, setStore] = useState<EnrichmentStore>(() => readEnrichmentStore());
   const [tracking, setTracking] = useState<TrackingEntry[]>(() => readTracking());
   const [running, setRunning] = useState<RunType>(null);
@@ -27,7 +28,7 @@ export function EnrichmentPage() {
   const cancelRef = useRef(false);
   const fileRef = useRef<HTMLInputElement>(null);
 
-  const frDeals = useMemo(() => deals.filter((d) => d.country === "fr"), [deals]);
+  const frDeals = useMemo(() => deals.filter((d) => d.country === selectedCountry), [deals, selectedCountry]);
 
   const hsPending = useMemo(() => frDeals.filter((d) => {
     const rec = store[d.companyId];
@@ -113,8 +114,8 @@ export function EnrichmentPage() {
             if (!deal) continue;
             if (hit.found) {
               matched++;
-              const byPostal = regionFromPostalCode(hit.zip);
-              const region = byPostal !== "unknown" ? byPostal : regionFromCity(hit.city);
+              const byPostal = postalToRegion(deal.country, hit.zip);
+              const region = byPostal !== "unknown" ? byPostal : cityToRegion(deal.country, hit.city);
               next[deal.companyId] = {
                 companyId: deal.companyId, companyName: deal.companyName,
                 hubspotId: hit.hubspotId, hubspotCity: hit.city, hubspotZip: hit.zip,
@@ -184,8 +185,8 @@ export function EnrichmentPage() {
             const existing = next[deal.companyId];
             if (hit.found) {
               matched++;
-              const byPostal = regionFromPostalCode(hit.postalCode);
-              const region = byPostal !== "unknown" ? byPostal : regionFromCity(hit.city);
+              const byPostal = postalToRegion(deal.country, hit.postalCode);
+              const region = byPostal !== "unknown" ? byPostal : cityToRegion(deal.country, hit.city);
               next[deal.companyId] = {
                 ...existing ?? {
                   companyId: deal.companyId, companyName: deal.companyName,
@@ -256,7 +257,7 @@ export function EnrichmentPage() {
 
   return (
     <div className="mx-auto max-w-[1500px] px-6 py-6 lg:px-8 lg:py-8">
-      <PageHeader title="Enrichment" subtitle="HubSpot + SIRENE — solo Francia" />
+      <PageHeader title="Enrichment" subtitle={`HubSpot${selectedCountry === "fr" ? " + SIRENE" : ""} · ${selectedCountry.toUpperCase()}`} />
 
       <div className="mt-6 space-y-6">
         <Card
@@ -297,10 +298,12 @@ export function EnrichmentPage() {
                     <Database className="h-4 w-4 mr-2" />
                     {hsPending.length === 0 ? "HS: sin pendientes" : `HubSpot (${hsPending.length})`}
                   </Button>
-                  <Button onClick={runSirene} disabled={sirenePending.length === 0 || !SUPABASE_URL} variant="outline">
-                    <Search className="h-4 w-4 mr-2" />
-                    {sirenePending.length === 0 ? "SIRENE: sin pendientes" : `SIRENE (${sirenePending.length})`}
-                  </Button>
+                  {selectedCountry === "fr" && (
+                    <Button onClick={runSirene} disabled={sirenePending.length === 0 || !SUPABASE_URL} variant="outline">
+                      <Search className="h-4 w-4 mr-2" />
+                      {sirenePending.length === 0 ? "SIRENE: sin pendientes" : `SIRENE (${sirenePending.length})`}
+                    </Button>
+                  )}
                 </>
               ) : (
                 <Button variant="destructive" onClick={() => { cancelRef.current = true; }}>

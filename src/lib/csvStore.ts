@@ -1,4 +1,3 @@
-import { regionFromCity } from "./frenchCityToRegion";
 import { idbGet, idbSet } from "./idb";
 import type { CountryCode } from "./countryConfig";
 
@@ -115,7 +114,7 @@ export function parseCsv(text: string): WonDeal[] {
       dealClosedDate: (cells[iClosed] ?? "").trim(),
       companyOwner: (cells[iOwner] ?? "").trim(),
       hubspotTeam: (cells[iTeam] ?? "").trim(),
-      regionCode: country === "fr" ? regionFromCity(null) : "unknown",
+      regionCode: "unknown",
       city: "",
     });
   }

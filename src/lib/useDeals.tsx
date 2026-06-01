@@ -1,8 +1,8 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
 import { loadDeals, readDeals, writeDeals, dealsByCountry, countryStats, type WonDeal, type CsvMeta, readMeta } from "./csvStore";
 import { readEnrichmentStore } from "./enrichmentStore";
-import { regionFromCity } from "./frenchCityToRegion";
-import { regionFromPostalCode } from "./frenchPostalToRegion";
+import { cityToRegion } from "./cityToRegionByCountry";
+import { postalToRegion } from "./postalToRegionByCountry";
 
 function applyEnrichmentOverlay(deals: WonDeal[]): WonDeal[] {
   const store = readEnrichmentStore();
@@ -12,19 +12,16 @@ function applyEnrichmentOverlay(deals: WonDeal[]): WonDeal[] {
     if (d.regionCode !== "unknown") return d;
     const rec = store[d.companyId];
     if (!rec) return d;
+    const country = d.country;
     let region: string = rec.regionCode;
-    if (region === "unknown" && rec.hubspotZip) {
-      region = regionFromPostalCode(rec.hubspotZip) ?? "unknown";
-    }
-    if (region === "unknown" && rec.hubspotCity) {
-      region = regionFromCity(rec.hubspotCity) ?? "unknown";
-    }
-    if (region === "unknown" && rec.sirenePostal) {
-      region = regionFromPostalCode(rec.sirenePostal) ?? "unknown";
-    }
-    if (region === "unknown" && rec.sireneCity) {
-      region = regionFromCity(rec.sireneCity) ?? "unknown";
-    }
+    if (region === "unknown" && rec.hubspotZip)
+      region = postalToRegion(country, rec.hubspotZip);
+    if (region === "unknown" && rec.hubspotCity)
+      region = cityToRegion(country, rec.hubspotCity);
+    if (region === "unknown" && rec.sirenePostal)
+      region = postalToRegion(country, rec.sirenePostal);
+    if (region === "unknown" && rec.sireneCity)
+      region = cityToRegion(country, rec.sireneCity);
     if (region === "unknown") return d;
     changed = true;
     return { ...d, regionCode: region, city: rec.hubspotCity ?? rec.sireneCity ?? d.city };
