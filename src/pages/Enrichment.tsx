@@ -148,10 +148,11 @@ export function EnrichmentPage() {
     }
 
     applyEnrichmentToDeals(next);
+    refresh();
     addTrackingEntry({ timestamp: new Date().toISOString(), type: "hubspot", batchSize: hsPending.length, matched, errors });
     setTracking(readTracking());
     setRunning(null);
-  }, [running, hsPending, store]);
+  }, [running, hsPending, store, deals, refresh]);
 
   const runSirene = useCallback(async () => {
     if (running || sirenePending.length === 0 || !SUPABASE_URL) return;
@@ -208,13 +209,15 @@ export function EnrichmentPage() {
     }
 
     applyEnrichmentToDeals(next);
+    refresh();
     addTrackingEntry({ timestamp: new Date().toISOString(), type: "sirene", batchSize: sirenePending.length, matched, errors });
     setTracking(readTracking());
     setRunning(null);
-  }, [running, sirenePending, store]);
+  }, [running, sirenePending, store, deals, refresh]);
 
   const applyEnrichmentToDeals = (enrichStore: EnrichmentStore) => {
-    const updatedDeals = deals.map((d) => {
+    const fresh = readDeals();
+    const updatedDeals = fresh.map((d) => {
       const rec = enrichStore[d.companyId];
       if (!rec || rec.regionCode === "unknown") return d;
       return { ...d, regionCode: rec.regionCode, city: rec.hubspotCity ?? rec.sireneCity ?? d.city };
