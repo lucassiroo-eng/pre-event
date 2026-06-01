@@ -65,10 +65,34 @@ const GEO_MAP: Record<string, RawGeo> = {
   br: geoBR as RawGeo, pt: geoPT as RawGeo, mx: geoMX as RawGeo,
 };
 
-// Bounding boxes for projection fitting — excludes island outliers (e.g. Canary Islands in ES)
-const MAINLAND_BBOX: Record<string, [number, number, number, number]> = {
-  es: [-9.5, 35.7, 4.5, 43.9],
+// Max mainland longitude — features with centroid west of this go into the inset
+const ISLAND_LON_THRESHOLD: Record<string, number> = {
+  es: -10,  // Canary Islands centroid ~-16.4°
 };
+
+// Explicit mainland bounds per country [minLon, minLat, maxLon, maxLat]
+// Using fixed bounds avoids D3 fitSize degenerate projection on small-extent countries
+const COUNTRY_BOUNDS: Record<string, [number, number, number, number]> = {
+  fr: [-5.2, 41.3, 9.7, 51.2],
+  es: [-9.4, 35.1, 4.4, 43.9],
+  it: [6.5, 35.4, 18.6, 47.2],
+  de: [5.8, 47.2, 15.1, 55.2],
+  br: [-74.1, -33.9, -32.3, 5.4],
+  pt: [-9.6, 36.8, -6.6, 42.3],
+  mx: [-118.4, 14.4, -86.6, 32.7],
+};
+
+function makeBboxFC(bounds: [number, number, number, number]): GeoJSON.FeatureCollection {
+  const [w, s, e, n] = bounds;
+  return {
+    type: "FeatureCollection",
+    features: [{
+      type: "Feature" as const,
+      properties: {},
+      geometry: { type: "Polygon" as const, coordinates: [[[w, s], [e, s], [e, n], [w, n], [w, s]]] },
+    }],
+  };
+}
 
 function featureCentroidLon(geom: unknown): number {
   const g = geom as { type: string; coordinates: unknown[] };
@@ -80,6 +104,40 @@ function featureCentroidLon(geom: unknown): number {
   return coords.reduce((s, c) => s + c[0], 0) / coords.length;
 }
 
+function drawRegion(
+  ctx: CanvasRenderingContext2D,
+  pathGen: ReturnType<typeof geoPath>,
+  feature: GeoJSON.Feature,
+  isSelected: boolean,
+  size: number,
+) {
+  if (isSelected) {
+    ctx.save();
+    ctx.shadowColor = "#FD4F6B";
+    ctx.shadowBlur = size * 0.04;
+    ctx.beginPath();
+    pathGen(feature);
+    ctx.fillStyle = "#FD4F6B";
+    ctx.fill();
+    ctx.restore();
+    ctx.beginPath();
+    pathGen(feature);
+    ctx.fillStyle = "#FF5C77";
+    ctx.fill();
+    ctx.strokeStyle = "#FFAAB8";
+    ctx.lineWidth = size * 0.0022;
+    ctx.stroke();
+  } else {
+    ctx.beginPath();
+    pathGen(feature);
+    ctx.fillStyle = "#191B2E";
+    ctx.fill();
+    ctx.strokeStyle = "#272A40";
+    ctx.lineWidth = size * 0.001;
+    ctx.stroke();
+  }
+}
+
 async function renderMapPng(
   country: string,
   selectedCode: string,
@@ -88,24 +146,25 @@ async function renderMapPng(
   const raw = GEO_MAP[country];
   if (!raw) return null;
 
-  const features = raw.features.map((f) => ({
+  const allFeatures = raw.features.map((f) => ({
     type: "Feature" as const,
     properties: f.properties,
     geometry: f.geometry as GeoJSON.Geometry,
   }));
 
-  // For countries with outlier territories, filter them out just for projection fitting
-  const bbox = MAINLAND_BBOX[country];
-  const mainlandFeatures = bbox
-    ? features.filter((f) => {
-        const lon = featureCentroidLon(f.geometry);
-        return lon >= bbox[0] && lon <= bbox[2];
-      })
-    : features;
+  // Split mainland vs island features
+  const lonThreshold = ISLAND_LON_THRESHOLD[country];
+  const mainlandFeatures = lonThreshold !== undefined
+    ? allFeatures.filter((f) => featureCentroidLon(f.geometry) >= lonThreshold)
+    : allFeatures;
+  const islandFeatures = lonThreshold !== undefined
+    ? allFeatures.filter((f) => featureCentroidLon(f.geometry) < lonThreshold)
+    : [];
 
   const pad = size * 0.07;
-  const fc: GeoJSON.FeatureCollection = { type: "FeatureCollection", features: mainlandFeatures };
-  const projection = geoMercator().fitExtent([[pad, pad], [size - pad, size - pad]], fc);
+  const bounds = COUNTRY_BOUNDS[country];
+  const projFC = bounds ? makeBboxFC(bounds) : { type: "FeatureCollection" as const, features: mainlandFeatures };
+  const projection = geoMercator().fitExtent([[pad, pad], [size - pad, size - pad]], projFC);
 
   const canvas = document.createElement("canvas");
   canvas.width = size;
@@ -117,49 +176,57 @@ async function renderMapPng(
   ctx.fillStyle = "#0B0C14";
   ctx.fillRect(0, 0, size, size);
 
-  // Subtle vignette
-  const vignette = ctx.createRadialGradient(size / 2, size / 2, size * 0.25, size / 2, size / 2, size * 0.72);
-  vignette.addColorStop(0, "rgba(0,0,0,0)");
-  vignette.addColorStop(1, "rgba(0,0,0,0.35)");
-
   const pathGen = geoPath().projection(projection).context(ctx);
 
-  // Draw all regions
-  for (const f of features) {
-    const isSelected = String(f.properties.code) === selectedCode;
-
-    if (isSelected) {
-      // Glow layer
-      ctx.save();
-      ctx.shadowColor = "#FD4F6B";
-      ctx.shadowBlur = size * 0.04;
-      ctx.beginPath();
-      pathGen(f);
-      ctx.fillStyle = "#FD4F6B";
-      ctx.fill();
-      ctx.restore();
-      // Crisp top layer
-      ctx.beginPath();
-      pathGen(f);
-      ctx.fillStyle = "#FF5C77";
-      ctx.fill();
-      ctx.strokeStyle = "#FFAAB8";
-      ctx.lineWidth = size * 0.002;
-      ctx.stroke();
-    } else {
-      ctx.beginPath();
-      pathGen(f);
-      ctx.fillStyle = "#191B2E";
-      ctx.fill();
-      ctx.strokeStyle = "#272A40";
-      ctx.lineWidth = size * 0.001;
-      ctx.stroke();
-    }
+  // Draw mainland regions
+  for (const f of mainlandFeatures) {
+    drawRegion(ctx, pathGen, f, String(f.properties.code) === selectedCode, size);
   }
 
   // Vignette overlay
+  const vignette = ctx.createRadialGradient(size / 2, size / 2, size * 0.28, size / 2, size / 2, size * 0.72);
+  vignette.addColorStop(0, "rgba(0,0,0,0)");
+  vignette.addColorStop(1, "rgba(0,0,0,0.32)");
   ctx.fillStyle = vignette;
   ctx.fillRect(0, 0, size, size);
+
+  // ── Island inset (bottom-left) ─────────────────────────────────────────────
+  if (islandFeatures.length > 0) {
+    const IW = Math.round(size * 0.30);
+    const IH = Math.round(size * 0.14);
+    const IX = pad;
+    const IY = size - pad - IH;
+    const IPAD = Math.round(size * 0.012);
+    const RADIUS = Math.round(size * 0.008);
+
+    // Box
+    ctx.beginPath();
+    ctx.roundRect(IX, IY, IW, IH, RADIUS);
+    ctx.fillStyle = "#0D0F1C";
+    ctx.fill();
+    ctx.strokeStyle = "#2A2D44";
+    ctx.lineWidth = Math.round(size * 0.0015);
+    ctx.stroke();
+
+    // Inset projection
+    const islandFC: GeoJSON.FeatureCollection = { type: "FeatureCollection", features: islandFeatures };
+    const islandProj = geoMercator().fitExtent(
+      [[IX + IPAD, IY + IPAD], [IX + IW - IPAD, IY + IH - IPAD]],
+      islandFC,
+    );
+    const islandPath = geoPath().projection(islandProj).context(ctx);
+
+    for (const f of islandFeatures) {
+      drawRegion(ctx, islandPath, f, String(f.properties.code) === selectedCode, IH);
+    }
+
+    // "ISLAS" label
+    ctx.font = `bold ${Math.round(size * 0.011)}px Inter, system-ui, sans-serif`;
+    ctx.fillStyle = "#3A3D58";
+    ctx.textAlign = "left";
+    ctx.textBaseline = "bottom";
+    ctx.fillText("ISLAS", IX + IPAD, IY + IH - IPAD / 2);
+  }
 
   return canvas.toDataURL("image/png");
 }

@@ -34,6 +34,31 @@ const GEO_DATA: Partial<Record<CountryCode, GeoCollection>> = {
   mx: geoMX as unknown as GeoCollection,
 };
 
+// Explicit mainland geographic bounds [minLon, minLat, maxLon, maxLat].
+// Using fixed bounds (instead of fitSize from features) prevents D3's fitSize
+// from producing degenerate projections for small-extent countries.
+const COUNTRY_BOUNDS: Partial<Record<CountryCode, [number, number, number, number]>> = {
+  fr: [-5.2, 41.3, 9.7, 51.2],
+  es: [-9.4, 35.1, 4.4, 43.9],  // mainland only (Canary Islands excluded)
+  it: [6.5, 35.4, 18.6, 47.2],
+  de: [5.8, 47.2, 15.1, 55.2],
+  br: [-74.1, -33.9, -32.3, 5.4],
+  pt: [-9.6, 36.8, -6.6, 42.3],
+  mx: [-118.4, 14.4, -86.6, 32.7],
+};
+
+// Islands with centroid lon below this threshold go into the inset box
+const ISLAND_LON_THRESHOLD: Partial<Record<CountryCode, number>> = {
+  es: -10,  // Canary Islands centroid ~-16.4°
+};
+
+// Inset box for islands (bottom-left, SVG coords)
+const INSET_X = 6;
+const INSET_H = 100;
+const INSET_W = 200;
+const INSET_Y_FROM_BOTTOM = 6;
+const INSET_PAD = 7;
+
 interface Props {
   country: CountryCode;
   metric: MapMetric;
@@ -47,16 +72,34 @@ interface Props {
 
 const WIDTH = 640;
 const HEIGHT = 640;
+const INSET_Y = HEIGHT - INSET_Y_FROM_BOTTOM - INSET_H;
 
 const METRIC_LABEL: Record<MapMetric, string> = {
   wons: "# Wons",
   mrr: "MRR",
 };
 
-// Lon bounds for projection fitting — excludes outlier territories (e.g. Canary Islands in ES)
-const MAINLAND_LON: Partial<Record<CountryCode, [number, number]>> = {
-  es: [-9.5, 4.5],
-};
+function makeBboxFC(bounds: [number, number, number, number]): GeoJSON.FeatureCollection {
+  const [w, s, e, n] = bounds;
+  return {
+    type: "FeatureCollection",
+    features: [{
+      type: "Feature" as const,
+      properties: {},
+      geometry: { type: "Polygon" as const, coordinates: [[[w, s], [e, s], [e, n], [w, n], [w, s]]] },
+    }],
+  };
+}
+
+function getFeatureCentroidLon(f: GeoFeature): number {
+  const geom = f.geometry as { type: string; coordinates: unknown[] };
+  let coords: number[][] = [];
+  if (geom.type === "Polygon") coords = geom.coordinates[0] as number[][];
+  else if (geom.type === "MultiPolygon")
+    for (const p of geom.coordinates as number[][][]) coords.push(...p[0]);
+  if (!coords.length) return 0;
+  return coords.reduce((s, c) => s + c[0], 0) / coords.length;
+}
 
 export function CountryMap({ country, metric, onMetricChange, selected, onSelect, wonsPerRegion, mrrPerRegion, topVerticalByRegion }: Props) {
   const geo = GEO_DATA[country];
@@ -64,27 +107,39 @@ export function CountryMap({ country, metric, onMetricChange, selected, onSelect
 
   const features = geo.features;
 
-  // Filter outlier territories only for projection fitting; all features still rendered
-  const projFeatures = useMemo(() => {
-    const lonBounds = MAINLAND_LON[country];
-    if (!lonBounds) return features;
-    return features.filter((f) => {
-      const geom = f.geometry as { type: string; coordinates: unknown[] };
-      let coords: number[][] = [];
-      if (geom.type === "Polygon") coords = geom.coordinates[0] as number[][];
-      else if (geom.type === "MultiPolygon")
-        for (const p of geom.coordinates as number[][][]) coords.push(...p[0]);
-      if (!coords.length) return true;
-      const lon = coords.reduce((s, c) => s + c[0], 0) / coords.length;
-      return lon >= lonBounds[0] && lon <= lonBounds[1];
-    });
-  }, [features, country]);
+  const islandThreshold = ISLAND_LON_THRESHOLD[country];
 
-  const projection = useMemo(
-    () => geoMercator().fitSize([WIDTH, HEIGHT - 20], { type: "FeatureCollection", features: projFeatures } as GeoJSON.FeatureCollection),
-    [projFeatures],
-  );
+  const { mainlandFeatures, islandFeatures } = useMemo(() => {
+    if (islandThreshold === undefined) return { mainlandFeatures: features, islandFeatures: [] as GeoFeature[] };
+    return {
+      mainlandFeatures: features.filter((f) => getFeatureCentroidLon(f) >= islandThreshold),
+      islandFeatures:   features.filter((f) => getFeatureCentroidLon(f) <  islandThreshold),
+    };
+  }, [features, islandThreshold]);
+
+  // Use explicit country bounds for reliable, consistent projection
+  const projection = useMemo(() => {
+    const bounds = COUNTRY_BOUNDS[country];
+    const proj = geoMercator();
+    if (bounds) {
+      proj.fitExtent([[10, 10], [WIDTH - 10, HEIGHT - 30]], makeBboxFC(bounds));
+    } else {
+      proj.fitSize([WIDTH, HEIGHT - 20], { type: "FeatureCollection", features: mainlandFeatures } as GeoJSON.FeatureCollection);
+    }
+    return proj;
+  }, [country, mainlandFeatures]);
+
   const path = useMemo(() => geoPath(projection), [projection]);
+
+  // Inset projection for island features
+  const insetProjection = useMemo(() => {
+    if (!islandFeatures.length) return null;
+    return geoMercator().fitExtent(
+      [[INSET_X + INSET_PAD, INSET_Y + INSET_PAD], [INSET_X + INSET_W - INSET_PAD, INSET_Y + INSET_H - INSET_PAD]],
+      { type: "FeatureCollection", features: islandFeatures } as GeoJSON.FeatureCollection,
+    );
+  }, [islandFeatures]);
+  const insetPath = useMemo(() => insetProjection ? geoPath(insetProjection) : null, [insetProjection]);
 
   const regionNames = useMemo(() => {
     const m: Record<string, string> = {};
@@ -113,12 +168,36 @@ export function CountryMap({ country, metric, onMetricChange, selected, onSelect
 
   const [hover, setHover] = useState<{ code: string; x: number; y: number } | null>(null);
 
+  function renderRegion(f: GeoFeature, pathFn: ReturnType<typeof geoPath>) {
+    const code = String(f.properties.code);
+    const isSelected = selected === code;
+    const dimmed = selected && !isSelected;
+    return (
+      <path
+        key={code}
+        data-code={code}
+        d={pathFn(f as unknown as GeoJSON.Feature) ?? undefined}
+        className={cn(
+          intensityClass(code),
+          "cursor-pointer transition-all duration-500 ease-out",
+          isSelected ? "stroke-primary" : "stroke-white",
+          dimmed && "opacity-40",
+        )}
+        strokeWidth={isSelected ? 2.5 : 1}
+        filter={isSelected ? "url(#region-shadow)" : undefined}
+        onClick={() => onSelect(code)}
+        onMouseMove={(e) => {
+          const rect = (e.currentTarget.ownerSVGElement as SVGSVGElement).getBoundingClientRect();
+          setHover({ code, x: e.clientX - rect.left, y: e.clientY - rect.top });
+        }}
+      />
+    );
+  }
+
   return (
     <div className="relative w-full">
       <div className="flex flex-wrap items-center justify-between gap-3 px-1 pb-3">
-        <h2 className="text-sm font-medium text-muted-foreground">
-          Par {METRIC_LABEL[metric]}
-        </h2>
+        <h2 className="text-sm font-medium text-muted-foreground">Par {METRIC_LABEL[metric]}</h2>
         <div className="flex flex-wrap gap-1.5">
           {(["wons", "mrr"] as const).map((m) => (
             <button
@@ -149,33 +228,29 @@ export function CountryMap({ country, metric, onMetricChange, selected, onSelect
               <feDropShadow dx="0" dy="2" stdDeviation="4" floodColor="var(--primary)" floodOpacity="0.35" />
             </filter>
           </defs>
-          <g>
-            {features.map((f) => {
-              const code = String(f.properties.code);
-              const isSelected = selected === code;
-              const dimmed = selected && !isSelected;
-              return (
-                <path
-                  key={code}
-                  data-code={code}
-                  d={path(f as unknown as GeoJSON.Feature) ?? undefined}
-                  className={cn(
-                    intensityClass(code),
-                    "cursor-pointer transition-all duration-500 ease-out",
-                    isSelected ? "stroke-primary" : "stroke-white",
-                    dimmed && "opacity-40",
-                  )}
-                  strokeWidth={isSelected ? 2.5 : 1}
-                  filter={isSelected ? "url(#region-shadow)" : undefined}
-                  onClick={() => onSelect(code)}
-                  onMouseMove={(e) => {
-                    const rect = (e.currentTarget.ownerSVGElement as SVGSVGElement).getBoundingClientRect();
-                    setHover({ code, x: e.clientX - rect.left, y: e.clientY - rect.top });
-                  }}
-                />
-              );
-            })}
-          </g>
+
+          {/* Mainland regions */}
+          <g>{mainlandFeatures.map((f) => renderRegion(f, path))}</g>
+
+          {/* Island inset (bottom-left corner) */}
+          {insetPath && islandFeatures.length > 0 && (
+            <g>
+              <rect
+                x={INSET_X} y={INSET_Y} width={INSET_W} height={INSET_H}
+                rx={5} ry={5}
+                fill="var(--background)" fillOpacity={0.9}
+                stroke="var(--border)" strokeWidth={1}
+              />
+              {islandFeatures.map((f) => renderRegion(f, insetPath))}
+              <text
+                x={INSET_X + INSET_PAD} y={INSET_Y + INSET_H - 5}
+                fontSize={9} fontFamily="Inter, system-ui, sans-serif"
+                fontWeight="600" fill="var(--muted-foreground)" letterSpacing={1}
+              >
+                ISLAS
+              </text>
+            </g>
+          )}
         </svg>
 
         {hover && (() => {
