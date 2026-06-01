@@ -3,7 +3,8 @@ import { useNavigate } from "react-router-dom";
 import { ArrowUp, ArrowDown, ChevronsUpDown, Cloud } from "lucide-react";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { readDeals, dealsByCountry, formatEUR, regionName, REGIONS, type WonDeal } from "@/lib/csvStore";
+import { formatEUR, regionName, REGIONS, type WonDeal } from "@/lib/csvStore";
+import { useDeals } from "@/lib/useDeals";
 import { getCountryConfig, applyCountryTheme, type CountryCode } from "@/lib/countryConfig";
 import { groupIndustry, industryColorClass } from "@/lib/industryGroups";
 import { cn } from "@/lib/utils";
@@ -37,8 +38,8 @@ export function TablePage() {
     applyCountryTheme(country as CountryCode);
   }, [country, navigate]);
 
-  const allDeals = useMemo(() => readDeals(), []);
-  const deals = useMemo(() => dealsByCountry(allDeals, country), [allDeals, country]);
+  const { byCountry } = useDeals();
+  const deals = useMemo(() => byCountry(country), [byCountry, country]);
 
   const isFrance = country === "fr";
 

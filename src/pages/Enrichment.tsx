@@ -6,7 +6,8 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Upload, Play, Square, Download, Trash2, Database, Search } from "lucide-react";
-import { readDeals, writeDeals, parseCsv, mergeDeals, writeMeta, countryStats, type WonDeal, type CsvMeta } from "@/lib/csvStore";
+import { readDeals, parseCsv, mergeDeals, writeMeta, countryStats, type WonDeal, type CsvMeta } from "@/lib/csvStore";
+import { useDeals } from "@/lib/useDeals";
 import { readEnrichmentStore, writeEnrichmentStore, addTrackingEntry, readTracking, recordApiCall, type EnrichmentRecord, type EnrichmentStore, type TrackingEntry } from "@/lib/enrichmentStore";
 import { regionFromCity } from "@/lib/frenchCityToRegion";
 import { regionFromPostalCode } from "@/lib/frenchPostalToRegion";
@@ -17,7 +18,7 @@ const SUPABASE_ANON = import.meta.env.VITE_SUPABASE_ANON_KEY ?? "";
 type RunType = "hubspot" | "sirene" | null;
 
 export function EnrichmentPage() {
-  const [deals, setDeals] = useState(() => readDeals());
+  const { deals, setDeals, refresh } = useDeals();
   const [store, setStore] = useState<EnrichmentStore>(() => readEnrichmentStore());
   const [tracking, setTracking] = useState<TrackingEntry[]>(() => readTracking());
   const [running, setRunning] = useState<RunType>(null);
@@ -64,18 +65,16 @@ export function EnrichmentPage() {
       const text = await file.text();
       const parsed = parseCsv(text);
       if (parsed.length === 0) throw new Error("CSV vacío");
-      const existing = readDeals();
-      const { merged } = mergeDeals(existing, parsed);
-      writeDeals(merged);
+      const { merged } = mergeDeals(deals, parsed);
+      setDeals(merged);
       const cs = countryStats(merged);
-      const meta: CsvMeta = {
+      writeMeta({
         uploadedAt: new Date().toISOString(),
         fileName: file.name,
         totalRows: merged.length,
         countries: Object.fromEntries(Object.entries(cs).map(([k, v]) => [k, v.count])),
-      };
-      writeMeta(meta);
-      setDeals(merged);
+      });
+      refresh();
     } catch { /* ignore */ }
   }, []);
 
@@ -215,12 +214,11 @@ export function EnrichmentPage() {
   }, [running, sirenePending, store]);
 
   const applyEnrichmentToDeals = (enrichStore: EnrichmentStore) => {
-    const updatedDeals = readDeals().map((d) => {
+    const updatedDeals = deals.map((d) => {
       const rec = enrichStore[d.companyId];
       if (!rec || rec.regionCode === "unknown") return d;
       return { ...d, regionCode: rec.regionCode, city: rec.hubspotCity ?? rec.sireneCity ?? d.city };
     });
-    writeDeals(updatedDeals);
     setDeals(updatedDeals);
   };
 

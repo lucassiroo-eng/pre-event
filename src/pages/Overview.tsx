@@ -3,7 +3,8 @@ import { useNavigate } from "react-router-dom";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { CountryMap } from "@/components/dashboard/CountryMap";
 import { RegionDetail } from "@/components/dashboard/RegionDetail";
-import { readDeals, dealsByCountry, formatEUR, type WonDeal } from "@/lib/csvStore";
+import { formatEUR, type WonDeal } from "@/lib/csvStore";
+import { useDeals } from "@/lib/useDeals";
 import { getCountryConfig, applyCountryTheme, type CountryCode } from "@/lib/countryConfig";
 import { groupIndustry } from "@/lib/industryGroups";
 import { generateRegionSlide } from "@/lib/generateSlide";
@@ -22,8 +23,8 @@ export function OverviewPage() {
     applyCountryTheme(country as CountryCode);
   }, [country, navigate]);
 
-  const allDeals = useMemo(() => readDeals(), []);
-  const deals = useMemo(() => dealsByCountry(allDeals, country), [allDeals, country]);
+  const { byCountry } = useDeals();
+  const deals = useMemo(() => byCountry(country), [byCountry, country]);
 
   const [metric, setMetric] = useState<MapMetric>("wons");
   const [selected, setSelected] = useState<string | undefined>(undefined);

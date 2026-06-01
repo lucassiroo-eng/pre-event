@@ -3,15 +3,15 @@ import { useNavigate } from "react-router-dom";
 import { Upload } from "lucide-react";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { Card } from "@/components/ui/card";
-import { readDeals, readMeta, parseCsv, writeDeals, writeMeta, mergeDeals, countryStats, formatEUR, type CsvMeta } from "@/lib/csvStore";
+import { readMeta, parseCsv, writeDeals, writeMeta, mergeDeals, countryStats, formatEUR, type CsvMeta } from "@/lib/csvStore";
+import { useDeals } from "@/lib/useDeals";
 import { getCountryConfig, applyCountryTheme, type CountryCode } from "@/lib/countryConfig";
 
 const COUNTRY_KEY = "pre-event-country";
 
 export function CountryPicker() {
   const navigate = useNavigate();
-  const [deals, setDeals] = useState(() => readDeals());
-  const [meta, setMeta] = useState<CsvMeta | null>(() => readMeta());
+  const { deals, meta, setDeals, refresh } = useDeals();
   const [error, setError] = useState<string | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
 
@@ -30,18 +30,16 @@ export function CountryPicker() {
       const parsed = parseCsv(text);
       if (parsed.length === 0) throw new Error("CSV vacío o sin company_name");
       const existing = readDeals();
-      const { merged, newCount } = mergeDeals(existing, parsed);
-      writeDeals(merged);
+      const { merged } = mergeDeals(deals, parsed);
+      setDeals(merged);
       const cs = countryStats(merged);
-      const csvMeta: CsvMeta = {
+      writeMeta({
         uploadedAt: new Date().toISOString(),
         fileName: file.name,
         totalRows: merged.length,
         countries: Object.fromEntries(Object.entries(cs).map(([k, v]) => [k, v.count])),
-      };
-      writeMeta(csvMeta);
-      setDeals(merged);
-      setMeta(csvMeta);
+      });
+      refresh();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Error parseando CSV");
     }

@@ -1,6 +1,7 @@
 import { useEffect } from "react";
 import { Routes, Route, Navigate, useNavigate, useLocation } from "react-router-dom";
 import { AuthProvider, useAuth } from "@/lib/auth";
+import { DealsProvider } from "@/lib/useDeals";
 import { Sidebar } from "@/components/layout/Sidebar";
 import { LoginPage } from "@/pages/Login";
 import { CountryPicker } from "@/pages/CountryPicker";
@@ -45,18 +46,20 @@ function AuthGate() {
   }
 
   return (
-    <div className="flex min-h-screen w-full bg-background">
-      <Sidebar />
-      <main className="min-w-0 flex-1">
-        <Routes>
-          <Route path="/" element={<CountryPicker />} />
-          <Route path="/overview" element={<OverviewPage />} />
-          <Route path="/table" element={<TablePage />} />
-          <Route path="/enrichment" element={<EnrichmentPage />} />
-          <Route path="/admin" element={<AdminPage />} />
-          <Route path="*" element={<Navigate to="/" replace />} />
-        </Routes>
-      </main>
-    </div>
+    <DealsProvider>
+      <div className="flex min-h-screen w-full bg-background">
+        <Sidebar />
+        <main className="min-w-0 flex-1">
+          <Routes>
+            <Route path="/" element={<CountryPicker />} />
+            <Route path="/overview" element={<OverviewPage />} />
+            <Route path="/table" element={<TablePage />} />
+            <Route path="/enrichment" element={<EnrichmentPage />} />
+            <Route path="/admin" element={<AdminPage />} />
+            <Route path="*" element={<Navigate to="/" replace />} />
+          </Routes>
+        </main>
+      </div>
+    </DealsProvider>
   );
 }
