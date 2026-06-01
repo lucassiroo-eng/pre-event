@@ -67,7 +67,7 @@ export function CountryMap({ country, metric, onMetricChange, selected, onSelect
 
   const regionNames = useMemo(() => {
     const m: Record<string, string> = {};
-    for (const f of features) m[f.properties.code] = f.properties.nom;
+    for (const f of features) m[String(f.properties.code)] = f.properties.nom;
     return m;
   }, [features]);
 
@@ -76,7 +76,7 @@ export function CountryMap({ country, metric, onMetricChange, selected, onSelect
     return wonsPerRegion[code] ?? 0;
   };
 
-  const allCodes = features.map((f) => f.properties.code);
+  const allCodes = features.map((f) => String(f.properties.code));
   const max = Math.max(...allCodes.map(valueFor), 1);
 
   function intensityClass(code: string): string {
@@ -130,7 +130,7 @@ export function CountryMap({ country, metric, onMetricChange, selected, onSelect
           </defs>
           <g>
             {features.map((f) => {
-              const code = f.properties.code;
+              const code = String(f.properties.code);
               const isSelected = selected === code;
               const dimmed = selected && !isSelected;
               return (

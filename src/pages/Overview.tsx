@@ -71,7 +71,7 @@ export function OverviewPage() {
 
   const handleGenerateSlide = () => {
     if (!selected) return;
-    generateRegionSlide(selected as any, deals);
+    generateRegionSlide(selected, deals, country);
   };
 
   const hasSelection = !!selected;
