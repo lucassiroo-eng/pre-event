@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useMemo, useRef, useState, type MutableRefObject } from "react";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -6,7 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Upload, Square, Download, Trash2, Database, Search, FlaskConical, Globe } from "lucide-react";
-import { readDeals, parseCsv, mergeDeals, writeMeta, countryStats, type WonDeal, type CsvMeta } from "@/lib/csvStore";
+import { readDeals, parseCsv, mergeDeals, writeMeta, countryStats, type WonDeal } from "@/lib/csvStore";
 import { useDeals } from "@/lib/useDeals";
 import { readEnrichmentStore, writeEnrichmentStore, addTrackingEntry, readTracking, recordApiCall, type EnrichmentRecord, type EnrichmentStore, type TrackingEntry } from "@/lib/enrichmentStore";
 import { cityToRegion } from "@/lib/cityToRegionByCountry";
@@ -22,7 +22,7 @@ async function runWithConcurrency<T>(
   items: T[],
   fn: (item: T) => Promise<void>,
   concurrency: number,
-  cancelRef: React.MutableRefObject<boolean>,
+  cancelRef: MutableRefObject<boolean>,
 ) {
   const queue = [...items];
   let inFlight = 0;
