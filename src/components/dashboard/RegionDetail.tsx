@@ -1,7 +1,17 @@
 import { useMemo, useState } from "react";
-import { X, FileImage, Maximize2, TrendingUp, Layers } from "lucide-react";
+import { X, FileImage, Maximize2, TrendingUp, Layers, LayoutGrid } from "lucide-react";
 import { formatEUR, REGIONS, type WonDeal } from "@/lib/csvStore";
 import { groupIndustry, industryColorClass } from "@/lib/industryGroups";
+
+function simplifyPlan(plan: string): string {
+  if (!plan) return "";
+  return plan
+    .replace(/^f25_/i, "")
+    .replace(/_(e|b)-(month|year).*$/i, "")
+    .replace(/_/g, " ")
+    .replace(/\b\w/g, (c) => c.toUpperCase())
+    .trim();
+}
 import { cn } from "@/lib/utils";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 
@@ -26,7 +36,7 @@ function IndustryPill({ value }: { value: string }) {
   );
 }
 
-export function RegionDetail({ code, deals, onClose, onGenerateSlide }: Props) {
+export function RegionDetail({ code, deals, allDeals, onClose, onGenerateSlide }: Props) {
   const dealsByMrr = useMemo(
     () => [...deals].filter((d) => d.totalActualMrr > 0).sort((a, b) => b.totalActualMrr - a.totalActualMrr),
     [deals],
@@ -48,6 +58,21 @@ export function RegionDetail({ code, deals, onClose, onGenerateSlide }: Props) {
       .sort((a, b) => b.count - a.count);
   }, [deals]);
   const topIndustries = allIndustries.slice(0, 3);
+
+  const topModules = useMemo(() => {
+    const top3 = new Set(topIndustries.map((r) => r.industry));
+    const moduleCount = new Map<string, number>();
+    for (const d of allDeals) {
+      if (!top3.has(groupIndustry(d.sector))) continue;
+      const mod = simplifyPlan(d.planName);
+      if (mod) moduleCount.set(mod, (moduleCount.get(mod) ?? 0) + 1);
+    }
+    const total = Array.from(moduleCount.values()).reduce((s, v) => s + v, 0);
+    return Array.from(moduleCount.entries())
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 5)
+      .map(([mod, count]) => ({ mod, count, pct: total > 0 ? Math.round((count / total) * 100) : 0 }));
+  }, [topIndustries, allDeals]);
 
   const totalMrr = deals.reduce((acc, d) => acc + d.totalActualMrr, 0);
 
@@ -107,6 +132,19 @@ export function RegionDetail({ code, deals, onClose, onGenerateSlide }: Props) {
         >
           <IndustriesList rows={topIndustries} />
         </ClickableBlock>
+
+        {topModules.length > 0 && (
+          <ClickableBlock
+            icon={<LayoutGrid className="h-4 w-4" />}
+            title="Top módulos · País"
+            accent="from-amber-500/15 to-amber-500/0"
+            iconBg="bg-amber-500/15 text-amber-700"
+            onExpand={() => {}}
+            expandLabel=""
+          >
+            <ModulesList modules={topModules} />
+          </ClickableBlock>
+        )}
       </div>
 
       <Dialog open={openDialog !== null} onOpenChange={(o) => !o && setOpenDialog(null)}>
@@ -131,7 +169,7 @@ function ClickableBlock({
   icon, title, accent, iconBg, onExpand, expandLabel, children,
 }: {
   icon: React.ReactNode; title: string; accent: string; iconBg: string;
-  onExpand: () => void; expandLabel: string; children: React.ReactNode;
+  onExpand: () => void; expandLabel?: string; children: React.ReactNode;
 }) {
   return (
     <section className="group relative overflow-hidden rounded-xl border border-border bg-card shadow-sm transition hover:shadow-md">
@@ -141,15 +179,38 @@ function ClickableBlock({
           <span className={cn("grid h-8 w-8 place-items-center rounded-lg", iconBg)}>{icon}</span>
           <h3 className="text-sm font-semibold text-foreground">{title}</h3>
         </div>
-        <button
-          onClick={onExpand}
-          className="inline-flex items-center gap-1 rounded-md border border-border bg-background px-2.5 py-1 text-[11px] font-medium text-muted-foreground hover:bg-muted hover:text-foreground"
-        >
-          {expandLabel} <Maximize2 className="h-3 w-3" />
-        </button>
+        {expandLabel && (
+          <button
+            onClick={onExpand}
+            className="inline-flex items-center gap-1 rounded-md border border-border bg-background px-2.5 py-1 text-[11px] font-medium text-muted-foreground hover:bg-muted hover:text-foreground"
+          >
+            {expandLabel} <Maximize2 className="h-3 w-3" />
+          </button>
+        )}
       </header>
       <div className="relative px-4 pb-4">{children}</div>
     </section>
+  );
+}
+
+function ModulesList({ modules }: { modules: { mod: string; count: number; pct: number }[] }) {
+  if (modules.length === 0) return <p className="text-xs text-muted-foreground">No data.</p>;
+  return (
+    <div className="space-y-2">
+      {modules.map(({ mod, count, pct }) => (
+        <div key={mod} className="flex items-center gap-3">
+          <div className="min-w-0 flex-1">
+            <div className="flex items-baseline justify-between gap-2 mb-1">
+              <span className="text-xs font-medium text-foreground truncate">{mod}</span>
+              <span className="text-[11px] tabular-nums text-muted-foreground shrink-0">{count} · {pct}%</span>
+            </div>
+            <div className="h-1.5 w-full rounded-full bg-muted overflow-hidden">
+              <div className="h-full rounded-full bg-amber-400" style={{ width: `${pct}%` }} />
+            </div>
+          </div>
+        </div>
+      ))}
+    </div>
   );
 }
 
