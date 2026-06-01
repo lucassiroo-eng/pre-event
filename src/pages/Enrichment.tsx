@@ -17,6 +17,32 @@ const SUPABASE_ANON = import.meta.env.VITE_SUPABASE_ANON_KEY ?? "";
 
 type RunType = "hubspot" | "sirene" | "all" | null;
 
+// Always keeps `concurrency` tasks in flight — no barrier between groups.
+async function runWithConcurrency<T>(
+  items: T[],
+  fn: (item: T) => Promise<void>,
+  concurrency: number,
+  cancelRef: React.MutableRefObject<boolean>,
+) {
+  const queue = [...items];
+  let inFlight = 0;
+  await new Promise<void>((resolve) => {
+    function next() {
+      while (inFlight < concurrency && queue.length > 0 && !cancelRef.current) {
+        const item = queue.shift()!;
+        inFlight++;
+        fn(item).finally(() => {
+          inFlight--;
+          if (queue.length === 0 && inFlight === 0) resolve();
+          else next();
+        });
+      }
+      if ((queue.length === 0 || cancelRef.current) && inFlight === 0) resolve();
+    }
+    next();
+  });
+}
+
 export function EnrichmentPage() {
   const { deals, setDeals, refresh } = useDeals();
   const selectedCountry = window.localStorage.getItem("pre-event-country") ?? "fr";
@@ -100,8 +126,8 @@ export function EnrichmentPage() {
     setProgress({ done: 0, total: hsPending.length, matched: 0, errors: 0, startedAt });
 
     const next = { ...store };
-    const BATCH = 100;
-    const PARALLEL = 6;
+    const BATCH = 25;
+    const CONCURRENCY = 15;
     let matched = 0;
     let errors = 0;
     let done = 0;
@@ -145,10 +171,8 @@ export function EnrichmentPage() {
       setProgress({ done: Math.min(done, hsPending.length), total: hsPending.length, matched, errors, startedAt });
     };
 
-    for (let i = 0; i < chunks.length; i += PARALLEL) {
-      if (cancelRef.current) break;
-      await Promise.all(chunks.slice(i, i + PARALLEL).map(processBatch));
-    }
+    // Concurrency queue: always keeps CONCURRENCY requests in flight (no barrier)
+    await runWithConcurrency(chunks, processBatch, CONCURRENCY, cancelRef);
 
     applyEnrichmentToDeals(next);
     refresh();
@@ -258,8 +282,8 @@ export function EnrichmentPage() {
     setProgress({ done: 0, total: allPending.length, matched: 0, errors: 0, startedAt });
 
     const next = { ...store };
-    const BATCH = 100;
-    const PARALLEL = 6;
+    const BATCH = 25;
+    const CONCURRENCY = 15;
     let matched = 0;
     let errors = 0;
     let done = 0;
@@ -303,10 +327,7 @@ export function EnrichmentPage() {
       setProgress({ done: Math.min(done, allPending.length), total: allPending.length, matched, errors, startedAt });
     };
 
-    for (let i = 0; i < chunks.length; i += PARALLEL) {
-      if (cancelRef.current) break;
-      await Promise.all(chunks.slice(i, i + PARALLEL).map(processBatch));
-    }
+    await runWithConcurrency(chunks, processBatch, CONCURRENCY, cancelRef);
 
     applyEnrichmentToDeals(next);
     refresh();
