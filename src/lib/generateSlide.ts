@@ -4,6 +4,7 @@ import { type WonDeal } from "@/lib/csvStore";
 import { groupIndustry } from "@/lib/industryGroups";
 import { recordPptDownload, type EnrichmentStore } from "@/lib/enrichmentStore";
 import { fetchLogos } from "@/lib/logoStore";
+import { countModulesForIndustry } from "@/lib/bundleModules";
 
 import geoFR from "@/data/france-regions.geojson.json";
 import geoES from "@/data/spain-regions.geojson.json";
@@ -44,15 +45,6 @@ function getRegionName(country: string, code: string): string {
   return GEO_NAMES[country]?.[code] ?? code;
 }
 
-function simplifyPlan(plan: string): string {
-  if (!plan) return "";
-  return plan
-    .replace(/^f25_/i, "")
-    .replace(/_(e|b)-(month|year).*$/i, "")
-    .replace(/_/g, " ")
-    .replace(/\b\w/g, (c) => c.toUpperCase())
-    .trim();
-}
 
 // ─── Map rendering (D3 → canvas, no DOM dependency) ─────────────────────────
 
@@ -269,16 +261,10 @@ export async function generateRegionSlide(
     .sort((a, b) => b[1].count - a[1].count)
     .slice(0, 3);
 
-  // Top module per industry (country-wide)
+  // Top module per industry (country-wide, real module counts via bundle mapping)
   const industryTopModules = top3Industries.map(([industryName]) => {
-    const modCount = new Map<string, number>();
-    for (const d of deals) {
-      if (groupIndustry(d.sector) !== industryName) continue;
-      const mod = simplifyPlan(d.planName);
-      if (mod) modCount.set(mod, (modCount.get(mod) ?? 0) + 1);
-    }
-    const sorted = Array.from(modCount.entries()).sort((a, b) => b[1] - a[1]);
-    return { industry: industryName, module: sorted[0]?.[0] ?? "—" };
+    const mods = countModulesForIndustry(deals, industryName, country);
+    return { industry: industryName, module: mods[0]?.module ?? "—" };
   });
 
   // Logos for top 5
