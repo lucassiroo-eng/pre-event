@@ -9,7 +9,7 @@ import { getCountryConfig, applyCountryTheme, type CountryCode } from "@/lib/cou
 import { groupIndustry } from "@/lib/industryGroups";
 import { generateRegionSlide } from "@/lib/generateSlide";
 import { cn } from "@/lib/utils";
-import { Target, MapPin } from "lucide-react";
+import { Target, MapPin, Zap } from "lucide-react";
 
 type MapMetric = "wons" | "mrr";
 
@@ -90,6 +90,22 @@ export function OverviewPage() {
           </div>
         }
       />
+
+      {cfg.hasMap && withRegion === 0 && totalWons > 0 && (
+        <div className="mt-4 flex items-center gap-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+          <Zap className="h-4 w-4 shrink-0 text-amber-500" />
+          <span className="flex-1">
+            <strong>0 deals mapeados</strong> — re-sube el CSV si incluye columnas de ciudad/zip, o ve a{" "}
+            <button
+              onClick={() => navigate("/enrichment")}
+              className="font-semibold underline underline-offset-2 hover:text-amber-900"
+            >
+              Enrichment
+            </button>{" "}
+            para poblar el mapa con HubSpot.
+          </span>
+        </div>
+      )}
 
       {cfg.hasMap ? (
         <section
