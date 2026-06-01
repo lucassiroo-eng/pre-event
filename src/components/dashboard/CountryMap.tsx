@@ -79,6 +79,8 @@ const METRIC_LABEL: Record<MapMetric, string> = {
   mrr: "MRR",
 };
 
+type SvgPathFn = (feature: GeoJSON.Feature | null | undefined) => string | null;
+
 function makeBboxFC(bounds: [number, number, number, number]): GeoJSON.FeatureCollection {
   const [w, s, e, n] = bounds;
   return {
@@ -129,7 +131,7 @@ export function CountryMap({ country, metric, onMetricChange, selected, onSelect
     return proj;
   }, [country, mainlandFeatures]);
 
-  const path = useMemo(() => geoPath(projection), [projection]);
+  const path = useMemo(() => geoPath(projection) as unknown as SvgPathFn, [projection]);
 
   // Inset projection for island features
   const insetProjection = useMemo(() => {
@@ -139,7 +141,10 @@ export function CountryMap({ country, metric, onMetricChange, selected, onSelect
       { type: "FeatureCollection", features: islandFeatures } as GeoJSON.FeatureCollection,
     );
   }, [islandFeatures]);
-  const insetPath = useMemo(() => insetProjection ? geoPath(insetProjection) : null, [insetProjection]);
+  const insetPath = useMemo(
+    () => (insetProjection ? (geoPath(insetProjection) as unknown as SvgPathFn) : null),
+    [insetProjection],
+  );
 
   const regionNames = useMemo(() => {
     const m: Record<string, string> = {};
@@ -168,7 +173,7 @@ export function CountryMap({ country, metric, onMetricChange, selected, onSelect
 
   const [hover, setHover] = useState<{ code: string; x: number; y: number } | null>(null);
 
-  function renderRegion(f: GeoFeature, pathFn: ReturnType<typeof geoPath>) {
+  function renderRegion(f: GeoFeature, pathFn: SvgPathFn) {
     const code = String(f.properties.code);
     const isSelected = selected === code;
     const dimmed = selected && !isSelected;
@@ -241,7 +246,7 @@ export function CountryMap({ country, metric, onMetricChange, selected, onSelect
                 fill="var(--background)" fillOpacity={0.9}
                 stroke="var(--border)" strokeWidth={1}
               />
-              {islandFeatures.map((f) => renderRegion(f, insetPath))}
+              {islandFeatures.map((f) => renderRegion(f, insetPath!))}
               <text
                 x={INSET_X + INSET_PAD} y={INSET_Y + INSET_H - 5}
                 fontSize={9} fontFamily="Inter, system-ui, sans-serif"

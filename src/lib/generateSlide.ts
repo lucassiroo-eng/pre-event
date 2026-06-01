@@ -104,9 +104,11 @@ function featureCentroidLon(geom: unknown): number {
   return coords.reduce((s, c) => s + c[0], 0) / coords.length;
 }
 
+type CanvasPathGen = (feature: GeoJSON.Feature | null | undefined) => void;
+
 function drawRegion(
   ctx: CanvasRenderingContext2D,
-  pathGen: ReturnType<typeof geoPath>,
+  pathGen: CanvasPathGen,
   feature: GeoJSON.Feature,
   isSelected: boolean,
   size: number,
@@ -176,7 +178,7 @@ async function renderMapPng(
   ctx.fillStyle = "#0B0C14";
   ctx.fillRect(0, 0, size, size);
 
-  const pathGen = geoPath().projection(projection).context(ctx);
+  const pathGen = geoPath().projection(projection).context(ctx) as unknown as CanvasPathGen;
 
   // Draw mainland regions
   for (const f of mainlandFeatures) {
@@ -214,7 +216,7 @@ async function renderMapPng(
       [[IX + IPAD, IY + IPAD], [IX + IW - IPAD, IY + IH - IPAD]],
       islandFC,
     );
-    const islandPath = geoPath().projection(islandProj).context(ctx);
+    const islandPath = geoPath().projection(islandProj).context(ctx) as unknown as CanvasPathGen;
 
     for (const f of islandFeatures) {
       drawRegion(ctx, islandPath, f, String(f.properties.code) === selectedCode, IH);
