@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useRef, useState, type MutableRefObject } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -22,7 +22,7 @@ async function runWithConcurrency<T>(
   items: T[],
   fn: (item: T) => Promise<void>,
   concurrency: number,
-  cancelRef: MutableRefObject<boolean>,
+  cancelRef: { current: boolean },
 ) {
   const queue = [...items];
   let inFlight = 0;
@@ -211,7 +211,8 @@ export function EnrichmentPage() {
     if (running || sirenePending.length === 0 || !SUPABASE_URL) return;
     cancelRef.current = false;
     setRunning("sirene");
-    setProgress({ done: 0, total: sirenePending.length });
+    const startedAt = Date.now();
+    setProgress({ done: 0, total: sirenePending.length, matched: 0, errors: 0, startedAt });
 
     const next = { ...store };
     const BATCH = 25;
@@ -258,7 +259,7 @@ export function EnrichmentPage() {
 
       writeEnrichmentStore(next);
       setStore({ ...next });
-      setProgress({ done: Math.min(i + batch.length, sirenePending.length), total: sirenePending.length });
+      setProgress({ done: Math.min(i + batch.length, sirenePending.length), total: sirenePending.length, matched, errors, startedAt });
     }
 
     applyEnrichmentToDeals(next);
