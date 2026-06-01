@@ -86,15 +86,20 @@ export function EnrichmentPage() {
     setProgress({ done: 0, total: hsPending.length });
 
     const next = { ...store };
-    const BATCH = 25;
+    const BATCH = 50;
+    const PARALLEL = 3;
     let matched = 0;
     let errors = 0;
+    let done = 0;
 
+    const chunks: WonDeal[][] = [];
     for (let i = 0; i < hsPending.length; i += BATCH) {
-      if (cancelRef.current) break;
-      const batch = hsPending.slice(i, i + BATCH);
-      const names = batch.map((d) => d.companyName);
+      chunks.push(hsPending.slice(i, i + BATCH));
+    }
 
+    const processBatch = async (batch: WonDeal[]) => {
+      if (cancelRef.current) return;
+      const names = batch.map((d) => d.companyName);
       try {
         const res = await fetch(`${SUPABASE_URL}/functions/v1/hubspot-lookup`, {
           method: "POST",
@@ -102,7 +107,7 @@ export function EnrichmentPage() {
           body: JSON.stringify({ names }),
         });
         if (res.ok) {
-          const data = await res.json() as { results: Array<{ query: string; found: boolean; city: string | null; zip: string | null; hubspotId: string | null }> };
+          const data = await res.json() as { results: Array<{ query: string; found: boolean; city: string | null; zip: string | null; hubspotId: string | null; hubspotName?: string | null }> };
           recordApiCall("hubspot", data.results.length);
           for (const hit of data.results) {
             const deal = batch.find((d) => d.companyName === hit.query);
@@ -132,10 +137,15 @@ export function EnrichmentPage() {
           errors++;
         }
       } catch { errors++; }
-
+      done += batch.length;
       writeEnrichmentStore(next);
       setStore({ ...next });
-      setProgress({ done: Math.min(i + batch.length, hsPending.length), total: hsPending.length });
+      setProgress({ done: Math.min(done, hsPending.length), total: hsPending.length });
+    };
+
+    for (let i = 0; i < chunks.length; i += PARALLEL) {
+      if (cancelRef.current) break;
+      await Promise.all(chunks.slice(i, i + PARALLEL).map(processBatch));
     }
 
     applyEnrichmentToDeals(next);
