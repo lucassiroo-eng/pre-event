@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { Upload } from "lucide-react";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { Card } from "@/components/ui/card";
-import { readMeta, parseCsv, writeDeals, writeMeta, mergeDeals, countryStats, formatEUR, type CsvMeta } from "@/lib/csvStore";
+import { readMeta, parseCsv, writeMeta, mergeDeals, countryStats, formatEUR, type CsvMeta } from "@/lib/csvStore";
 import { useDeals } from "@/lib/useDeals";
 import { getCountryConfig, applyCountryTheme, type CountryCode } from "@/lib/countryConfig";
 
@@ -29,7 +29,6 @@ export function CountryPicker() {
       const text = await file.text();
       const parsed = parseCsv(text);
       if (parsed.length === 0) throw new Error("CSV vacío o sin company_name");
-      const existing = readDeals();
       const { merged } = mergeDeals(deals, parsed);
       setDeals(merged);
       const cs = countryStats(merged);
