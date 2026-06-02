@@ -178,7 +178,7 @@ export function CountryMap({ country, metric, onMetricChange, selected, onSelect
         className={cn(
           intensityClass(code),
           "cursor-pointer transition-all duration-500 ease-out",
-          isSelected ? "stroke-primary" : "stroke-white",
+          isSelected ? "stroke-primary" : "stroke-neutral-400",
           dimmed && "opacity-40",
         )}
         strokeWidth={isSelected ? 2.5 : 1}
@@ -226,8 +226,8 @@ export function CountryMap({ country, metric, onMetricChange, selected, onSelect
               <feDropShadow dx="0" dy="2" stdDeviation="4" floodColor="var(--primary)" floodOpacity="0.35" />
             </filter>
           </defs>
-          {/* Explicit white background so the map never inherits the country theme color */}
-          <rect width={WIDTH} height={HEIGHT} fill="white" />
+          {/* Neutral background so map regions never blend with the country theme */}
+          <rect width={WIDTH} height={HEIGHT} fill="#FAFAFA" />
 
           {/* Mainland regions */}
           <g>{mainlandFeatures.map((f) => renderRegion(f, path))}</g>

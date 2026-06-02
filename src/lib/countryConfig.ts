@@ -48,12 +48,14 @@ export function applyCountryTheme(code: CountryCode) {
   root.style.setProperty("--sidebar-accent", `oklch(0.95 0.035 ${h})`);
   root.style.setProperty("--sidebar-accent-foreground", `oklch(0.3 0.1 ${h})`);
 
-  root.style.setProperty("--map-0", `oklch(0.975 0.008 ${h})`);
-  root.style.setProperty("--map-1", `oklch(0.94 0.05 ${h})`);
-  root.style.setProperty("--map-2", `oklch(0.86 0.11 ${h})`);
-  root.style.setProperty("--map-3", `oklch(0.77 0.17 ${h})`);
-  root.style.setProperty("--map-4", `oklch(0.67 0.21 ${h})`);
-  root.style.setProperty("--map-5", `oklch(0.56 0.22 ${h})`);
+  // map-0 is ALWAYS a neutral light gray (no theme hue) so 0-wons regions
+  // stay visible against any country's themed card background.
+  root.style.setProperty("--map-0", `oklch(0.93 0 0)`);
+  root.style.setProperty("--map-1", `oklch(0.90 0.05 ${h})`);
+  root.style.setProperty("--map-2", `oklch(0.82 0.11 ${h})`);
+  root.style.setProperty("--map-3", `oklch(0.72 0.17 ${h})`);
+  root.style.setProperty("--map-4", `oklch(0.62 0.21 ${h})`);
+  root.style.setProperty("--map-5", `oklch(0.52 0.22 ${h})`);
 
   root.style.setProperty("--gradient-factorial", `linear-gradient(135deg, oklch(0.74 0.19 ${h + 10}) 0%, oklch(0.6 0.23 ${h - 3}) 100%)`);
   root.style.setProperty("--shadow-pink", `0 10px 40px -10px oklch(0.67 0.21 ${h} / 0.35)`);
