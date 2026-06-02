@@ -9,6 +9,9 @@ export interface EnrichmentRecord {
   hubspotId: string | null;
   hubspotCity: string | null;
   hubspotZip: string | null;
+  // "NPS label" pulled from the HubSpot company on the next sync.
+  // Optional/null until the sync populates it; displayed in the detail view when present.
+  nps?: string | null;
   domain: string | null;
   sireneCity: string | null;
   sirenePostal: string | null;

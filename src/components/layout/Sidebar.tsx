@@ -1,10 +1,11 @@
 import { useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import {
-  LayoutDashboard, Table2, Sparkles, Shield, LogOut, Globe, ChevronDown, FlaskConical,
+  LayoutDashboard, Table2, Sparkles, Shield, LogOut, Globe, ChevronDown, FlaskConical, Eye, EyeOff,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/lib/auth";
+import { useHideMrr, toggleHideMrr } from "@/lib/useHideMrr";
 
 type NavItem = { to: string; label: string; icon: typeof LayoutDashboard };
 
@@ -24,6 +25,7 @@ export function Sidebar() {
   const { email, isAdmin, logout } = useAuth();
   const navigate = useNavigate();
   const [adminOpen, setAdminOpen] = useState(false);
+  const hideMrr = useHideMrr();
 
   const selectedCountry = window.localStorage.getItem("pre-event-country") ?? "";
 
@@ -63,6 +65,20 @@ export function Sidebar() {
 
       <nav className="flex-1 space-y-0.5 px-3 py-4">
         {MAIN_NAV.map(renderItem)}
+
+        <button
+          type="button"
+          onClick={toggleHideMrr}
+          className={cn(
+            "mt-2 flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors",
+            hideMrr
+              ? "bg-sidebar-accent text-sidebar-accent-foreground"
+              : "text-sidebar-foreground/75 hover:bg-sidebar-accent/60 hover:text-sidebar-foreground",
+          )}
+        >
+          {hideMrr ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+          {hideMrr ? "Mostrar MRR" : "Esconder MRR"}
+        </button>
       </nav>
 
       {isAdmin && (

@@ -6,12 +6,14 @@ import { Card } from "@/components/ui/card";
 import { readMeta, parseCsv, writeMeta, mergeDeals, countryStats, formatEUR, type CsvMeta } from "@/lib/csvStore";
 import { useDeals } from "@/lib/useDeals";
 import { getCountryConfig, applyCountryTheme, type CountryCode } from "@/lib/countryConfig";
+import { useHideMrr } from "@/lib/useHideMrr";
 
 const COUNTRY_KEY = "pre-event-country";
 
 export function CountryPicker() {
   const navigate = useNavigate();
   const { deals, meta, loading, setDeals, refresh } = useDeals();
+  const hideMrr = useHideMrr();
   const [error, setError] = useState<string | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
 
@@ -133,10 +135,12 @@ export function CountryPicker() {
                       <div className="text-2xl font-bold tabular-nums text-foreground">{s.count.toLocaleString()}</div>
                       <div className="text-[11px] text-muted-foreground">wons</div>
                     </div>
-                    <div>
-                      <div className="text-lg font-semibold tabular-nums text-foreground">{formatEUR(s.mrr)}</div>
-                      <div className="text-[11px] text-muted-foreground">MRR total</div>
-                    </div>
+                    {!hideMrr && (
+                      <div>
+                        <div className="text-lg font-semibold tabular-nums text-foreground">{formatEUR(s.mrr)}</div>
+                        <div className="text-[11px] text-muted-foreground">MRR total</div>
+                      </div>
+                    )}
                   </div>
                 </button>
               );

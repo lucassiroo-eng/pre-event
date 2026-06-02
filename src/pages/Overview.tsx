@@ -9,6 +9,7 @@ import { getCountryConfig, applyCountryTheme, type CountryCode } from "@/lib/cou
 import { groupIndustry } from "@/lib/industryGroups";
 import { generateRegionSlide } from "@/lib/generateSlide";
 import { readEnrichmentStore } from "@/lib/enrichmentStore";
+import { useHideMrr } from "@/lib/useHideMrr";
 import { cn } from "@/lib/utils";
 import { Target, MapPin, Zap } from "lucide-react";
 
@@ -27,27 +28,48 @@ export function OverviewPage() {
 
   const { byCountry } = useDeals();
   const deals = useMemo(() => byCountry(country), [byCountry, country]);
+  const hideMrr = useHideMrr();
 
   const [metric, setMetric] = useState<MapMetric>("wons");
   const [selected, setSelected] = useState<string | undefined>(undefined);
+  const [vertical, setVertical] = useState<string>("all");
+
+  // When MRR is hidden, never show the MRR map metric.
+  const effectiveMetric: MapMetric = hideMrr ? "wons" : metric;
+
+  // List of verticals present in this country, for the map filter.
+  const verticals = useMemo(() => {
+    const set = new Set<string>();
+    for (const d of deals) {
+      const g = groupIndustry(d.sector);
+      if (g !== "Unknown") set.add(g);
+    }
+    return Array.from(set).sort();
+  }, [deals]);
+
+  // Deals feeding the map — optionally narrowed to a single vertical.
+  const mapDeals = useMemo(
+    () => (vertical === "all" ? deals : deals.filter((d) => groupIndustry(d.sector) === vertical)),
+    [deals, vertical],
+  );
 
   const wonsPerRegion = useMemo(() => {
     const m: Record<string, number> = {};
-    for (const d of deals) {
+    for (const d of mapDeals) {
       if (d.regionCode === "unknown") continue;
       m[d.regionCode] = (m[d.regionCode] ?? 0) + 1;
     }
     return m;
-  }, [deals]);
+  }, [mapDeals]);
 
   const mrrPerRegion = useMemo(() => {
     const m: Record<string, number> = {};
-    for (const d of deals) {
+    for (const d of mapDeals) {
       if (d.regionCode === "unknown") continue;
       m[d.regionCode] = (m[d.regionCode] ?? 0) + d.totalActualMrr;
     }
     return m;
-  }, [deals]);
+  }, [mapDeals]);
 
   const topVerticalByRegion = useMemo(() => {
     const counts: Record<string, Record<string, number>> = {};
@@ -84,7 +106,7 @@ export function OverviewPage() {
     <div className="mx-auto max-w-[1500px] px-6 py-6 lg:px-8 lg:py-8">
       <PageHeader
         title={`${cfg.flag} ${cfg.name}`}
-        subtitle={`${totalWons.toLocaleString()} wons · MRR ${formatEUR(totalMrr)}`}
+        subtitle={hideMrr ? `${totalWons.toLocaleString()} wons` : `${totalWons.toLocaleString()} wons · MRR ${formatEUR(totalMrr)}`}
         actions={
           <div className="flex items-center gap-1.5 rounded-full bg-white/15 px-3 py-1.5 text-xs text-white backdrop-blur">
             <MapPin className="h-3 w-3" />
@@ -134,10 +156,43 @@ export function OverviewPage() {
                 </div>
               </div>
             )}
+            {verticals.length > 0 && (
+              <div className="mb-3 flex flex-wrap items-center gap-1.5">
+                <span className="mr-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                  Vertical
+                </span>
+                <button
+                  onClick={() => setVertical("all")}
+                  className={cn(
+                    "rounded-full px-3 py-1 text-xs font-medium transition-colors",
+                    vertical === "all"
+                      ? "bg-primary text-primary-foreground"
+                      : "bg-secondary text-secondary-foreground hover:bg-secondary/70",
+                  )}
+                >
+                  Todos
+                </button>
+                {verticals.map((v) => (
+                  <button
+                    key={v}
+                    onClick={() => setVertical(v)}
+                    className={cn(
+                      "rounded-full px-3 py-1 text-xs font-medium transition-colors",
+                      vertical === v
+                        ? "bg-primary text-primary-foreground"
+                        : "bg-secondary text-secondary-foreground hover:bg-secondary/70",
+                    )}
+                  >
+                    {v}
+                  </button>
+                ))}
+              </div>
+            )}
             <CountryMap
               country={country as CountryCode}
-              metric={metric}
+              metric={effectiveMetric}
               onMetricChange={setMetric}
+              hideMrr={hideMrr}
               selected={selected}
               onSelect={setSelected}
               wonsPerRegion={wonsPerRegion}

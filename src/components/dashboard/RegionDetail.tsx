@@ -5,6 +5,7 @@ import { groupIndustry, industryColorClass } from "@/lib/industryGroups";
 import { cn } from "@/lib/utils";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { countModulesForIndustry } from "@/lib/bundleModules";
+import { useHideMrr } from "@/lib/useHideMrr";
 
 const REGION_NAME: Record<string, string> = Object.fromEntries(
   REGIONS.map((r) => [r.code, r.name]),
@@ -20,6 +21,7 @@ interface Props {
 
 export function RegionDetail({ code, deals, allDeals, onClose, onGenerateSlide }: Props) {
   const country = deals[0]?.country ?? allDeals[0]?.country ?? "fr";
+  const hideMrr = useHideMrr();
 
   const [selectedIndustry, setSelectedIndustry] = useState<string | null>(null);
   const [clientDialogOpen, setClientDialogOpen] = useState(false);
@@ -73,9 +75,11 @@ export function RegionDetail({ code, deals, allDeals, onClose, onGenerateSlide }
               <Users className="h-3 w-3" />
               {deals.length} won{deals.length === 1 ? "" : "s"}
             </span>
-            <span className="inline-flex items-center rounded-full bg-emerald-500/10 px-2.5 py-0.5 font-semibold text-emerald-700 dark:text-emerald-400">
-              MRR {formatEUR(totalMrr)}
-            </span>
+            {!hideMrr && (
+              <span className="inline-flex items-center rounded-full bg-emerald-500/10 px-2.5 py-0.5 font-semibold text-emerald-700 dark:text-emerald-400">
+                MRR {formatEUR(totalMrr)}
+              </span>
+            )}
           </div>
         </div>
         <div className="flex items-center gap-2">
@@ -101,7 +105,7 @@ export function RegionDetail({ code, deals, allDeals, onClose, onGenerateSlide }
               <span className="grid h-7 w-7 place-items-center rounded-lg bg-emerald-500/15 text-emerald-700">
                 <Users className="h-3.5 w-3.5" />
               </span>
-              <h3 className="text-sm font-semibold">Top clients · MRR</h3>
+              <h3 className="text-sm font-semibold">{hideMrr ? "Top clients" : "Top clients · MRR"}</h3>
             </div>
             <button
               onClick={() => setClientDialogOpen(true)}
@@ -111,7 +115,7 @@ export function RegionDetail({ code, deals, allDeals, onClose, onGenerateSlide }
             </button>
           </header>
           <div className="px-4 pb-4">
-            <ClientsTable deals={clientsByMrr.slice(0, 5)} />
+            <ClientsTable deals={clientsByMrr.slice(0, 5)} hideMrr={hideMrr} />
           </div>
         </section>
 
@@ -146,7 +150,7 @@ export function RegionDetail({ code, deals, allDeals, onClose, onGenerateSlide }
                         {industry}
                       </span>
                       <span className="tabular-nums text-xs font-semibold text-foreground">{count}</span>
-                      <span className="text-xs text-muted-foreground">{formatEUR(mrr)}</span>
+                      {!hideMrr && <span className="text-xs text-muted-foreground">{formatEUR(mrr)}</span>}
                       <ChevronDown className={cn("ml-auto h-3.5 w-3.5 text-muted-foreground transition-transform", isOpen && "rotate-180")} />
                     </button>
 
@@ -201,7 +205,7 @@ export function RegionDetail({ code, deals, allDeals, onClose, onGenerateSlide }
             <DialogTitle>Todos los clientes · {REGION_NAME[code] ?? code}</DialogTitle>
           </DialogHeader>
           <div className="max-h-[70vh] overflow-y-auto">
-            <ClientsTable deals={clientsByMrr} />
+            <ClientsTable deals={clientsByMrr} hideMrr={hideMrr} />
           </div>
         </DialogContent>
       </Dialog>
@@ -209,7 +213,7 @@ export function RegionDetail({ code, deals, allDeals, onClose, onGenerateSlide }
   );
 }
 
-function ClientsTable({ deals }: { deals: WonDeal[] }) {
+function ClientsTable({ deals, hideMrr = false }: { deals: WonDeal[]; hideMrr?: boolean }) {
   if (deals.length === 0) return <p className="text-xs text-muted-foreground py-2">No data.</p>;
   return (
     <div className="overflow-hidden rounded-lg border border-border">
@@ -219,7 +223,7 @@ function ClientsTable({ deals }: { deals: WonDeal[] }) {
             <th className="px-3 py-2 text-left font-medium">Empresa</th>
             <th className="px-3 py-2 text-left font-medium">Sector</th>
             <th className="px-3 py-2 text-right font-medium">Seats</th>
-            <th className="px-3 py-2 text-right font-medium">MRR</th>
+            {!hideMrr && <th className="px-3 py-2 text-right font-medium">MRR</th>}
           </tr>
         </thead>
         <tbody>
@@ -235,7 +239,7 @@ function ClientsTable({ deals }: { deals: WonDeal[] }) {
                 </span>
               </td>
               <td className="px-3 py-2 text-right tabular-nums text-muted-foreground">{d.seats || "—"}</td>
-              <td className="px-3 py-2 text-right tabular-nums font-semibold">{formatEUR(d.totalActualMrr)}</td>
+              {!hideMrr && <td className="px-3 py-2 text-right tabular-nums font-semibold">{formatEUR(d.totalActualMrr)}</td>}
             </tr>
           ))}
         </tbody>

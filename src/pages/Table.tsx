@@ -3,10 +3,14 @@ import { useNavigate } from "react-router-dom";
 import { ArrowUp, ArrowDown, ChevronsUpDown, Cloud } from "lucide-react";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { formatEUR, regionName, REGIONS, type WonDeal } from "@/lib/csvStore";
+import { formatEUR, regionName, type WonDeal } from "@/lib/csvStore";
 import { useDeals } from "@/lib/useDeals";
 import { getCountryConfig, applyCountryTheme, type CountryCode } from "@/lib/countryConfig";
 import { groupIndustry, industryColorClass } from "@/lib/industryGroups";
+import { getModulesForPlan, getExcluded } from "@/lib/bundleModules";
+import { readEnrichmentStore } from "@/lib/enrichmentStore";
+import { useHideMrr } from "@/lib/useHideMrr";
+import { hubspotCompanyUrl } from "@/lib/hubspot";
 import { cn } from "@/lib/utils";
 
 const SEATS_BUCKETS = [
@@ -25,7 +29,7 @@ function quarterOf(iso: string | null): string | null {
   return `${d.getUTCFullYear()}-Q${Math.floor(d.getUTCMonth() / 3) + 1}`;
 }
 
-type SortKey = "company" | "sector" | "seats" | "mrr" | "partner" | "plan" | "converted";
+type SortKey = "company" | "region" | "sector" | "seats" | "mrr" | "converted";
 type SortDir = "asc" | "desc";
 
 export function TablePage() {
@@ -40,12 +44,13 @@ export function TablePage() {
 
   const { byCountry } = useDeals();
   const deals = useMemo(() => byCountry(country), [byCountry, country]);
+  const hideMrr = useHideMrr();
+  const enrichment = useMemo(() => readEnrichmentStore(), []);
 
   const isFrance = country === "fr";
 
   const [region, setRegion] = useState("all");
   const [sectorFilter, setSectorFilter] = useState("all");
-  const [partnerFilter, setPartnerFilter] = useState("all");
   const [seatsFilter, setSeatsFilter] = useState("all");
   const [quarterFilter, setQuarterFilter] = useState("all");
   const [sortKey, setSortKey] = useState<SortKey>("mrr");
@@ -56,10 +61,6 @@ export function TablePage() {
   const sectors = useMemo(() => {
     const groups = Array.from(new Set(deals.map((d) => groupIndustry(d.sector))));
     return groups.filter((g) => g !== "Unknown").sort();
-  }, [deals]);
-
-  const partners = useMemo(() => {
-    return Array.from(new Set(deals.map((d) => d.partnerName).filter(Boolean))).sort();
   }, [deals]);
 
   const quarters = useMemo(() => {
@@ -78,12 +79,11 @@ export function TablePage() {
     return deals.filter((d) => {
       if (region !== "all" && d.regionCode !== region) return false;
       if (sectorFilter !== "all" && groupIndustry(d.sector) !== sectorFilter) return false;
-      if (partnerFilter !== "all" && d.partnerName !== partnerFilter) return false;
       if (quarterFilter !== "all" && quarterOf(d.convertedAt) !== quarterFilter) return false;
       if (seatsFilter !== "all" && !seatsBucket.test(d.seats)) return false;
       return true;
     });
-  }, [deals, region, sectorFilter, partnerFilter, quarterFilter, seatsFilter, seatsBucket]);
+  }, [deals, region, sectorFilter, quarterFilter, seatsFilter, seatsBucket]);
 
   const sorted = useMemo(() => {
     const arr = [...filtered];
@@ -92,11 +92,10 @@ export function TablePage() {
       const get = (d: WonDeal): string | number | null => {
         switch (sortKey) {
           case "company": return d.companyName.toLowerCase();
+          case "region": return regionName(d.regionCode).toLowerCase();
           case "sector": return groupIndustry(d.sector).toLowerCase();
           case "seats": return d.seats;
           case "mrr": return d.totalActualMrr;
-          case "partner": return (d.partnerName || "").toLowerCase();
-          case "plan": return (d.planName || "").toLowerCase();
           case "converted": return d.convertedAt ? new Date(d.convertedAt).getTime() : null;
         }
       };
@@ -111,7 +110,7 @@ export function TablePage() {
   }, [filtered, sortKey, sortDir]);
 
   const pageCount = Math.max(1, Math.ceil(sorted.length / PAGE_SIZE));
-  useEffect(() => { setPage(1); }, [region, sectorFilter, partnerFilter, seatsFilter, quarterFilter, sortKey, sortDir]);
+  useEffect(() => { setPage(1); }, [region, sectorFilter, seatsFilter, quarterFilter, sortKey, sortDir]);
   const pageStart = (page - 1) * PAGE_SIZE;
   const paged = sorted.slice(pageStart, pageStart + PAGE_SIZE);
   const filteredMrr = filtered.reduce((acc, d) => acc + d.totalActualMrr, 0);
@@ -142,14 +141,14 @@ export function TablePage() {
       <div className="mt-6 rounded-2xl border border-border bg-card shadow-sm">
         <div className="flex flex-wrap items-center gap-4 border-b border-border px-5 py-4">
           <Stat label="Wons" value={filtered.length.toLocaleString()} />
-          <Stat label="MRR" value={formatEUR(filteredMrr)} />
+          {!hideMrr && <Stat label="MRR" value={formatEUR(filteredMrr)} />}
           {filtered.length !== deals.length && (
             <span className="ml-auto text-xs text-muted-foreground">of {deals.length} total</span>
           )}
         </div>
 
         <div className="border-b border-border bg-muted/30 px-5 py-4">
-          <div className="grid gap-2.5 sm:grid-cols-2 lg:grid-cols-5">
+          <div className="grid gap-2.5 sm:grid-cols-2 lg:grid-cols-4">
             {isFrance && (
               <FilterSelect label="Region" value={region} onChange={(v) => { setRegion(v); }}>
                 <SelectItem value="all">All regions</SelectItem>
@@ -159,10 +158,6 @@ export function TablePage() {
             <FilterSelect label="Sector" value={sectorFilter} onChange={setSectorFilter}>
               <SelectItem value="all">All sectors</SelectItem>
               {sectors.map((s) => <SelectItem key={s} value={s}>{s}</SelectItem>)}
-            </FilterSelect>
-            <FilterSelect label="Partner" value={partnerFilter} onChange={setPartnerFilter}>
-              <SelectItem value="all">All partners</SelectItem>
-              {partners.map((p) => <SelectItem key={p} value={p}>{p}</SelectItem>)}
             </FilterSelect>
             <FilterSelect label="Seats" value={seatsFilter} onChange={setSeatsFilter}>
               {SEATS_BUCKETS.map((b) => <SelectItem key={b.value} value={b.value}>{b.label}</SelectItem>)}
@@ -179,32 +174,69 @@ export function TablePage() {
             <thead className="bg-muted/40">
               <tr className="border-b border-border text-left text-xs uppercase tracking-wide text-muted-foreground">
                 <Th sortKey="company" current={sortKey} dir={sortDir} onClick={toggleSort}>Company</Th>
+                {isFrance && <Th sortKey="region" current={sortKey} dir={sortDir} onClick={toggleSort}>Region</Th>}
                 <Th sortKey="sector" current={sortKey} dir={sortDir} onClick={toggleSort}>Sector</Th>
                 <Th sortKey="seats" current={sortKey} dir={sortDir} onClick={toggleSort} align="right">Seats</Th>
-                <Th sortKey="mrr" current={sortKey} dir={sortDir} onClick={toggleSort} align="right">MRR</Th>
-                <Th sortKey="partner" current={sortKey} dir={sortDir} onClick={toggleSort}>Partner</Th>
-                <Th sortKey="plan" current={sortKey} dir={sortDir} onClick={toggleSort}>Plan</Th>
+                {!hideMrr && <Th sortKey="mrr" current={sortKey} dir={sortDir} onClick={toggleSort} align="right">MRR</Th>}
+                <th className="px-3 py-2.5 font-medium text-left">Módulos</th>
                 <Th sortKey="converted" current={sortKey} dir={sortDir} onClick={toggleSort}>Converted</Th>
+                <th className="px-3 py-2.5 font-medium text-right">HubSpot</th>
               </tr>
             </thead>
             <tbody>
-              {paged.map((d) => (
+              {paged.map((d) => {
+                const enr = enrichment[d.companyId];
+                const hsUrl = hubspotCompanyUrl(enr?.hubspotId);
+                const nps = enr?.nps;
+                return (
                 <tr key={d.companyId} className="border-b border-border/60 hover:bg-muted/40">
-                  <td className="px-3 py-2 font-medium text-foreground">{d.companyName}</td>
+                  <td className="px-3 py-2 font-medium text-foreground">
+                    <span className="inline-flex items-center gap-2">
+                      {d.companyName}
+                      {nps && (
+                        <span
+                          title={`NPS: ${nps}`}
+                          className="inline-flex items-center rounded-full bg-sky-500/10 px-1.5 py-0.5 text-[10px] font-semibold text-sky-700 dark:text-sky-400"
+                        >
+                          {nps}
+                        </span>
+                      )}
+                    </span>
+                  </td>
+                  {isFrance && (
+                    <td className="px-3 py-2 text-muted-foreground">
+                      {d.regionCode !== "unknown" ? regionName(d.regionCode) : "—"}
+                    </td>
+                  )}
                   <td className="px-3 py-2">
                     <span className={cn("inline-block rounded-full px-2 py-0.5 text-[11px] font-medium ring-1 ring-inset", industryColorClass(d.sector))}>
                       {groupIndustry(d.sector)}
                     </span>
                   </td>
                   <td className="px-3 py-2 text-right tabular-nums">{d.seats || "—"}</td>
-                  <td className="px-3 py-2 text-right tabular-nums font-medium">{formatEUR(d.totalActualMrr)}</td>
-                  <td className="px-3 py-2 text-muted-foreground">{d.partnerName || "—"}</td>
-                  <td className="px-3 py-2 text-muted-foreground text-xs">{d.planName || "—"}</td>
+                  {!hideMrr && <td className="px-3 py-2 text-right tabular-nums font-medium">{formatEUR(d.totalActualMrr)}</td>}
+                  <td className="px-3 py-2"><ModuleBubbles plan={d.planName} country={country} /></td>
                   <td className="px-3 py-2 text-muted-foreground tabular-nums">{quarterOf(d.convertedAt) ?? "—"}</td>
+                  <td className="px-3 py-2 text-right">
+                    {hsUrl ? (
+                      <a
+                        href={hsUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        title="Ver en HubSpot"
+                        className="inline-grid h-7 w-7 place-items-center rounded-md border border-border bg-background hover:bg-muted transition-colors"
+                      >
+                        <HubSpotIcon className="h-4 w-4 text-[#FF7A59]" />
+                      </a>
+                    ) : (
+                      <span className="text-muted-foreground">—</span>
+                    )}
+                  </td>
                 </tr>
-              ))}
+                );
+              })}
               {sorted.length === 0 && (
-                <tr><td colSpan={7} className="px-3 py-8 text-center text-sm text-muted-foreground">No deals match your filters.</td></tr>
+                <tr><td colSpan={8} className="px-3 py-8 text-center text-sm text-muted-foreground">No deals match your filters.</td></tr>
               )}
             </tbody>
           </table>
@@ -224,6 +256,32 @@ export function TablePage() {
         )}
       </div>
     </div>
+  );
+}
+
+function ModuleBubbles({ plan, country }: { plan: string; country: string }) {
+  const excluded = getExcluded(country);
+  const modules = getModulesForPlan(plan).filter((m) => !excluded.has(m));
+  if (modules.length === 0) return <span className="text-muted-foreground text-xs">—</span>;
+  return (
+    <div className="flex flex-wrap gap-1">
+      {modules.map((m) => (
+        <span
+          key={m}
+          className="inline-flex items-center rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-medium text-primary"
+        >
+          {m}
+        </span>
+      ))}
+    </div>
+  );
+}
+
+function HubSpotIcon({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="currentColor" className={className} aria-hidden="true">
+      <path d="M18.16 8.27V5.9a1.84 1.84 0 0 0 1.06-1.66v-.05a1.84 1.84 0 0 0-1.84-1.84h-.05a1.84 1.84 0 0 0-1.84 1.84v.05a1.84 1.84 0 0 0 1.06 1.66v2.37a5.2 5.2 0 0 0-2.48 1.09L7.5 5.02a2.08 2.08 0 1 0-1.04 1.37l6.43 4.97a5.22 5.22 0 0 0 .08 5.9l-1.96 1.96a1.7 1.7 0 0 0-.49-.08 1.7 1.7 0 1 0 1.7 1.7c0-.17-.03-.34-.08-.49l1.94-1.94a5.23 5.23 0 1 0 4.08-9.34Zm-1.27 7.86a2.68 2.68 0 1 1 0-5.36 2.68 2.68 0 0 1 0 5.36Z" />
+    </svg>
   );
 }
 

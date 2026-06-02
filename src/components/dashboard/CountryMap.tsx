@@ -50,6 +50,7 @@ interface Props {
   country: CountryCode;
   metric: MapMetric;
   onMetricChange: (m: MapMetric) => void;
+  hideMrr?: boolean;
   selected?: string;
   onSelect: (code: string) => void;
   wonsPerRegion: Record<string, number>;
@@ -78,7 +79,7 @@ function getFeatureCentroidLon(f: GeoFeature): number {
   return coords.reduce((s, c) => s + c[0], 0) / coords.length;
 }
 
-export function CountryMap({ country, metric, onMetricChange, selected, onSelect, wonsPerRegion, mrrPerRegion, topVerticalByRegion }: Props) {
+export function CountryMap({ country, metric, onMetricChange, hideMrr = false, selected, onSelect, wonsPerRegion, mrrPerRegion, topVerticalByRegion }: Props) {
   const geo = GEO_DATA[country];
   if (!geo) return null;
 
@@ -176,7 +177,7 @@ export function CountryMap({ country, metric, onMetricChange, selected, onSelect
       <div className="flex flex-wrap items-center justify-between gap-3 px-1 pb-3">
         <h2 className="text-sm font-medium text-muted-foreground">Par {METRIC_LABEL[metric]}</h2>
         <div className="flex flex-wrap gap-1.5">
-          {(["wons", "mrr"] as const).map((m) => (
+          {(hideMrr ? (["wons"] as const) : (["wons", "mrr"] as const)).map((m) => (
             <button
               key={m}
               onClick={() => onMetricChange(m)}
@@ -261,7 +262,7 @@ export function CountryMap({ country, metric, onMetricChange, selected, onSelect
               <div className="text-sm font-semibold text-foreground">{name}</div>
               <div className="mt-1 grid grid-cols-2 gap-x-3 gap-y-0.5 text-muted-foreground">
                 <span>Wons</span><span className="text-right text-foreground">{wons}</span>
-                <span>MRR</span><span className="text-right text-foreground">{formatEUR(mrr)}</span>
+                {!hideMrr && (<><span>MRR</span><span className="text-right text-foreground">{formatEUR(mrr)}</span></>)}
                 <span>Top vertical</span><span className="text-right text-foreground truncate">{topV}</span>
               </div>
             </div>
