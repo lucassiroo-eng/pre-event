@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { CountryMap } from "@/components/dashboard/CountryMap";
 import { RegionDetail } from "@/components/dashboard/RegionDetail";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { formatEUR, type WonDeal } from "@/lib/csvStore";
 import { useDeals } from "@/lib/useDeals";
 import { getCountryConfig, applyCountryTheme, type CountryCode } from "@/lib/countryConfig";
@@ -157,35 +158,21 @@ export function OverviewPage() {
               </div>
             )}
             {verticals.length > 0 && (
-              <div className="mb-3 flex flex-wrap items-center gap-1.5">
-                <span className="mr-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+              <div className="mb-3 flex items-center gap-2">
+                <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
                   Vertical
                 </span>
-                <button
-                  onClick={() => setVertical("all")}
-                  className={cn(
-                    "rounded-full px-3 py-1 text-xs font-medium transition-colors",
-                    vertical === "all"
-                      ? "bg-primary text-primary-foreground"
-                      : "bg-secondary text-secondary-foreground hover:bg-secondary/70",
-                  )}
-                >
-                  Todos
-                </button>
-                {verticals.map((v) => (
-                  <button
-                    key={v}
-                    onClick={() => setVertical(v)}
-                    className={cn(
-                      "rounded-full px-3 py-1 text-xs font-medium transition-colors",
-                      vertical === v
-                        ? "bg-primary text-primary-foreground"
-                        : "bg-secondary text-secondary-foreground hover:bg-secondary/70",
-                    )}
-                  >
-                    {v}
-                  </button>
-                ))}
+                <Select value={vertical} onValueChange={setVertical}>
+                  <SelectTrigger className="h-9 w-[240px] bg-background">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Todos los verticales</SelectItem>
+                    {verticals.map((v) => (
+                      <SelectItem key={v} value={v}>{v}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
             )}
             <CountryMap
