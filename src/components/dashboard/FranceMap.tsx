@@ -104,7 +104,21 @@ export function FranceMap({ metric, onMetricChange, selected, onSelect, wonsPerR
             <filter id="region-shadow" x="-20%" y="-20%" width="140%" height="140%">
               <feDropShadow dx="0" dy="2" stdDeviation="4" floodColor="var(--primary)" floodOpacity="0.35" />
             </filter>
+            <linearGradient id="map-bg" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0" stopColor="var(--accent)" stopOpacity="0.6" />
+              <stop offset="1" stopColor="var(--background)" />
+            </linearGradient>
+            <radialGradient id="map-glow" cx="0.5" cy="0.42" r="0.62">
+              <stop offset="0" stopColor="var(--map-1)" stopOpacity="0.35" />
+              <stop offset="1" stopColor="var(--map-1)" stopOpacity="0" />
+            </radialGradient>
+            <radialGradient id="map-vignette" cx="0.5" cy="0.5" r="0.72">
+              <stop offset="0.55" stopColor="#000" stopOpacity="0" />
+              <stop offset="1" stopColor="#000" stopOpacity="0.06" />
+            </radialGradient>
           </defs>
+          <rect width={WIDTH} height={HEIGHT} fill="url(#map-bg)" rx={16} />
+          <rect width={WIDTH} height={HEIGHT} fill="url(#map-glow)" rx={16} />
           <g>
             {features.map((f) => {
               const code = f.properties.code as RegionCode;
@@ -132,6 +146,7 @@ export function FranceMap({ metric, onMetricChange, selected, onSelect, wonsPerR
               );
             })}
           </g>
+          <rect width={WIDTH} height={HEIGHT} fill="url(#map-vignette)" rx={16} pointerEvents="none" />
         </svg>
 
         {hover && hoverRegion && (() => {
