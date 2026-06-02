@@ -35,24 +35,25 @@ addMap("fr", [
 ]);
 
 // ── SPAIN (code = region name, matches spain-regions.geojson.json) ──
+// Each region lists its own name + aliases so HubSpot "state" fields resolve directly.
 addMap("es", [
-  ["Madrid", ["Madrid","Alcalá de Henares","Leganés","Getafe","Alcorcón","Fuenlabrada","Móstoles","Torrejón de Ardoz","Parla","Alcobendas","Las Rozas","Pozuelo de Alarcón","Majadahonda","Rivas-Vaciamadrid","Tres Cantos"]],
-  ["Cataluña", ["Barcelona","Hospitalet de Llobregat","Badalona","Terrassa","Sabadell","Mataró","Santa Coloma de Gramenet","Tarragona","Girona","Lleida","Reus","Igualada","Vilanova i la Geltrú","Cornellà de Llobregat","Manresa"]],
-  ["Andalucia", ["Sevilla","Málaga","Córdoba","Granada","Almería","Cádiz","Jerez de la Frontera","Huelva","Dos Hermanas","Algeciras","Marbella","Linares","Jaén","Motril","Torremolinos","Roquetas de Mar"]],
-  ["Valencia", ["Valencia","Alicante","Elche","Castellón de la Plana","Torrent","Benidorm","Orihuela","Gandía","Elda","Alcoy","Paterna","Sagunto"]],
-  ["Pais Vasco", ["Bilbao","San Sebastián","Vitoria-Gasteiz","Barakaldo","Getxo","Irún","Donostia"]],
-  ["Galicia", ["Vigo","A Coruña","Ourense","Pontevedra","Lugo","Santiago de Compostela","Ferrol"]],
-  ["Castilla-Leon", ["Valladolid","Burgos","Salamanca","León","Zamora","Palencia","Segovia","Ávila","Soria"]],
-  ["Castilla-La Mancha", ["Toledo","Albacete","Ciudad Real","Cuenca","Guadalajara","Talavera de la Reina"]],
-  ["Aragon", ["Zaragoza","Huesca","Teruel","Calatayud"]],
-  ["Murcia", ["Murcia","Cartagena","Lorca","Molina de Segura"]],
-  ["Extremadura", ["Badajoz","Cáceres","Mérida","Plasencia"]],
-  ["Asturias", ["Gijón","Oviedo","Avilés","Mieres"]],
-  ["Navarra", ["Pamplona","Tudela","Barañáin"]],
-  ["Cantabria", ["Santander","Torrelavega","Castro-Urdiales"]],
-  ["La Rioja", ["Logroño","Calahorra","Arnedo"]],
-  ["Baleares", ["Palma","Ibiza","Manacor","Mahón","Calvià"]],
-  ["Canarias", ["Las Palmas de Gran Canaria","Santa Cruz de Tenerife","La Laguna","Arrecife","Puerto del Rosario","Arona"]],
+  ["Madrid", ["Madrid","Comunidad de Madrid","Region de Madrid","Alcalá de Henares","Leganés","Getafe","Alcorcón","Fuenlabrada","Móstoles","Torrejón de Ardoz","Parla","Alcobendas","Las Rozas","Pozuelo de Alarcón","Majadahonda","Rivas-Vaciamadrid","Tres Cantos"]],
+  ["Cataluña", ["Cataluña","Catalonia","Catalunya","Barcelona","Hospitalet de Llobregat","Badalona","Terrassa","Sabadell","Mataró","Santa Coloma de Gramenet","Tarragona","Girona","Lleida","Reus","Igualada","Vilanova i la Geltrú","Cornellà de Llobregat","Manresa"]],
+  ["Andalucia", ["Andalucia","Andalucía","Andalusia","Sevilla","Málaga","Córdoba","Granada","Almería","Cádiz","Jerez de la Frontera","Huelva","Dos Hermanas","Algeciras","Marbella","Linares","Jaén","Motril","Torremolinos","Roquetas de Mar"]],
+  ["Valencia", ["Valencia","Comunidad Valenciana","Comunitat Valenciana","País Valenciano","Alicante","Elche","Castellón de la Plana","Torrent","Benidorm","Orihuela","Gandía","Elda","Alcoy","Paterna","Sagunto"]],
+  ["Pais Vasco", ["Pais Vasco","País Vasco","Euskadi","Basque Country","Bilbao","San Sebastián","Vitoria-Gasteiz","Barakaldo","Getxo","Irún","Donostia"]],
+  ["Galicia", ["Galicia","Vigo","A Coruña","Ourense","Pontevedra","Lugo","Santiago de Compostela","Ferrol"]],
+  ["Castilla-Leon", ["Castilla-Leon","Castilla y León","Castilla León","Castile and León","Valladolid","Burgos","Salamanca","León","Zamora","Palencia","Segovia","Ávila","Soria"]],
+  ["Castilla-La Mancha", ["Castilla-La Mancha","Castilla La Mancha","Toledo","Albacete","Ciudad Real","Cuenca","Guadalajara","Talavera de la Reina"]],
+  ["Aragon", ["Aragon","Aragón","Zaragoza","Huesca","Teruel","Calatayud"]],
+  ["Murcia", ["Murcia","Región de Murcia","Region de Murcia","Cartagena","Lorca","Molina de Segura"]],
+  ["Extremadura", ["Extremadura","Badajoz","Cáceres","Mérida","Plasencia"]],
+  ["Asturias", ["Asturias","Principado de Asturias","Gijón","Oviedo","Avilés","Mieres"]],
+  ["Navarra", ["Navarra","Comunidad Foral de Navarra","Pamplona","Tudela","Barañáin"]],
+  ["Cantabria", ["Cantabria","Santander","Torrelavega","Castro-Urdiales"]],
+  ["La Rioja", ["La Rioja","Logroño","Calahorra","Arnedo"]],
+  ["Baleares", ["Baleares","Illes Balears","Islas Baleares","Balearic Islands","Palma","Ibiza","Manacor","Mahón","Calvià"]],
+  ["Canarias", ["Canarias","Islas Canarias","Canary Islands","Las Palmas de Gran Canaria","Santa Cruz de Tenerife","La Laguna","Arrecife","Puerto del Rosario","Arona"]],
 ]);
 
 // ── ITALY (code = numeric string 1-20, matches italy-regions.geojson.json) ──

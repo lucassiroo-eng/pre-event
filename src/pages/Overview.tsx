@@ -22,6 +22,7 @@ export function OverviewPage() {
   useEffect(() => {
     if (!country) { navigate("/"); return; }
     applyCountryTheme(country as CountryCode);
+    setSelected(undefined);
   }, [country, navigate]);
 
   const { byCountry } = useDeals();
