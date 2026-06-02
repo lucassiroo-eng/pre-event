@@ -2,8 +2,9 @@ import type PptxGenJSType from "pptxgenjs";
 import { geoMercator, geoPath } from "d3-geo";
 import { type WonDeal } from "@/lib/csvStore";
 import { groupIndustry } from "@/lib/industryGroups";
-import { recordPptDownload, type EnrichmentStore } from "@/lib/enrichmentStore";
+import { recordPptDownload, readEnrichmentStore, writeEnrichmentStore, type EnrichmentStore } from "@/lib/enrichmentStore";
 import { fetchLogos } from "@/lib/logoStore";
+import { lookupHubspotByName } from "@/lib/hubspotLookup";
 import { countModulesForIndustry } from "@/lib/bundleModules";
 
 import geoFR from "@/data/france-regions.geojson.json";
@@ -251,9 +252,53 @@ export async function generateRegionSlide(
     return { industry: industryName, count, modules, clients };
   });
 
+  // ─── Resolve a domain for each client on the slide ──────────────────────────
+  // Start from whatever the enrichment store already knows; for any client still
+  // missing a domain, do a quick ad-hoc HubSpot lookup by name (no full sync).
+  const slideClients = industryData.flatMap((ind) => ind.clients);
+  const domainById = new Map<string, string>();
+  for (const c of slideClients) {
+    const d = enrichStore?.[c.companyId]?.domain;
+    if (d) domainById.set(c.companyId, d);
+  }
+
+  const missing = slideClients.filter((c) => !domainById.has(c.companyId));
+  if (missing.length > 0) {
+    try {
+      const hits = await lookupHubspotByName(missing.map((c) => c.name));
+      if (hits.size > 0) {
+        const persist = readEnrichmentStore();
+        for (const c of missing) {
+          const hit = hits.get(c.name.trim().toLowerCase());
+          if (hit?.found && hit.domain) {
+            domainById.set(c.companyId, hit.domain);
+            // Cache it so future slides / the detail view reuse it.
+            const prev = persist[c.companyId];
+            persist[c.companyId] = {
+              companyId: c.companyId,
+              companyName: c.name,
+              hubspotId: hit.hubspotId ?? prev?.hubspotId ?? null,
+              hubspotCity: hit.city ?? prev?.hubspotCity ?? null,
+              hubspotZip: hit.zip ?? prev?.hubspotZip ?? null,
+              domain: hit.domain,
+              sireneCity: prev?.sireneCity ?? null,
+              sirenePostal: prev?.sirenePostal ?? null,
+              sireneSiren: prev?.sireneSiren ?? null,
+              regionCode: prev?.regionCode ?? "unknown",
+              status: prev?.status ?? "hs-matched",
+              enrichedAt: new Date().toISOString(),
+              error: null,
+              nps: prev?.nps,
+            };
+          }
+        }
+        writeEnrichmentStore(persist);
+      }
+    } catch { /* lookup is best-effort — fall back to initials */ }
+  }
+
   // Collect all unique domains for logos
-  const allCompanyIds = industryData.flatMap((ind) => ind.clients.map((c) => c.companyId));
-  const allDomains = [...new Set(allCompanyIds)].map((id) => enrichStore?.[id]?.domain ?? "").filter(Boolean);
+  const allDomains = [...new Set([...domainById.values()])].filter(Boolean);
   const logoCache = await fetchLogos(allDomains);
 
   const mapPng = await renderMapPng(country, code);
@@ -414,7 +459,7 @@ export async function generateRegionSlide(
     // 3 logos in a row
     clients.slice(0, 3).forEach((client, li) => {
       const lx = CX + COL_PAD + li * (LOGO_SZ + LOGO_GAP);
-      const domain = enrichStore?.[client.companyId]?.domain ?? "";
+      const domain = domainById.get(client.companyId) ?? "";
       const dataUrl = domain ? (logoCache[domain] ?? "") : "";
 
       if (dataUrl) {
