@@ -3,7 +3,8 @@ import { useNavigate } from "react-router-dom";
 import { ArrowUp, ArrowDown, ChevronsUpDown, Cloud } from "lucide-react";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { formatEUR, regionName, type WonDeal } from "@/lib/csvStore";
+import { formatEUR, type WonDeal } from "@/lib/csvStore";
+import { regionNameForCountry } from "@/lib/regionNames";
 import { useDeals } from "@/lib/useDeals";
 import { getCountryConfig, applyCountryTheme, type CountryCode } from "@/lib/countryConfig";
 import { groupIndustry, industryColorClass } from "@/lib/industryGroups";
@@ -47,7 +48,8 @@ export function TablePage() {
   const hideMrr = useHideMrr();
   const enrichment = useMemo(() => readEnrichmentStore(), []);
 
-  const isFrance = country === "fr";
+  // Show the region column/filter for any country that resolves regions.
+  const hasRegions = useMemo(() => deals.some((d) => d.regionCode !== "unknown"), [deals]);
 
   const [region, setRegion] = useState("all");
   const [sectorFilter, setSectorFilter] = useState("all");
@@ -68,10 +70,10 @@ export function TablePage() {
   }, [deals]);
 
   const regions = useMemo(() => {
-    if (!isFrance) return [];
+    if (!hasRegions) return [];
     return Array.from(new Set(deals.map((d) => d.regionCode).filter((r) => r !== "unknown")))
-      .sort((a, b) => regionName(a).localeCompare(regionName(b)));
-  }, [deals, isFrance]);
+      .sort((a, b) => regionNameForCountry(country, a).localeCompare(regionNameForCountry(country, b)));
+  }, [deals, hasRegions, country]);
 
   const seatsBucket = SEATS_BUCKETS.find((b) => b.value === seatsFilter) ?? SEATS_BUCKETS[0];
 
@@ -92,7 +94,7 @@ export function TablePage() {
       const get = (d: WonDeal): string | number | null => {
         switch (sortKey) {
           case "company": return d.companyName.toLowerCase();
-          case "region": return regionName(d.regionCode).toLowerCase();
+          case "region": return regionNameForCountry(country, d.regionCode).toLowerCase();
           case "sector": return groupIndustry(d.sector).toLowerCase();
           case "seats": return d.seats;
           case "mrr": return d.totalActualMrr;
@@ -149,10 +151,10 @@ export function TablePage() {
 
         <div className="border-b border-border bg-muted/30 px-5 py-4">
           <div className="grid gap-2.5 sm:grid-cols-2 lg:grid-cols-4">
-            {isFrance && (
+            {hasRegions && (
               <FilterSelect label="Region" value={region} onChange={(v) => { setRegion(v); }}>
                 <SelectItem value="all">All regions</SelectItem>
-                {regions.map((r) => <SelectItem key={r} value={r}>{regionName(r)}</SelectItem>)}
+                {regions.map((r) => <SelectItem key={r} value={r}>{regionNameForCountry(country, r)}</SelectItem>)}
               </FilterSelect>
             )}
             <FilterSelect label="Sector" value={sectorFilter} onChange={setSectorFilter}>
@@ -174,7 +176,7 @@ export function TablePage() {
             <thead className="bg-muted/40">
               <tr className="border-b border-border text-left text-xs uppercase tracking-wide text-muted-foreground">
                 <Th sortKey="company" current={sortKey} dir={sortDir} onClick={toggleSort}>Company</Th>
-                {isFrance && <Th sortKey="region" current={sortKey} dir={sortDir} onClick={toggleSort}>Region</Th>}
+                {hasRegions && <Th sortKey="region" current={sortKey} dir={sortDir} onClick={toggleSort}>Region</Th>}
                 <Th sortKey="sector" current={sortKey} dir={sortDir} onClick={toggleSort}>Sector</Th>
                 <Th sortKey="seats" current={sortKey} dir={sortDir} onClick={toggleSort} align="right">Seats</Th>
                 {!hideMrr && <Th sortKey="mrr" current={sortKey} dir={sortDir} onClick={toggleSort} align="right">MRR</Th>}
@@ -203,9 +205,9 @@ export function TablePage() {
                       )}
                     </span>
                   </td>
-                  {isFrance && (
+                  {hasRegions && (
                     <td className="px-3 py-2 text-muted-foreground">
-                      {d.regionCode !== "unknown" ? regionName(d.regionCode) : "—"}
+                      {regionNameForCountry(country, d.regionCode)}
                     </td>
                   )}
                   <td className="px-3 py-2">
