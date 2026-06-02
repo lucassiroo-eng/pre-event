@@ -38,14 +38,15 @@ const GEO_DATA: Partial<Record<CountryCode, GeoCollection>> = {
 // Computed from geographic bounds: scale fills ~85% of SVG area.
 // Replaces fitSize/fitExtent which produce degenerate projections for
 // small-extent countries (Portugal, Germany) or fail on bbox polygons.
+// center = Mercator visual midpoint (NOT geographic midpoint), scale fills ~80% of 640px SVG
 const PROJ_PARAMS: Partial<Record<CountryCode, { center: [number, number]; scale: number }>> = {
-  fr: { center: [2.25,    46.25],  scale: 2100 },
-  es: { center: [-2.50,   39.50],  scale: 2250 },
-  it: { center: [12.55,   41.30],  scale: 2200 },
-  de: { center: [10.45,   51.20],  scale: 2400 },
-  br: { center: [-53.20, -14.25],  scale: 750  },
-  pt: { center: [-8.10,   39.55],  scale: 4900 },
-  mx: { center: [-102.55, 23.55],  scale: 980  },
+  fr: { center: [2.25,    46.47],  scale: 1995 },
+  es: { center: [-2.50,   39.64],  scale: 2125 },
+  it: { center: [12.55,   41.56],  scale: 1891 },
+  de: { center: [10.45,   51.37],  scale: 2349 },
+  br: { center: [-53.20, -15.14],  scale: 705  },
+  pt: { center: [-8.10,   39.60],  scale: 4264 },
+  mx: { center: [-102.50, 23.87],  scale: 928  },
 };
 
 // Islands with centroid lon below this threshold go into the inset box

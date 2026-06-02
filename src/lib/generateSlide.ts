@@ -65,13 +65,13 @@ const ISLAND_LON_THRESHOLD: Record<string, number> = {
 // Hardcoded projection params per country (center + scale at 640px reference size).
 // Same values as CountryMap.tsx — scale for PPTX canvas is proportionally adjusted.
 const PROJ_PARAMS: Record<string, { center: [number, number]; scale640: number }> = {
-  fr: { center: [2.25,    46.25],  scale640: 2100 },
-  es: { center: [-2.50,   39.50],  scale640: 2250 },
-  it: { center: [12.55,   41.30],  scale640: 2200 },
-  de: { center: [10.45,   51.20],  scale640: 2400 },
-  br: { center: [-53.20, -14.25],  scale640: 750  },
-  pt: { center: [-8.10,   39.55],  scale640: 4900 },
-  mx: { center: [-102.55, 23.55],  scale640: 980  },
+  fr: { center: [2.25,    46.47],  scale640: 1995 },
+  es: { center: [-2.50,   39.64],  scale640: 2125 },
+  it: { center: [12.55,   41.56],  scale640: 1891 },
+  de: { center: [10.45,   51.37],  scale640: 2349 },
+  br: { center: [-53.20, -15.14],  scale640: 705  },
+  pt: { center: [-8.10,   39.60],  scale640: 4264 },
+  mx: { center: [-102.50, 23.87],  scale640: 928  },
 };
 
 function featureCentroidLon(geom: unknown): number {
@@ -216,6 +216,13 @@ async function renderMapPng(
   return canvas.toDataURL("image/png");
 }
 
+// ─── Helpers ─────────────────────────────────────────────────────────────────
+function shortCompanyName(name: string, maxLen = 11): string {
+  if (name.length <= maxLen) return name;
+  const firstWord = name.split(/[\s,.(]/)[0];
+  return firstWord.length <= maxLen ? firstWord : firstWord.slice(0, maxLen - 1) + "…";
+}
+
 // ─── Main export ─────────────────────────────────────────────────────────────
 export async function generateRegionSlide(
   code: string,
@@ -225,17 +232,6 @@ export async function generateRegionSlide(
 ) {
   const regionDeals = deals.filter((d) => d.regionCode === code);
   const name = getRegionName(country, code);
-
-  // Top 5 companies (region, by seats then MRR — most visible accounts)
-  const seenCompany = new Set<string>();
-  const top5Companies: { name: string; companyId: string }[] = [];
-  for (const d of [...regionDeals].sort((a, b) => b.seats - a.seats || b.totalActualMrr - a.totalActualMrr)) {
-    const key = d.companyName.trim().toLowerCase();
-    if (seenCompany.has(key)) continue;
-    seenCompany.add(key);
-    top5Companies.push({ name: d.companyName, companyId: d.companyId });
-    if (top5Companies.length >= 5) break;
-  }
 
   // Top 3 industries (region)
   type IndAcc = { count: number; deals: WonDeal[] };
@@ -252,15 +248,30 @@ export async function generateRegionSlide(
     .sort((a, b) => b[1].count - a[1].count)
     .slice(0, 3);
 
-  // Top module per industry (country-wide, real module counts via bundle mapping)
-  const industryTopModules = top3Industries.map(([industryName]) => {
-    const mods = countModulesForIndustry(deals, industryName, country);
-    return { industry: industryName, module: mods[0]?.module ?? "—" };
+  // For each industry: top 3 modules (country-wide) + top 3 clients (by seats in region)
+  const industryData = top3Industries.map(([industryName, { count }]) => {
+    // Top 3 modules country-wide for this industry
+    const modules = countModulesForIndustry(deals, industryName, country).slice(0, 3);
+
+    // Top 3 clients in region by seats
+    const seen = new Set<string>();
+    const clients: { name: string; companyId: string; seats: number }[] = [];
+    for (const d of [...regionDeals.filter((x) => groupIndustry(x.sector) === industryName)]
+      .sort((a, b) => b.seats - a.seats || b.totalActualMrr - a.totalActualMrr)) {
+      const key = d.companyName.trim().toLowerCase();
+      if (seen.has(key)) continue;
+      seen.add(key);
+      clients.push({ name: d.companyName, companyId: d.companyId, seats: d.seats });
+      if (clients.length >= 3) break;
+    }
+
+    return { industry: industryName, count, modules, clients };
   });
 
-  // Logos for top 5
-  const domains = top5Companies.map((c) => enrichStore?.[c.companyId]?.domain ?? "");
-  const logoCache = await fetchLogos(domains.filter(Boolean));
+  // Collect all unique domains for logos
+  const allCompanyIds = industryData.flatMap((ind) => ind.clients.map((c) => c.companyId));
+  const allDomains = [...new Set(allCompanyIds)].map((id) => enrichStore?.[id]?.domain ?? "").filter(Boolean);
+  const logoCache = await fetchLogos(allDomains);
 
   const mapPng = await renderMapPng(country, code);
 
@@ -277,132 +288,178 @@ export async function generateRegionSlide(
   const W = 13.33;
   const H = 7.5;
   const HEADER_H = 1.42;
-  const BODY_Y = HEADER_H + 0.08;  // 1.50
+  const BODY_Y = HEADER_H + 0.08;   // 1.50
 
-  const MAP_W = 5.9;
-  const VDIV_X = MAP_W + 0.06;
-  const COL_X = VDIV_X + 0.012 + 0.2;   // ≈ 6.17
-  const COL_W = W - COL_X - 0.12;       // ≈ 7.04
+  const MAP_W = 3.90;
+  const RIGHT_X = MAP_W + 0.12;     // 4.02
+  const RIGHT_W = W - RIGHT_X - 0.10;  // 9.21
+  const COL_GAP = 0.10;
+  const COL_W = (RIGHT_W - 2 * COL_GAP) / 3;  // 2.97
+  const COL_BOTTOM = H - 0.12;      // 7.38
+  const COL_H = COL_BOTTOM - BODY_Y; // 5.88
+  const COL_PAD = 0.18;             // inner horizontal padding
 
-  // Logo row
-  const LOGO_LABEL_Y = BODY_Y + 0.08;   // 1.58
-  const LOGO_PILL_SZ = 1.02;            // square pill
-  const LOGO_IMG_SZ = 0.74;
-  const LOGO_Y = LOGO_LABEL_Y + 0.28;   // 1.86
-  const LOGO_GAP = (COL_W - 5 * LOGO_PILL_SZ) / 4;  // ≈ 0.505
+  const LOGO_SZ = 0.80;
+  const LOGO_GAP = 0.07;
 
-  // Industry rows
-  const HDIV_Y = LOGO_Y + LOGO_PILL_SZ + 0.22;  // ≈ 3.10
-  const IND_Y = HDIV_Y + 0.28;                   // ≈ 3.38
-  const IND_ROW_H = (H - IND_Y - 0.12) / 3;     // ≈ 1.33
+  const MAX_MODULES = 3;
+  const MOD_ROW_H = 0.46;
+  const BAR_H = 0.14;
 
   // ── HEADER ────────────────────────────────────────────────────────────────
   slide.addShape("rect", { x: 0, y: 0, w: W, h: HEADER_H, fill: { color: C.headerBg }, line: { type: "none" } });
   slide.addShape("rect", { x: 0, y: HEADER_H - 0.04, w: W, h: 0.04, fill: { color: C.accent }, line: { type: "none" } });
 
-  // "factorial" wordmark (small, top-left)
   slide.addText("factorial", {
-    x: 0.5, y: 0.28, w: 2, h: 0.22,
+    x: 0.5, y: 0.26, w: 2, h: 0.22,
     fontSize: 11, bold: true, color: C.accent, fontFace: "Inter",
   });
-
-  // Region name
   slide.addText(name, {
-    x: 0.5, y: 0.48, w: 11, h: 0.78,
+    x: 0.5, y: 0.46, w: 10.5, h: 0.82,
     fontSize: 36, bold: true, color: C.white, fontFace: "Inter",
   });
-
-  // Client count (right side, big)
   slide.addText(String(regionDeals.length), {
-    x: 10.3, y: 0.15, w: 2.85, h: 0.82,
+    x: 10.5, y: 0.14, w: 2.7, h: 0.80,
     fontSize: 52, bold: true, color: C.accent, align: "right", valign: "bottom", fontFace: "Inter",
   });
   slide.addText(regionDeals.length === 1 ? "CLIENT" : "CLIENTS", {
-    x: 10.3, y: 1.02, w: 2.85, h: 0.22,
+    x: 10.5, y: 1.04, w: 2.7, h: 0.22,
     fontSize: 8, bold: true, color: C.sub, charSpacing: 2.5, align: "right", fontFace: "Inter",
   });
 
   // ── MAP ───────────────────────────────────────────────────────────────────
   if (mapPng) {
-    slide.addImage({ data: mapPng, x: 0.08, y: BODY_Y, w: MAP_W - 0.08, h: H - BODY_Y - 0.08 });
+    slide.addImage({ data: mapPng, x: 0.06, y: BODY_Y, w: MAP_W - 0.06, h: COL_H });
   }
-
+  // Map/content divider
   slide.addShape("rect", {
-    x: VDIV_X, y: HEADER_H, w: 0.012, h: H - HEADER_H,
-    fill: { color: C.sep }, line: { type: "none" },
+    x: MAP_W + 0.01, y: BODY_Y, w: 0.01, h: COL_H,
+    fill: { color: C.cardBorder }, line: { type: "none" },
   });
 
-  // ── LOGO ROW ──────────────────────────────────────────────────────────────
-  slide.addText("NOS CLIENTS DANS LA RÉGION", {
-    x: COL_X, y: LOGO_LABEL_Y, w: COL_W, h: 0.2,
-    fontSize: 7.5, bold: true, color: C.sub, charSpacing: 2.5, fontFace: "Inter",
-  });
+  // ── 3 INDUSTRY COLUMNS ───────────────────────────────────────────────────
+  const IND_COLORS = [C.accent, "F59E0B", "22C97B"] as const; // coral / amber / green
 
-  top5Companies.forEach((c, i) => {
-    const px = COL_X + i * (LOGO_PILL_SZ + LOGO_GAP);
-    const domain = enrichStore?.[c.companyId]?.domain ?? "";
-    const dataUrl = domain ? (logoCache[domain] ?? "") : "";
+  industryData.forEach(({ industry, count, modules, clients }, colIdx) => {
+    const CX = RIGHT_X + colIdx * (COL_W + COL_GAP);
+    const innerW = COL_W - 2 * COL_PAD;
+    let y = BODY_Y + 0.20;
 
-    // pill background
+    // Column card
     slide.addShape("roundRect", {
-      x: px, y: LOGO_Y, w: LOGO_PILL_SZ, h: LOGO_PILL_SZ,
-      fill: { color: dataUrl ? "FFFFFF" : C.card },
-      line: { color: dataUrl ? "E8E8EC" : C.cardBorder, width: 0.5 },
-      rectRadius: 0.14,
+      x: CX, y: BODY_Y + 0.06, w: COL_W, h: COL_H - 0.12,
+      fill: { color: C.card }, line: { color: C.cardBorder, width: 0.5 }, rectRadius: 0.12,
     });
 
-    if (dataUrl) {
-      const offset = (LOGO_PILL_SZ - LOGO_IMG_SZ) / 2;
-      slide.addImage({ data: dataUrl, x: px + offset, y: LOGO_Y + offset, w: LOGO_IMG_SZ, h: LOGO_IMG_SZ });
+    // Left accent bar
+    slide.addShape("rect", {
+      x: CX + 0.06, y: y + 0.06, w: 0.08, h: 0.38,
+      fill: { color: IND_COLORS[colIdx] ?? C.accent }, line: { type: "none" },
+    });
+
+    // Industry name
+    slide.addText(industry, {
+      x: CX + 0.20, y, w: COL_W - 0.30, h: 0.44,
+      fontSize: 11, bold: true, color: C.white, fontFace: "Inter",
+    });
+    // Count badge
+    slide.addText(`${count} wons`, {
+      x: CX + COL_PAD, y: y + 0.46, w: innerW, h: 0.18,
+      fontSize: 7.5, color: C.sub, fontFace: "Inter",
+    });
+    y += 0.74;
+
+    // "MODULES · PAYS" section
+    slide.addShape("rect", {
+      x: CX + COL_PAD, y, w: innerW, h: 0.01,
+      fill: { color: C.cardBorder }, line: { type: "none" },
+    });
+    y += 0.14;
+    slide.addText("MODULES · PAYS", {
+      x: CX + COL_PAD, y, w: innerW, h: 0.18,
+      fontSize: 7, bold: true, color: C.sub, charSpacing: 2, fontFace: "Inter",
+    });
+    y += 0.24;
+
+    if (modules.length === 0) {
+      slide.addText("—", {
+        x: CX + COL_PAD, y, w: innerW, h: 0.30,
+        fontSize: 10, color: C.sub, fontFace: "Inter",
+      });
+      y += 0.34;
     } else {
-      // Initial letter fallback
-      slide.addText(c.name.charAt(0).toUpperCase(), {
-        x: px, y: LOGO_Y, w: LOGO_PILL_SZ, h: LOGO_PILL_SZ,
-        fontSize: 24, bold: true, color: C.accent, align: "center", valign: "middle", fontFace: "Inter",
+      const maxCount = modules[0].count;
+      modules.slice(0, MAX_MODULES).forEach(({ module, count: mc, pct }) => {
+        // Module name + pct
+        slide.addText(module, {
+          x: CX + COL_PAD, y, w: innerW - 0.45, h: 0.22,
+          fontSize: 9.5, bold: true, color: C.white, fontFace: "Inter",
+        });
+        slide.addText(`${pct}%`, {
+          x: CX + COL_PAD + innerW - 0.40, y, w: 0.40, h: 0.22,
+          fontSize: 9, bold: true, color: IND_COLORS[colIdx] ?? C.accent, align: "right", fontFace: "Inter",
+        });
+        // Bar
+        slide.addShape("roundRect", {
+          x: CX + COL_PAD, y: y + 0.24, w: innerW, h: BAR_H,
+          fill: { color: C.barTrack }, line: { type: "none" }, rectRadius: BAR_H / 2,
+        });
+        const fillW = Math.max(innerW * (mc / maxCount), 0.1);
+        slide.addShape("roundRect", {
+          x: CX + COL_PAD, y: y + 0.24, w: fillW, h: BAR_H,
+          fill: { color: IND_COLORS[colIdx] ?? C.accent }, line: { type: "none" }, rectRadius: BAR_H / 2,
+        });
+        y += MOD_ROW_H;
       });
     }
 
-    // Company name below pill (truncated)
-    const shortName = c.name.length > 14 ? c.name.slice(0, 13) + "…" : c.name;
-    slide.addText(shortName, {
-      x: px, y: LOGO_Y + LOGO_PILL_SZ + 0.06, w: LOGO_PILL_SZ, h: 0.2,
-      fontSize: 7.5, color: C.sub, align: "center", fontFace: "Inter",
+    y += 0.10;
+
+    // "TOP CLIENTS · RÉGION" section
+    slide.addShape("rect", {
+      x: CX + COL_PAD, y, w: innerW, h: 0.01,
+      fill: { color: C.cardBorder }, line: { type: "none" },
     });
-  });
+    y += 0.14;
+    slide.addText("TOP CLIENTS · RÉGION", {
+      x: CX + COL_PAD, y, w: innerW, h: 0.18,
+      fontSize: 7, bold: true, color: C.sub, charSpacing: 2, fontFace: "Inter",
+    });
+    y += 0.26;
 
-  // ── DIVIDER ───────────────────────────────────────────────────────────────
-  slide.addShape("rect", {
-    x: COL_X, y: HDIV_Y, w: COL_W, h: 0.012,
-    fill: { color: C.sep }, line: { type: "none" },
-  });
+    // 3 logos in a row
+    clients.slice(0, 3).forEach((client, li) => {
+      const lx = CX + COL_PAD + li * (LOGO_SZ + LOGO_GAP);
+      const domain = enrichStore?.[client.companyId]?.domain ?? "";
+      const dataUrl = domain ? (logoCache[domain] ?? "") : "";
 
-  // ── INDUSTRY → MODULE ROWS ────────────────────────────────────────────────
-  slide.addText("SECTEUR PRINCIPAL  ·  MODULE CLÉ", {
-    x: COL_X, y: IND_Y - 0.2, w: COL_W, h: 0.18,
-    fontSize: 7.5, bold: true, color: C.sub, charSpacing: 2.5, fontFace: "Inter",
-  });
+      if (dataUrl) {
+        // White pill for logo
+        slide.addShape("roundRect", {
+          x: lx, y, w: LOGO_SZ, h: LOGO_SZ,
+          fill: { color: "FFFFFF" }, line: { color: "E8E8EC", width: 0.5 }, rectRadius: 0.10,
+        });
+        const imgOff = (LOGO_SZ - LOGO_SZ * 0.78) / 2;
+        slide.addImage({ data: dataUrl, x: lx + imgOff, y: y + imgOff, w: LOGO_SZ * 0.78, h: LOGO_SZ * 0.78 });
+      } else {
+        // Dark square with company name
+        slide.addShape("roundRect", {
+          x: lx, y, w: LOGO_SZ, h: LOGO_SZ,
+          fill: { color: C.cardBorder }, line: { color: C.muted, width: 0.5 }, rectRadius: 0.10,
+        });
+        const label = shortCompanyName(client.name, 9);
+        slide.addText(label, {
+          x: lx + 0.04, y: y + 0.04, w: LOGO_SZ - 0.08, h: LOGO_SZ - 0.08,
+          fontSize: label.length > 6 ? 7 : 9, bold: true, color: C.chipText,
+          align: "center", valign: "middle", fontFace: "Inter",
+        });
+      }
 
-  industryTopModules.forEach(({ industry, module }, i) => {
-    const iy = IND_Y + i * IND_ROW_H;
-
-    // Thin top separator for rows 1 and 2
-    if (i > 0) {
-      slide.addShape("rect", {
-        x: COL_X, y: iy, w: COL_W, h: 0.012,
-        fill: { color: C.muted }, line: { type: "none" },
+      // Company name below
+      slide.addText(shortCompanyName(client.name), {
+        x: lx, y: y + LOGO_SZ + 0.05, w: LOGO_SZ, h: 0.18,
+        fontSize: 6.5, color: C.sub, align: "center", fontFace: "Inter",
       });
-    }
-
-    // Industry label (small, muted)
-    slide.addText(industry.toUpperCase(), {
-      x: COL_X, y: iy + 0.22, w: COL_W * 0.5, h: 0.22,
-      fontSize: 8.5, bold: true, color: C.sub, charSpacing: 1.5, fontFace: "Inter",
-    });
-
-    // Module name (big, coral, right-aligned)
-    slide.addText(module, {
-      x: COL_X, y: iy + 0.48, w: COL_W, h: 0.65,
-      fontSize: 24, bold: true, color: C.accent, align: "right", valign: "top", fontFace: "Inter",
     });
   });
 
@@ -411,6 +468,6 @@ export async function generateRegionSlide(
   const user = window.localStorage.getItem("factorial.session.email") ?? "unknown";
   recordPptDownload({
     timestamp: new Date().toISOString(), region: name, country, user,
-    sections: ["logos", "industries-modules"],
+    sections: ["industries", "modules", "clients"],
   });
 }
