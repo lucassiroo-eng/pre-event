@@ -1,61 +1,55 @@
 import { groupIndustry } from "./industryGroups";
 import type { WonDeal } from "./csvStore";
 
-// ─── Plan name simplification ─────────────────────────────────────────────────
+// ─── Plan name simplification (for display) ───────────────────────────────────
+// Strips the year prefix (F25, f24_, …) and the billing/tier suffix
+// (Enterprise, Business, e-month, b-year) from either space- or underscore-
+// separated HubSpot plan names.
 export function simplifyPlan(plan: string): string {
   if (!plan) return "";
   return plan
-    .replace(/^f25_/i, "")
-    .replace(/_(e|b)-(month|year).*$/i, "")
     .replace(/_/g, " ")
+    .replace(/^\s*f\d{2}\s+/i, "")
+    .replace(/\s+(enterprise|business)\s*$/i, "")
+    .replace(/\s+(e|b)-(month|year).*$/i, "")
     .replace(/\b\w/g, (c) => c.toUpperCase())
     .trim();
 }
 
 // ─── Bundle → differentiating modules ────────────────────────────────────────
-// Keys = simplified plan names. Values = modules above Core/TT/TO baseline.
-// Compensation IS listed here — it's informative to show even for FR.
+// Modules listed are those ABOVE the Core / Time Tracking / Time Off baseline.
+// HubSpot plan names look like "F25 Starter Planning Enterprise",
+// "F25 Planning Pro Business", "Core Enterprise". We detect the bundle keyword
+// and the Pro tier from the raw string rather than matching an exact key, so
+// any year prefix or Enterprise/Business suffix is tolerated.
 const BUNDLE_MODULES: Record<string, string[]> = {
-  // ── Starter ──
-  "Planning":          ["Shifts", "Compensation"],
-  "Productivity":      ["Performance", "Compensation"],
-  "Essentials":        ["Trainings", "Compensation"],
-  "Consulting":        ["Projects", "Compensation"],
-  "Operations":        ["Compensation"],
-  "People":            ["Performance", "Trainings", "Engagement"],
-  "People Talent":     ["Performance", "Trainings", "Engagement"],
-  // ── PRO ──
-  "Planning Pro":      ["Shifts", "Performance", "Trainings", "Engagement", "Compensation"],
-  "Productivity Pro":  ["Performance", "Trainings", "Engagement", "Compensation"],
-  "Essentials Pro":    ["Trainings", "Performance", "Engagement", "Compensation"],
-  "Consulting Pro":    ["Projects", "Performance", "Trainings", "Engagement", "Compensation"],
-  "People Pro":        ["Performance", "Trainings", "Engagement", "Compensation"],
-  // ── Common French combos (Compensation baked into plan name) ──
-  "Operations Compensation":   ["Compensation"],
-  "Planning Compensation":     ["Shifts", "Compensation"],
-  "Productivity Compensation": ["Performance", "Compensation"],
-  "Essentials Compensation":   ["Trainings", "Compensation"],
-  "Consulting Compensation":   ["Projects", "Compensation"],
-  "Starter Planning":          ["Shifts", "Compensation"],
-  "Starter Productivity":      ["Performance", "Compensation"],
-  "Starter Essentials":        ["Trainings", "Compensation"],
-  "Starter Consulting":        ["Projects", "Compensation"],
-  "Starter Operations":        ["Compensation"],
-  "Starter People":            ["Performance", "Trainings", "Engagement"],
-  // ── Legacy HubSpot codes ──
-  "Rrhh":       ["Performance", "Trainings"],
-  "Hr":         ["Performance", "Trainings"],
-  "Nominas":    ["Compensation"],
-  "Fichaje":    ["Shifts"],
-  "Proyectos":  ["Projects"],
-  "Formacion":  ["Trainings"],
-  "Evaluaciones": ["Performance"],
+  people:       ["Performance", "Trainings", "Engagement"],
+  planning:     ["Shifts", "Compensation"],
+  productivity: ["Performance", "Compensation"],
+  essentials:   ["Trainings", "Compensation"],
+  consulting:   ["Projects", "Compensation"],
+  shifts:       ["Shifts", "Compensation"],
+  operations:   ["Compensation"],
+  compensation: ["Compensation"],
 };
+
+// "Pro" tier always layers the full talent suite on top of the bundle.
+const PRO_MODULES = ["Performance", "Trainings", "Engagement", "Compensation"];
 
 export function getModulesForPlan(planName: string): string[] {
   if (!planName) return [];
-  const key = simplifyPlan(planName);
-  return BUNDLE_MODULES[key] ?? [];
+  const s = planName.toLowerCase();
+
+  // Detection order matters: more specific bundle keywords first.
+  let base: string[] = [];
+  for (const key of ["people", "planning", "productivity", "essentials", "consulting", "shifts", "operations", "compensation"]) {
+    if (s.includes(key)) { base = BUNDLE_MODULES[key]; break; }
+  }
+  // "Employee platform" / "Core" carry only the baseline → no extra modules.
+
+  const modules = new Set(base);
+  if (/\bpro\b/.test(s)) for (const m of PRO_MODULES) modules.add(m);
+  return [...modules];
 }
 
 // ─── Exclusions ───────────────────────────────────────────────────────────────
