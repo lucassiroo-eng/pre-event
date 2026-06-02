@@ -14,21 +14,22 @@ import geoBR from "@/data/brazil-regions.geojson.json";
 import geoPT from "@/data/portugal-regions.geojson.json";
 import geoMX from "@/data/mexico-regions.geojson.json";
 
-// ─── Palette ─────────────────────────────────────────────────────────────────
+// ─── Palette (light theme) ────────────────────────────────────────────────────
 const C = {
-  bg:         "0B0C14",
-  headerBg:   "06070D",
-  card:       "12131D",
-  cardBorder: "1C1E2C",
+  bg:         "FFFFFF",
+  headerBg:   "FFFFFF",
+  card:       "FAFAFC",
+  cardBorder: "E7E8EE",
   accent:     "FD4F6B",
   accentMid:  "8C1E30",
   accentDark: "1A090E",
-  white:      "EDEEF8",
-  sub:        "4E5168",
-  muted:      "1E202C",
-  sep:        "22242F",
-  barTrack:   "1C1E2C",
-  chipText:   "EDEEF8",
+  ink:        "1A1B2E", // primary text on white
+  white:      "1A1B2E", // alias kept for existing references
+  sub:        "6B6E85", // muted text
+  muted:      "EEEFF3",
+  sep:        "ECEDF1",
+  barTrack:   "EEEFF3",
+  chipText:   "1A1B2E",
 };
 
 // ─── Geo names ───────────────────────────────────────────────────────────────
@@ -85,8 +86,8 @@ function drawRegion(
 ) {
   if (isSelected) {
     ctx.save();
-    ctx.shadowColor = "#FD4F6B";
-    ctx.shadowBlur = size * 0.04;
+    ctx.shadowColor = "rgba(253,79,107,0.45)";
+    ctx.shadowBlur = size * 0.03;
     ctx.beginPath();
     pathGen(feature);
     ctx.fillStyle = "#FD4F6B";
@@ -94,18 +95,18 @@ function drawRegion(
     ctx.restore();
     ctx.beginPath();
     pathGen(feature);
-    ctx.fillStyle = "#FF5C77";
+    ctx.fillStyle = "#FD4F6B";
     ctx.fill();
-    ctx.strokeStyle = "#FFAAB8";
+    ctx.strokeStyle = "#FFFFFF";
     ctx.lineWidth = size * 0.0022;
     ctx.stroke();
   } else {
     ctx.beginPath();
     pathGen(feature);
-    ctx.fillStyle = "#191B2E";
+    ctx.fillStyle = "#ECEDF1";
     ctx.fill();
-    ctx.strokeStyle = "#272A40";
-    ctx.lineWidth = size * 0.001;
+    ctx.strokeStyle = "#FFFFFF";
+    ctx.lineWidth = size * 0.0014;
     ctx.stroke();
   }
 }
@@ -145,7 +146,7 @@ async function renderMapPng(
   if (!ctx) return null;
 
   // Background
-  ctx.fillStyle = "#0B0C14";
+  ctx.fillStyle = "#FFFFFF";
   ctx.fillRect(0, 0, size, size);
 
   const pathGen = geoPath().projection(projection).context(ctx) as unknown as CanvasPathGen;
@@ -154,13 +155,6 @@ async function renderMapPng(
   for (const f of mainlandFeatures) {
     drawRegion(ctx, pathGen, f, String(f.properties.code) === selectedCode, size);
   }
-
-  // Vignette overlay
-  const vignette = ctx.createRadialGradient(size / 2, size / 2, size * 0.28, size / 2, size / 2, size * 0.72);
-  vignette.addColorStop(0, "rgba(0,0,0,0)");
-  vignette.addColorStop(1, "rgba(0,0,0,0.32)");
-  ctx.fillStyle = vignette;
-  ctx.fillRect(0, 0, size, size);
 
   // ── Island inset (bottom-left) ─────────────────────────────────────────────
   if (islandFeatures.length > 0) {
@@ -174,9 +168,9 @@ async function renderMapPng(
     // Box
     ctx.beginPath();
     ctx.roundRect(IX, IY, IW, IH, RADIUS);
-    ctx.fillStyle = "#0D0F1C";
+    ctx.fillStyle = "#F7F7FA";
     ctx.fill();
-    ctx.strokeStyle = "#2A2D44";
+    ctx.strokeStyle = "#E7E8EE";
     ctx.lineWidth = Math.round(size * 0.0015);
     ctx.stroke();
 
@@ -194,7 +188,7 @@ async function renderMapPng(
 
     // "ISLAS" label
     ctx.font = `bold ${Math.round(size * 0.011)}px Inter, system-ui, sans-serif`;
-    ctx.fillStyle = "#3A3D58";
+    ctx.fillStyle = "#9A9DB0";
     ctx.textAlign = "left";
     ctx.textBaseline = "bottom";
     ctx.fillText("ISLAS", IX + IPAD, IY + IH - IPAD / 2);
@@ -235,19 +229,21 @@ export async function generateRegionSlide(
     .sort((a, b) => b[1].count - a[1].count)
     .slice(0, 3);
 
-  // For each industry: top 3 modules (country-wide) + top 3 clients (by seats in region)
+  // For each industry: top 3 modules (country-wide) + top 3 clients (by seats in region).
+  // A company may only appear in ONE vertical — globally dedupe across columns,
+  // processing the largest verticals first so the biggest companies land in their top one.
+  const usedCompanies = new Set<string>();
   const industryData = top3Industries.map(([industryName, { count }]) => {
-    // Top 3 modules country-wide for this industry
+    // Top 3 modules country-wide for this industry (names only, ranked)
     const modules = countModulesForIndustry(deals, industryName, country).slice(0, 3);
 
-    // Top 3 clients in region by seats
-    const seen = new Set<string>();
+    // Top 3 clients in region by seats, with their real full name
     const clients: { name: string; companyId: string; seats: number }[] = [];
     for (const d of [...regionDeals.filter((x) => groupIndustry(x.sector) === industryName)]
       .sort((a, b) => b.seats - a.seats || b.totalActualMrr - a.totalActualMrr)) {
       const key = d.companyName.trim().toLowerCase();
-      if (seen.has(key)) continue;
-      seen.add(key);
+      if (usedCompanies.has(key)) continue;
+      usedCompanies.add(key);
       clients.push({ name: d.companyName, companyId: d.companyId, seats: d.seats });
       if (clients.length >= 3) break;
     }
@@ -290,27 +286,34 @@ export async function generateRegionSlide(
   const LOGO_GAP = 0.07;
 
   const MAX_MODULES = 3;
-  const MOD_ROW_H = 0.46;
-  const BAR_H = 0.14;
+  const MOD_ROW_H = 0.42;
 
   // ── HEADER ────────────────────────────────────────────────────────────────
+  const verticalsSubtitle = top3Industries.length
+    ? `Top verticales: ${top3Industries.map(([n]) => n).join("  ·  ")}`
+    : "";
+
   slide.addShape("rect", { x: 0, y: 0, w: W, h: HEADER_H, fill: { color: C.headerBg }, line: { type: "none" } });
-  slide.addShape("rect", { x: 0, y: HEADER_H - 0.04, w: W, h: 0.04, fill: { color: C.accent }, line: { type: "none" } });
+  slide.addShape("rect", { x: 0, y: HEADER_H - 0.03, w: W, h: 0.03, fill: { color: C.accent }, line: { type: "none" } });
 
   slide.addText("factorial", {
-    x: 0.5, y: 0.26, w: 2, h: 0.22,
+    x: 0.5, y: 0.22, w: 2, h: 0.22,
     fontSize: 11, bold: true, color: C.accent, fontFace: "Inter",
   });
-  slide.addText(name, {
-    x: 0.5, y: 0.46, w: 10.5, h: 0.82,
-    fontSize: 36, bold: true, color: C.white, fontFace: "Inter",
+  slide.addText(`Clientes de Factorial en ${name}`, {
+    x: 0.5, y: 0.42, w: 9.8, h: 0.62,
+    fontSize: 28, bold: true, color: C.ink, fontFace: "Inter",
+  });
+  slide.addText(verticalsSubtitle, {
+    x: 0.5, y: 1.04, w: 9.8, h: 0.30,
+    fontSize: 11, color: C.sub, fontFace: "Inter",
   });
   slide.addText(String(regionDeals.length), {
-    x: 10.5, y: 0.14, w: 2.7, h: 0.80,
+    x: 10.5, y: 0.10, w: 2.7, h: 0.80,
     fontSize: 52, bold: true, color: C.accent, align: "right", valign: "bottom", fontFace: "Inter",
   });
-  slide.addText(regionDeals.length === 1 ? "CLIENT" : "CLIENTS", {
-    x: 10.5, y: 1.04, w: 2.7, h: 0.22,
+  slide.addText(regionDeals.length === 1 ? "CLIENTE" : "CLIENTES", {
+    x: 10.5, y: 1.00, w: 2.7, h: 0.22,
     fontSize: 8, bold: true, color: C.sub, charSpacing: 2.5, align: "right", fontFace: "Inter",
   });
 
@@ -362,7 +365,7 @@ export async function generateRegionSlide(
       fill: { color: C.cardBorder }, line: { type: "none" },
     });
     y += 0.14;
-    slide.addText("MODULES · PAYS", {
+    slide.addText("TOP MÓDULOS", {
       x: CX + COL_PAD, y, w: innerW, h: 0.18,
       fontSize: 7, bold: true, color: C.sub, charSpacing: 2, fontFace: "Inter",
     });
@@ -375,26 +378,20 @@ export async function generateRegionSlide(
       });
       y += 0.34;
     } else {
-      const maxCount = modules[0].count;
-      modules.slice(0, MAX_MODULES).forEach(({ module, count: mc, pct }) => {
-        // Module name + pct
+      modules.slice(0, MAX_MODULES).forEach(({ module }, mi) => {
+        // Rank badge
+        slide.addShape("roundRect", {
+          x: CX + COL_PAD, y, w: 0.26, h: 0.26,
+          fill: { color: IND_COLORS[colIdx] ?? C.accent }, line: { type: "none" }, rectRadius: 0.06,
+        });
+        slide.addText(String(mi + 1), {
+          x: CX + COL_PAD, y, w: 0.26, h: 0.26,
+          fontSize: 9, bold: true, color: "FFFFFF", align: "center", valign: "middle", fontFace: "Inter",
+        });
+        // Module name
         slide.addText(module, {
-          x: CX + COL_PAD, y, w: innerW - 0.45, h: 0.22,
-          fontSize: 9.5, bold: true, color: C.white, fontFace: "Inter",
-        });
-        slide.addText(`${pct}%`, {
-          x: CX + COL_PAD + innerW - 0.40, y, w: 0.40, h: 0.22,
-          fontSize: 9, bold: true, color: IND_COLORS[colIdx] ?? C.accent, align: "right", fontFace: "Inter",
-        });
-        // Bar
-        slide.addShape("roundRect", {
-          x: CX + COL_PAD, y: y + 0.24, w: innerW, h: BAR_H,
-          fill: { color: C.barTrack }, line: { type: "none" }, rectRadius: BAR_H / 2,
-        });
-        const fillW = Math.max(innerW * (mc / maxCount), 0.1);
-        slide.addShape("roundRect", {
-          x: CX + COL_PAD, y: y + 0.24, w: fillW, h: BAR_H,
-          fill: { color: IND_COLORS[colIdx] ?? C.accent }, line: { type: "none" }, rectRadius: BAR_H / 2,
+          x: CX + COL_PAD + 0.36, y, w: innerW - 0.36, h: 0.26,
+          fontSize: 10.5, bold: true, color: C.ink, valign: "middle", fontFace: "Inter",
         });
         y += MOD_ROW_H;
       });
@@ -408,7 +405,7 @@ export async function generateRegionSlide(
       fill: { color: C.cardBorder }, line: { type: "none" },
     });
     y += 0.14;
-    slide.addText("TOP CLIENTS · RÉGION", {
+    slide.addText("TOP CLIENTES · REGIÓN", {
       x: CX + COL_PAD, y, w: innerW, h: 0.18,
       fontSize: 7, bold: true, color: C.sub, charSpacing: 2, fontFace: "Inter",
     });
@@ -429,23 +426,23 @@ export async function generateRegionSlide(
         const imgOff = (LOGO_SZ - LOGO_SZ * 0.78) / 2;
         slide.addImage({ data: dataUrl, x: lx + imgOff, y: y + imgOff, w: LOGO_SZ * 0.78, h: LOGO_SZ * 0.78 });
       } else {
-        // Dark square with company name
+        // Placeholder square with company initials
         slide.addShape("roundRect", {
           x: lx, y, w: LOGO_SZ, h: LOGO_SZ,
-          fill: { color: C.cardBorder }, line: { color: C.muted, width: 0.5 }, rectRadius: 0.10,
+          fill: { color: C.muted }, line: { color: C.cardBorder, width: 0.5 }, rectRadius: 0.10,
         });
         const label = shortCompanyName(client.name, 9);
         slide.addText(label, {
           x: lx + 0.04, y: y + 0.04, w: LOGO_SZ - 0.08, h: LOGO_SZ - 0.08,
-          fontSize: label.length > 6 ? 7 : 9, bold: true, color: C.chipText,
+          fontSize: label.length > 6 ? 7 : 9, bold: true, color: C.sub,
           align: "center", valign: "middle", fontFace: "Inter",
         });
       }
 
-      // Company name below
-      slide.addText(shortCompanyName(client.name), {
-        x: lx, y: y + LOGO_SZ + 0.05, w: LOGO_SZ, h: 0.18,
-        fontSize: 6.5, color: C.sub, align: "center", fontFace: "Inter",
+      // Real full company name below
+      slide.addText(client.name, {
+        x: lx - LOGO_GAP / 2, y: y + LOGO_SZ + 0.05, w: LOGO_SZ + LOGO_GAP, h: 0.30,
+        fontSize: 6.5, color: C.ink, align: "center", valign: "top", fontFace: "Inter",
       });
     });
   });
