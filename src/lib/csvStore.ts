@@ -64,8 +64,10 @@ export function parseCsv(text: string): WonDeal[] {
   const lines = clean.split(/\r?\n/).filter((l) => l.trim().length > 0);
   if (lines.length < 2) return [];
 
-  const headers = splitCsvLine(lines[0]).map((h) => h.trim());
-  const idx = (name: string) => headers.indexOf(name);
+  // Normalize headers so "Plan Name", "plan name", "Plan_Name" all match "plan_name".
+  const norm = (s: string) => s.trim().toLowerCase().replace(/[\s-]+/g, "_");
+  const headersNorm = splitCsvLine(lines[0]).map(norm);
+  const idx = (name: string) => headersNorm.indexOf(norm(name));
 
   const iCompanyId = idx("company_id");
   const iCompanyName = idx("company_name");
