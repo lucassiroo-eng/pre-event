@@ -34,21 +34,6 @@ const GEO_DATA: Partial<Record<CountryCode, GeoCollection>> = {
   mx: geoMX as unknown as GeoCollection,
 };
 
-// Hardcoded projection params per country (center + scale at WIDTH=640px).
-// Computed from geographic bounds: scale fills ~85% of SVG area.
-// Replaces fitSize/fitExtent which produce degenerate projections for
-// small-extent countries (Portugal, Germany) or fail on bbox polygons.
-// center = Mercator visual midpoint (NOT geographic midpoint), scale fills ~80% of 640px SVG
-const PROJ_PARAMS: Partial<Record<CountryCode, { center: [number, number]; scale: number }>> = {
-  fr: { center: [2.25,    46.47],  scale: 1995 },
-  es: { center: [-2.50,   39.64],  scale: 2125 },
-  it: { center: [12.55,   41.56],  scale: 1891 },
-  de: { center: [10.45,   51.37],  scale: 2349 },
-  br: { center: [-53.20, -15.14],  scale: 705  },
-  pt: { center: [-8.10,   39.60],  scale: 4264 },
-  mx: { center: [-102.50, 23.87],  scale: 928  },
-};
-
 // Islands with centroid lon below this threshold go into the inset box
 const ISLAND_LON_THRESHOLD: Partial<Record<CountryCode, number>> = {
   es: -10,  // Canary Islands centroid ~-16.4°
@@ -109,20 +94,14 @@ export function CountryMap({ country, metric, onMetricChange, selected, onSelect
     };
   }, [features, islandThreshold]);
 
-  const projection = useMemo(() => {
-    const params = PROJ_PARAMS[country];
-    if (params) {
-      return geoMercator()
-        .center(params.center)
-        .scale(params.scale)
-        .translate([WIDTH / 2, HEIGHT / 2]);
-    }
-    // Fallback for unlisted countries
-    return geoMercator().fitSize(
-      [WIDTH, HEIGHT - 20],
-      { type: "FeatureCollection", features: mainlandFeatures } as GeoJSON.FeatureCollection,
-    );
-  }, [country, mainlandFeatures]);
+  const projection = useMemo(
+    () =>
+      geoMercator().fitSize(
+        [WIDTH, HEIGHT - 20],
+        { type: "FeatureCollection", features: mainlandFeatures } as GeoJSON.FeatureCollection,
+      ),
+    [mainlandFeatures],
+  );
 
   const path = useMemo(() => geoPath(projection) as unknown as SvgPathFn, [projection]);
 

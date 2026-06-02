@@ -64,18 +64,6 @@ const ISLAND_LON_THRESHOLD: Record<string, number> = {
   es: -10,  // Canary Islands centroid ~-16.4°
 };
 
-// Hardcoded projection params per country (center + scale at 640px reference size).
-// Same values as CountryMap.tsx — scale for PPTX canvas is proportionally adjusted.
-const PROJ_PARAMS: Record<string, { center: [number, number]; scale640: number }> = {
-  fr: { center: [2.25,    46.47],  scale640: 1995 },
-  es: { center: [-2.50,   39.64],  scale640: 2125 },
-  it: { center: [12.55,   41.56],  scale640: 1891 },
-  de: { center: [10.45,   51.37],  scale640: 2349 },
-  br: { center: [-53.20, -15.14],  scale640: 705  },
-  pt: { center: [-8.10,   39.60],  scale640: 4264 },
-  mx: { center: [-102.50, 23.87],  scale640: 928  },
-};
-
 function featureCentroidLon(geom: unknown): number {
   const g = geom as { type: string; coordinates: unknown[] };
   let coords: number[][] = [];
@@ -145,13 +133,10 @@ async function renderMapPng(
     ? allFeatures.filter((f) => featureCentroidLon(f.geometry) < lonThreshold)
     : [];
 
-  const params = PROJ_PARAMS[country];
-  const projection = params
-    ? geoMercator()
-        .center(params.center)
-        .scale(params.scale640 * (size / 640))
-        .translate([size / 2, size / 2])
-    : geoMercator().fitSize([size, size], { type: "FeatureCollection" as const, features: mainlandFeatures });
+  const projection = geoMercator().fitSize(
+    [size, size],
+    { type: "FeatureCollection" as const, features: mainlandFeatures },
+  );
 
   const canvas = document.createElement("canvas");
   canvas.width = size;
