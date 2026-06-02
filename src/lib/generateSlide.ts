@@ -62,29 +62,17 @@ const ISLAND_LON_THRESHOLD: Record<string, number> = {
   es: -10,  // Canary Islands centroid ~-16.4°
 };
 
-// Explicit mainland bounds per country [minLon, minLat, maxLon, maxLat]
-// Using fixed bounds avoids D3 fitSize degenerate projection on small-extent countries
-const COUNTRY_BOUNDS: Record<string, [number, number, number, number]> = {
-  fr: [-5.2, 41.3, 9.7, 51.2],
-  es: [-9.4, 35.1, 4.4, 43.9],
-  it: [6.5, 35.4, 18.6, 47.2],
-  de: [5.8, 47.2, 15.1, 55.2],
-  br: [-74.1, -33.9, -32.3, 5.4],
-  pt: [-9.6, 36.8, -6.6, 42.3],
-  mx: [-118.4, 14.4, -86.6, 32.7],
+// Hardcoded projection params per country (center + scale at 640px reference size).
+// Same values as CountryMap.tsx — scale for PPTX canvas is proportionally adjusted.
+const PROJ_PARAMS: Record<string, { center: [number, number]; scale640: number }> = {
+  fr: { center: [2.25,    46.25],  scale640: 2100 },
+  es: { center: [-2.50,   39.50],  scale640: 2250 },
+  it: { center: [12.55,   41.30],  scale640: 2200 },
+  de: { center: [10.45,   51.20],  scale640: 2400 },
+  br: { center: [-53.20, -14.25],  scale640: 750  },
+  pt: { center: [-8.10,   39.55],  scale640: 4900 },
+  mx: { center: [-102.55, 23.55],  scale640: 980  },
 };
-
-function makeBboxFC(bounds: [number, number, number, number]): GeoJSON.FeatureCollection {
-  const [w, s, e, n] = bounds;
-  return {
-    type: "FeatureCollection",
-    features: [{
-      type: "Feature" as const,
-      properties: {},
-      geometry: { type: "Polygon" as const, coordinates: [[[w, s], [e, s], [e, n], [w, n], [w, s]]] },
-    }],
-  };
-}
 
 function featureCentroidLon(geom: unknown): number {
   const g = geom as { type: string; coordinates: unknown[] };
@@ -155,10 +143,13 @@ async function renderMapPng(
     ? allFeatures.filter((f) => featureCentroidLon(f.geometry) < lonThreshold)
     : [];
 
-  const pad = size * 0.07;
-  const bounds = COUNTRY_BOUNDS[country];
-  const projFC = bounds ? makeBboxFC(bounds) : { type: "FeatureCollection" as const, features: mainlandFeatures };
-  const projection = geoMercator().fitExtent([[pad, pad], [size - pad, size - pad]], projFC);
+  const params = PROJ_PARAMS[country];
+  const projection = params
+    ? geoMercator()
+        .center(params.center)
+        .scale(params.scale640 * (size / 640))
+        .translate([size / 2, size / 2])
+    : geoMercator().fitSize([size, size], { type: "FeatureCollection" as const, features: mainlandFeatures });
 
   const canvas = document.createElement("canvas");
   canvas.width = size;
@@ -188,8 +179,8 @@ async function renderMapPng(
   if (islandFeatures.length > 0) {
     const IW = Math.round(size * 0.30);
     const IH = Math.round(size * 0.14);
-    const IX = pad;
-    const IY = size - pad - IH;
+    const IX = Math.round(size * 0.07);
+    const IY = size - Math.round(size * 0.07) - IH;
     const IPAD = Math.round(size * 0.012);
     const RADIUS = Math.round(size * 0.008);
 

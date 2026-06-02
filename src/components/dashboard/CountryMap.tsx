@@ -34,17 +34,18 @@ const GEO_DATA: Partial<Record<CountryCode, GeoCollection>> = {
   mx: geoMX as unknown as GeoCollection,
 };
 
-// Explicit mainland geographic bounds [minLon, minLat, maxLon, maxLat].
-// Using fixed bounds (instead of fitSize from features) prevents D3's fitSize
-// from producing degenerate projections for small-extent countries.
-const COUNTRY_BOUNDS: Partial<Record<CountryCode, [number, number, number, number]>> = {
-  fr: [-5.2, 41.3, 9.7, 51.2],
-  es: [-9.4, 35.1, 4.4, 43.9],  // mainland only (Canary Islands excluded)
-  it: [6.5, 35.4, 18.6, 47.2],
-  de: [5.8, 47.2, 15.1, 55.2],
-  br: [-74.1, -33.9, -32.3, 5.4],
-  pt: [-9.6, 36.8, -6.6, 42.3],
-  mx: [-118.4, 14.4, -86.6, 32.7],
+// Hardcoded projection params per country (center + scale at WIDTH=640px).
+// Computed from geographic bounds: scale fills ~85% of SVG area.
+// Replaces fitSize/fitExtent which produce degenerate projections for
+// small-extent countries (Portugal, Germany) or fail on bbox polygons.
+const PROJ_PARAMS: Partial<Record<CountryCode, { center: [number, number]; scale: number }>> = {
+  fr: { center: [2.25,    46.25],  scale: 2100 },
+  es: { center: [-2.50,   39.50],  scale: 2250 },
+  it: { center: [12.55,   41.30],  scale: 2200 },
+  de: { center: [10.45,   51.20],  scale: 2400 },
+  br: { center: [-53.20, -14.25],  scale: 750  },
+  pt: { center: [-8.10,   39.55],  scale: 4900 },
+  mx: { center: [-102.55, 23.55],  scale: 980  },
 };
 
 // Islands with centroid lon below this threshold go into the inset box
@@ -81,18 +82,6 @@ const METRIC_LABEL: Record<MapMetric, string> = {
 
 type SvgPathFn = (feature: GeoJSON.Feature | null | undefined) => string | null;
 
-function makeBboxFC(bounds: [number, number, number, number]): GeoJSON.FeatureCollection {
-  const [w, s, e, n] = bounds;
-  return {
-    type: "FeatureCollection",
-    features: [{
-      type: "Feature" as const,
-      properties: {},
-      geometry: { type: "Polygon" as const, coordinates: [[[w, s], [e, s], [e, n], [w, n], [w, s]]] },
-    }],
-  };
-}
-
 function getFeatureCentroidLon(f: GeoFeature): number {
   const geom = f.geometry as { type: string; coordinates: unknown[] };
   let coords: number[][] = [];
@@ -119,16 +108,19 @@ export function CountryMap({ country, metric, onMetricChange, selected, onSelect
     };
   }, [features, islandThreshold]);
 
-  // Use explicit country bounds for reliable, consistent projection
   const projection = useMemo(() => {
-    const bounds = COUNTRY_BOUNDS[country];
-    const proj = geoMercator();
-    if (bounds) {
-      proj.fitExtent([[10, 10], [WIDTH - 10, HEIGHT - 30]], makeBboxFC(bounds));
-    } else {
-      proj.fitSize([WIDTH, HEIGHT - 20], { type: "FeatureCollection", features: mainlandFeatures } as GeoJSON.FeatureCollection);
+    const params = PROJ_PARAMS[country];
+    if (params) {
+      return geoMercator()
+        .center(params.center)
+        .scale(params.scale)
+        .translate([WIDTH / 2, HEIGHT / 2]);
     }
-    return proj;
+    // Fallback for unlisted countries
+    return geoMercator().fitSize(
+      [WIDTH, HEIGHT - 20],
+      { type: "FeatureCollection", features: mainlandFeatures } as GeoJSON.FeatureCollection,
+    );
   }, [country, mainlandFeatures]);
 
   const path = useMemo(() => geoPath(projection) as unknown as SvgPathFn, [projection]);
