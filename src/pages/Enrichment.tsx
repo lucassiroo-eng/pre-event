@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
-import { Upload, Square, Download, Trash2, Database, Search, FlaskConical, Globe } from "lucide-react";
+import { Upload, Square, Download, Trash2, Database, Search, FlaskConical, Globe, Gauge } from "lucide-react";
 import { readDeals, parseCsv, mergeDeals, writeMeta, countryStats, type WonDeal } from "@/lib/csvStore";
 import { useDeals } from "@/lib/useDeals";
 import { readEnrichmentStore, writeEnrichmentStore, addTrackingEntry, readTracking, recordApiCall, type EnrichmentRecord, type EnrichmentStore, type TrackingEntry } from "@/lib/enrichmentStore";
@@ -341,6 +341,65 @@ export function EnrichmentPage() {
     setRunning(null);
   }, [running, deals, store, refresh, callHubspotLookup]);
 
+  // Refresh ONLY the NPS field for every matched company. Reuses hubspot-lookup
+  // (which already returns `nps`) without touching region/city/domain.
+  const runNps = useCallback(async () => {
+    if (running || !SUPABASE_URL) return;
+    const targets = frDeals; // sync NPS for every company in the current country
+    if (targets.length === 0) return;
+    cancelRef.current = false;
+    setRunning("hubspot");
+    const startedAt = Date.now();
+    setProgress({ done: 0, total: targets.length, matched: 0, errors: 0, startedAt });
+
+    const next = { ...store };
+    const BATCH = 25;
+    const CONCURRENCY = 15;
+    let matched = 0;
+    let errors = 0;
+    let done = 0;
+
+    const chunks: WonDeal[][] = [];
+    for (let i = 0; i < targets.length; i += BATCH) chunks.push(targets.slice(i, i + BATCH));
+
+    const processBatch = async (batch: WonDeal[]) => {
+      if (cancelRef.current) return;
+      try {
+        const data = await callHubspotLookup(batch);
+        recordApiCall("hubspot", data.results.length);
+        for (const hit of data.results) {
+          const deal = batch.find((d) => d.companyName === hit.query);
+          if (!deal) continue;
+          const prev = next[deal.companyId];
+          if (hit.found) {
+            if (hit.nps) matched++;
+            next[deal.companyId] = {
+              ...(prev ?? {
+                companyId: deal.companyId, companyName: deal.companyName,
+                hubspotId: hit.hubspotId, hubspotCity: hit.city, hubspotZip: hit.zip, domain: hit.domain ?? null,
+                sireneCity: null, sirenePostal: null, sireneSiren: null,
+                regionCode: "unknown" as any, status: "hs-matched",
+                enrichedAt: new Date().toISOString(), error: null,
+              }),
+              nps: hit.nps ?? null,
+              hubspotId: prev?.hubspotId ?? hit.hubspotId,
+            };
+          }
+        }
+      } catch { errors++; }
+      done += batch.length;
+      writeEnrichmentStore(next);
+      setStore({ ...next });
+      setProgress({ done: Math.min(done, targets.length), total: targets.length, matched, errors, startedAt });
+    };
+
+    await runWithConcurrency(chunks, processBatch, CONCURRENCY, cancelRef);
+
+    addTrackingEntry({ timestamp: new Date().toISOString(), type: "hubspot", batchSize: targets.length, matched, errors });
+    setTracking(readTracking());
+    setRunning(null);
+  }, [running, frDeals, store, callHubspotLookup]);
+
   const applyEnrichmentToDeals = (enrichStore: EnrichmentStore) => {
     const fresh = readDeals();
     const updatedDeals = fresh.map((d) => {
@@ -447,6 +506,15 @@ export function EnrichmentPage() {
                         {sirenePending.length === 0 ? "SIRENE: sin pendientes" : `SIRENE (${sirenePending.length})`}
                       </Button>
                     )}
+                    <Button
+                      onClick={runNps}
+                      disabled={frDeals.length === 0 || !SUPABASE_URL}
+                      variant="outline"
+                      title="Refresca solo el NPS label desde HubSpot para todas las empresas del país"
+                    >
+                      <Gauge className="h-4 w-4 mr-2" />
+                      NPS {selectedCountry.toUpperCase()} ({frDeals.length})
+                    </Button>
                   </>
                 ) : (
                   <Button variant="destructive" onClick={() => { cancelRef.current = true; }}>

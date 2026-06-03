@@ -14,7 +14,7 @@ import { useHideMrr } from "@/lib/useHideMrr";
 import { useT } from "@/lib/i18n";
 import { industryColorClass } from "@/lib/industryGroups";
 import { cn } from "@/lib/utils";
-import { Target, MapPin, Zap, Layers, ChevronDown } from "lucide-react";
+import { Target, MapPin, Zap, Layers } from "lucide-react";
 
 type MapMetric = "wons" | "mrr";
 
@@ -163,25 +163,18 @@ export function OverviewPage() {
               </div>
             )}
             {verticals.length > 0 && (
-              <div className="mb-3">
+              <div className="mb-3 flex items-center gap-2">
+                <span className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-primary/10 text-primary">
+                  <Layers className="h-4 w-4" />
+                </span>
+                <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                  {t("overview.vertical")}
+                </span>
                 <Select value={vertical} onValueChange={setVertical}>
                   <SelectTrigger
-                    className={cn(
-                      "group h-10 w-auto min-w-[260px] gap-2 rounded-full border-border bg-background px-2.5 pr-3 text-sm font-medium shadow-sm transition-colors hover:border-primary/40 hover:bg-muted/40 focus:ring-2 focus:ring-primary/20",
-                    )}
+                    className="h-9 min-w-[220px] gap-2 rounded-full border-border bg-background pl-3 pr-2 text-sm font-semibold text-foreground shadow-sm transition-colors hover:border-primary/40 hover:bg-muted/40 focus:ring-2 focus:ring-primary/20 [&>svg]:opacity-60"
                   >
-                    <span className="grid h-7 w-7 place-items-center rounded-full bg-primary/10 text-primary">
-                      <Layers className="h-3.5 w-3.5" />
-                    </span>
-                    <span className="flex flex-col items-start leading-tight">
-                      <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
-                        {t("overview.vertical")}
-                      </span>
-                      <span className="text-sm font-semibold text-foreground">
-                        {vertical === "all" ? t("overview.allVerticals") : vertical}
-                      </span>
-                    </span>
-                    <ChevronDown className="ml-auto h-4 w-4 text-muted-foreground transition-transform group-data-[state=open]:rotate-180" />
+                    <SelectValue placeholder={t("overview.allVerticals")} />
                   </SelectTrigger>
                   <SelectContent className="rounded-xl">
                     <SelectItem value="all" className="rounded-lg">
@@ -189,11 +182,13 @@ export function OverviewPage() {
                     </SelectItem>
                     {verticals.map((v) => (
                       <SelectItem key={v} value={v} className="rounded-lg">
-                        <span className={cn(
-                          "mr-2 inline-flex h-2 w-2 rounded-full ring-1 ring-inset align-middle",
-                          industryColorClass(v),
-                        )} />
-                        <span>{v}</span>
+                        <span className="inline-flex items-center gap-2">
+                          <span className={cn(
+                            "inline-flex h-2 w-2 rounded-full ring-1 ring-inset",
+                            industryColorClass(v),
+                          )} />
+                          <span>{v}</span>
+                        </span>
                       </SelectItem>
                     ))}
                   </SelectContent>

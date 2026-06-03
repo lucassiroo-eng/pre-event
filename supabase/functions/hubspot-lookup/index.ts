@@ -15,7 +15,7 @@ interface HsCompany {
     city: string | null;
     zip: string | null;
     domain: string | null;
-    nps: string | null;
+    nps_label: string | null;
   };
 }
 
@@ -24,7 +24,7 @@ async function searchCompany(name: string): Promise<HsCompany | null> {
     filterGroups: [{
       filters: [{ propertyName: "name", operator: "EQ", value: name }],
     }],
-    properties: ["name", "city", "zip", "domain", "nps"],
+    properties: ["name", "city", "zip", "domain", "nps_label"],
     limit: 1,
   };
 
@@ -60,7 +60,7 @@ serve(async (req) => {
         zip: company.properties.zip ?? null,
         hubspotId: company.id,
         domain: company.properties.domain ?? null,
-        nps: company.properties.nps ?? null,
+        nps: company.properties.nps_label ?? null,
       };
     }));
 

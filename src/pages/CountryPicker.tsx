@@ -1,7 +1,7 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
-import { Upload, ArrowRight } from "lucide-react";
-import { readMeta, parseCsv, writeMeta, mergeDeals, countryStats, formatEUR } from "@/lib/csvStore";
+import { ArrowRight } from "lucide-react";
+import { formatEUR, countryStats } from "@/lib/csvStore";
 import { useDeals } from "@/lib/useDeals";
 import { getCountryConfig, applyCountryTheme, type CountryCode } from "@/lib/countryConfig";
 import { useHideMrr } from "@/lib/useHideMrr";
@@ -11,11 +11,9 @@ const COUNTRY_KEY = "pre-event-country";
 
 export function CountryPicker() {
   const navigate = useNavigate();
-  const { deals, meta, loading, setDeals, refresh } = useDeals();
+  const { deals, loading } = useDeals();
   const hideMrr = useHideMrr();
   const t = useT();
-  const [error, setError] = useState<string | null>(null);
-  const fileRef = useRef<HTMLInputElement>(null);
 
   const stats = useMemo(() => countryStats(deals), [deals]);
   const countries = useMemo(() => {
@@ -25,29 +23,8 @@ export function CountryPicker() {
       .slice(0, 7);
   }, [stats]);
 
-  const onFile = useCallback(async (file: File) => {
-    setError(null);
-    try {
-      const text = await file.text();
-      const parsed = parseCsv(text);
-      if (parsed.length === 0) throw new Error("CSV vacío o sin company_name");
-      const { merged } = mergeDeals(deals, parsed);
-      setDeals(merged);
-      const cs = countryStats(merged);
-      writeMeta({
-        uploadedAt: new Date().toISOString(),
-        fileName: file.name,
-        totalRows: merged.length,
-        countries: Object.fromEntries(Object.entries(cs).map(([k, v]) => [k, v.count])),
-      });
-      refresh();
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Error parseando CSV");
-    }
-  }, []);
-
   const selectCountry = (code: string) => {
-    setLocaleCountry(code);                 // also persists to localStorage + emits
+    setLocaleCountry(code);
     applyCountryTheme(code as CountryCode);
     navigate("/overview");
   };
@@ -70,52 +47,37 @@ export function CountryPicker() {
         }}
       />
 
-      <div className="mx-auto max-w-[1280px] px-6 pb-16 pt-10 lg:px-10 lg:pt-14">
+      <div className="mx-auto flex min-h-[calc(100vh-3rem)] max-w-[1280px] flex-col justify-center px-6 py-12 lg:px-10">
         {/* Hero */}
-        <div className="flex items-end justify-between gap-6">
-          <div>
-            <div className="text-[11px] font-bold uppercase tracking-[0.22em] text-muted-foreground">
-              Factorial · {t("app.name")}
-            </div>
-            <h1 className="mt-2 text-5xl font-bold tracking-tight text-foreground sm:text-6xl">
-              {t("picker.availableCountries")}
-            </h1>
-            <p className="mt-3 max-w-xl text-base text-muted-foreground">
-              {t("app.subtitle")}
-            </p>
+        <div>
+          <div className="text-[11px] font-bold uppercase tracking-[0.22em] text-muted-foreground">
+            Factorial · {t("app.name")}
           </div>
-          {meta && (
-            <div className="hidden text-right md:block">
-              <div className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
-                {t("picker.lastFile")}
-              </div>
-              <div className="mt-0.5 max-w-[280px] truncate text-sm font-medium text-foreground">{meta.fileName}</div>
-              <div className="text-xs text-muted-foreground tabular-nums">
-                {meta.totalRows.toLocaleString()} {t("picker.companies")}
-              </div>
-            </div>
-          )}
+          <h1 className="mt-2 text-5xl font-bold tracking-tight text-foreground sm:text-6xl">
+            {t("picker.availableCountries")}
+          </h1>
+          <p className="mt-3 max-w-xl text-base text-muted-foreground">
+            {t("app.subtitle")}
+          </p>
         </div>
 
         {/* Country cards */}
         {countries.length > 0 && (
           <div className="mt-10 grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-            {countries.map(([code, s], i) => {
+            {countries.map(([code, s]) => {
               const cfg = getCountryConfig(code);
               return (
                 <button
                   key={code}
                   onClick={() => selectCountry(code)}
-                  style={{ animationDelay: `${i * 50}ms` }}
                   className="group relative isolate overflow-hidden rounded-2xl border border-border bg-card p-5 text-left shadow-sm transition-all duration-300 hover:-translate-y-0.5 hover:border-primary/40 hover:shadow-xl"
                 >
-                  {/* Hover wash tinted by the country's primary */}
                   <div
                     aria-hidden
                     className="pointer-events-none absolute inset-0 -z-10 opacity-0 transition-opacity duration-500 group-hover:opacity-100"
                     style={{
                       background:
-                        `radial-gradient(220px 160px at 80% 0%, ${cfg.primary.replace("oklch(", "oklch(").replace(")", " / 0.18)")}, transparent 70%)`,
+                        `radial-gradient(220px 160px at 80% 0%, ${cfg.primary.replace(")", " / 0.18)")}, transparent 70%)`,
                     }}
                   />
 
@@ -156,47 +118,6 @@ export function CountryPicker() {
             })}
           </div>
         )}
-
-        {/* CSV upload — secondary affordance, never overshadows the cards */}
-        <div className="mt-8">
-          <button
-            type="button"
-            onClick={() => fileRef.current?.click()}
-            onDragOver={(e) => e.preventDefault()}
-            onDrop={(e) => {
-              e.preventDefault();
-              const f = e.dataTransfer.files?.[0];
-              if (f) onFile(f);
-            }}
-            className="flex w-full items-center gap-3 rounded-2xl border border-dashed border-border bg-card/50 px-5 py-4 text-left text-sm transition-colors hover:border-primary/40 hover:bg-card"
-          >
-            <Upload className="h-4 w-4 shrink-0 text-muted-foreground" />
-            <div className="flex-1">
-              <div className="font-medium text-foreground">
-                {meta ? t("picker.update") : t("picker.upload")}
-              </div>
-              <div className="text-xs text-muted-foreground">
-                {t("picker.dropHint")} <span className="font-mono">company_name</span>.
-              </div>
-            </div>
-            <input
-              ref={fileRef}
-              type="file"
-              accept=".csv,text/csv"
-              className="hidden"
-              onChange={(e) => {
-                const f = e.target.files?.[0];
-                if (f) onFile(f);
-                e.target.value = "";
-              }}
-            />
-          </button>
-          {error && (
-            <div className="mt-3 rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-xs text-destructive">
-              {error}
-            </div>
-          )}
-        </div>
 
         {!loading && deals.length === 0 && (
           <div className="mt-16 text-center text-muted-foreground">
