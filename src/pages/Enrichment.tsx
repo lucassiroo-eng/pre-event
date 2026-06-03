@@ -114,7 +114,7 @@ export function EnrichmentPage() {
       body: JSON.stringify({ names }),
     });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    return res.json() as Promise<{ results: Array<{ query: string; found: boolean; city: string | null; zip: string | null; hubspotId: string | null; domain: string | null }> }>;
+    return res.json() as Promise<{ results: Array<{ query: string; found: boolean; city: string | null; zip: string | null; hubspotId: string | null; domain: string | null; nps: string | null }> }>;
   }, []);
 
   const runHubspot = useCallback(async () => {
