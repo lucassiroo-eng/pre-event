@@ -164,19 +164,13 @@ export function OverviewPage() {
             )}
             {verticals.length > 0 && (
               <div className="mb-3 max-w-[420px]">
-                <div className="mb-1.5 text-[10px] font-bold uppercase tracking-[0.18em] text-muted-foreground">
+                <label className="mb-1.5 block text-[10px] font-bold uppercase tracking-[0.18em] text-muted-foreground">
                   {t("overview.vertical")}
-                </div>
+                </label>
                 <Select value={vertical} onValueChange={setVertical}>
-                  <SelectTrigger
-                    className="group h-11 w-full gap-3 rounded-2xl border-border bg-background pl-2.5 pr-3 text-left shadow-sm transition-all hover:border-primary/40 hover:bg-muted/30 focus:ring-2 focus:ring-primary/20 [&>span]:!line-clamp-none"
-                  >
-                    <span className="grid h-8 w-8 shrink-0 place-items-center rounded-xl bg-primary/10 text-primary">
-                      <Layers className="h-4 w-4" />
-                    </span>
-                    <span className="flex min-w-0 flex-1 items-center gap-2 truncate text-sm font-semibold text-foreground">
-                      <SelectValue placeholder={t("overview.allVerticals")} />
-                    </span>
+                  <SelectTrigger className="h-11 w-full gap-3 rounded-2xl border-border bg-background px-4 text-sm font-semibold text-foreground shadow-sm transition-all hover:border-primary/40 hover:bg-muted/30 focus:ring-2 focus:ring-primary/20">
+                    <Layers className="h-4 w-4 shrink-0 text-primary" />
+                    <SelectValue placeholder={t("overview.allVerticals")} />
                   </SelectTrigger>
                   <SelectContent className="w-[var(--radix-select-trigger-width)] rounded-xl">
                     <SelectItem value="all" className="rounded-lg">
