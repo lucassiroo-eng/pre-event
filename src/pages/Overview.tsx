@@ -163,20 +163,24 @@ export function OverviewPage() {
               </div>
             )}
             {verticals.length > 0 && (
-              <div className="mb-3 flex items-center gap-2">
-                <span className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-primary/10 text-primary">
-                  <Layers className="h-4 w-4" />
-                </span>
-                <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-                  {t("overview.vertical")}
-                </span>
+              <div className="mb-3">
                 <Select value={vertical} onValueChange={setVertical}>
                   <SelectTrigger
-                    className="h-9 min-w-[220px] gap-2 rounded-full border-border bg-background pl-3 pr-2 text-sm font-semibold text-foreground shadow-sm transition-colors hover:border-primary/40 hover:bg-muted/40 focus:ring-2 focus:ring-primary/20 [&>svg]:opacity-60"
+                    className="group h-12 w-full max-w-[420px] gap-3 rounded-2xl border-border bg-background pl-2 pr-4 text-left shadow-sm transition-all hover:border-primary/40 hover:bg-muted/30 focus:ring-2 focus:ring-primary/20 [&>svg]:h-4 [&>svg]:w-4 [&>svg]:opacity-50"
                   >
-                    <SelectValue placeholder={t("overview.allVerticals")} />
+                    <span className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-primary/10 text-primary">
+                      <Layers className="h-4 w-4" />
+                    </span>
+                    <span className="flex min-w-0 flex-1 flex-col leading-tight">
+                      <span className="text-[10px] font-bold uppercase tracking-[0.14em] text-muted-foreground">
+                        {t("overview.vertical")}
+                      </span>
+                      <span className="truncate text-sm font-semibold text-foreground">
+                        <SelectValue placeholder={t("overview.allVerticals")} />
+                      </span>
+                    </span>
                   </SelectTrigger>
-                  <SelectContent className="rounded-xl">
+                  <SelectContent className="w-[var(--radix-select-trigger-width)] rounded-xl">
                     <SelectItem value="all" className="rounded-lg">
                       <span className="font-medium">{t("overview.allVerticals")}</span>
                     </SelectItem>
