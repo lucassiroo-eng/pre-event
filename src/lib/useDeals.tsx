@@ -1,8 +1,16 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
-import { loadDeals, readDeals, writeDeals, dealsByCountry, countryStats, type WonDeal, type CsvMeta, readMeta } from "./csvStore";
-import { readEnrichmentStore } from "./enrichmentStore";
+import { loadDeals, readDeals, writeDeals, dealsByCountry, countryStats, type WonDeal, type CsvMeta, readMeta, writeMeta } from "./csvStore";
+import { readEnrichmentStore, writeEnrichmentStore, type EnrichmentStore } from "./enrichmentStore";
 import { cityToRegion } from "./cityToRegionByCountry";
 import { postalToRegion } from "./postalToRegionByCountry";
+import {
+  cloudEnabled,
+  cloudFetchDeals,
+  cloudFetchEnrichment,
+  cloudFetchMeta,
+  cloudUpsertDeals,
+  cloudWriteMeta,
+} from "./cloudStore";
 
 function applyEnrichmentOverlay(deals: WonDeal[]): WonDeal[] {
   const store = readEnrichmentStore();
@@ -47,12 +55,48 @@ export function DealsProvider({ children }: { children: ReactNode }) {
   const [meta, setMeta] = useState<CsvMeta | null>(() => readMeta());
   const [loading, setLoading] = useState(true);
 
+  // Hydrate from cloud first (so any device sees the shared CSV + enrichment),
+  // fall back to localStorage on failure or when Supabase isn't configured.
   useEffect(() => {
-    loadDeals().then((loaded) => {
-      const enriched = applyEnrichmentOverlay(loaded);
-      setDealsState(enriched);
-      setLoading(false);
-    });
+    let cancelled = false;
+    (async () => {
+      // 1) Paint quickly with whatever localStorage has, so first paint isn't blank.
+      const local = await loadDeals();
+      if (!cancelled) {
+        const enriched = applyEnrichmentOverlay(local);
+        setDealsState(enriched);
+      }
+
+      // 2) Then try the cloud and overwrite the cache if it has data.
+      if (cloudEnabled) {
+        try {
+          const [cloudDeals, cloudEnrich, cloudMeta] = await Promise.all([
+            cloudFetchDeals(),
+            cloudFetchEnrichment(),
+            cloudFetchMeta(),
+          ]);
+          if (cancelled) return;
+          if (cloudEnrich && cloudEnrich.length > 0) {
+            const store: EnrichmentStore = {};
+            for (const r of cloudEnrich) store[r.companyId] = r;
+            writeEnrichmentStore(store);
+          }
+          if (cloudDeals && cloudDeals.length > 0) {
+            const enriched = applyEnrichmentOverlay(cloudDeals);
+            writeDeals(enriched);
+            setDealsState(enriched);
+          }
+          if (cloudMeta && cloudMeta.fileName) {
+            writeMeta(cloudMeta);
+            setMeta(cloudMeta);
+          }
+        } catch (err) {
+          console.warn("[cloud] hydration failed", err);
+        }
+      }
+      if (!cancelled) setLoading(false);
+    })();
+    return () => { cancelled = true; };
   }, []);
 
   const refresh = useCallback(() => {
@@ -67,6 +111,10 @@ export function DealsProvider({ children }: { children: ReactNode }) {
     const enriched = applyEnrichmentOverlay(newDeals);
     writeDeals(enriched);
     setDealsState(enriched);
+    // Mirror to cloud (best-effort). The Enrichment page also does an explicit
+    // cloud push on CSV upload — this catches any other code path that
+    // mutates deals.
+    if (cloudEnabled) void cloudUpsertDeals(enriched);
   }, []);
 
   const byCountry = useCallback(

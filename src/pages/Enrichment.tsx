@@ -11,6 +11,8 @@ import { useDeals } from "@/lib/useDeals";
 import { readEnrichmentStore, writeEnrichmentStore, addTrackingEntry, readTracking, recordApiCall, type EnrichmentRecord, type EnrichmentStore, type TrackingEntry } from "@/lib/enrichmentStore";
 import { cityToRegion } from "@/lib/cityToRegionByCountry";
 import { postalToRegion } from "@/lib/postalToRegionByCountry";
+import { cloudEnabled, cloudUpsertDeals, cloudUpsertEnrichment, cloudWriteMeta } from "@/lib/cloudStore";
+import { useAuth } from "@/lib/auth";
 
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL ?? "";
 const SUPABASE_ANON = import.meta.env.VITE_SUPABASE_ANON_KEY ?? "";
@@ -45,6 +47,7 @@ async function runWithConcurrency<T>(
 
 export function EnrichmentPage() {
   const { deals, setDeals, refresh } = useDeals();
+  const { isAdmin } = useAuth();
   const selectedCountry = window.localStorage.getItem("pre-event-country") ?? "fr";
   const [store, setStore] = useState<EnrichmentStore>(() => readEnrichmentStore());
   const [tracking, setTracking] = useState<TrackingEntry[]>(() => readTracking());
@@ -89,21 +92,40 @@ export function EnrichmentPage() {
   }).length, [frDeals, store]);
 
   const onFile = useCallback(async (file: File) => {
+    if (!isAdmin) {
+      alert("Solo administradores pueden subir un CSV nuevo.");
+      return;
+    }
     try {
       const text = await file.text();
       const parsed = parseCsv(text);
       if (parsed.length === 0) throw new Error("CSV vacío");
       const { merged } = mergeDeals(deals, parsed);
-      setDeals(merged);
+      setDeals(merged);                       // setDeals already mirrors to cloud
       const cs = countryStats(merged);
-      writeMeta({
+      const meta = {
         uploadedAt: new Date().toISOString(),
         fileName: file.name,
         totalRows: merged.length,
         countries: Object.fromEntries(Object.entries(cs).map(([k, v]) => [k, v.count])),
-      });
+      };
+      writeMeta(meta);
+      if (cloudEnabled) {
+        // Push the whole merged set explicitly — setDeals' cloud mirror runs
+        // in the background, but we want to be sure the meta and rows land
+        // together so other users see a consistent state.
+        void cloudUpsertDeals(merged).then(() => cloudWriteMeta(meta));
+      }
       refresh();
     } catch { /* ignore */ }
+  }, [isAdmin, deals, setDeals, refresh]);
+
+  // Best-effort: mirror the records for a batch to Supabase after they're
+  // written locally, so other users see the new enrichment without re-running.
+  const mirrorBatch = useCallback((store: EnrichmentStore, batch: WonDeal[]) => {
+    if (!cloudEnabled) return;
+    const recs = batch.map((d) => store[d.companyId]).filter(Boolean) as EnrichmentRecord[];
+    if (recs.length > 0) void cloudUpsertEnrichment(recs);
   }, []);
 
   const callHubspotLookup = useCallback(async (batch: WonDeal[]) => {
@@ -169,6 +191,7 @@ export function EnrichmentPage() {
       } catch { errors++; }
       done += batch.length;
       writeEnrichmentStore(next);
+      mirrorBatch(next, batch);
       setStore({ ...next });
       setProgress({ done: Math.min(done, hsPending.length), total: hsPending.length, matched, errors, startedAt });
     };
@@ -260,6 +283,7 @@ export function EnrichmentPage() {
       } catch { errors++; }
 
       writeEnrichmentStore(next);
+      mirrorBatch(next, batch);
       setStore({ ...next });
       setProgress({ done: Math.min(i + batch.length, sirenePending.length), total: sirenePending.length, matched, errors, startedAt });
     }
@@ -328,6 +352,7 @@ export function EnrichmentPage() {
       } catch { errors++; }
       done += batch.length;
       writeEnrichmentStore(next);
+      mirrorBatch(next, batch);
       setStore({ ...next });
       setProgress({ done: Math.min(done, allPending.length), total: allPending.length, matched, errors, startedAt });
     };
@@ -389,6 +414,7 @@ export function EnrichmentPage() {
       } catch { errors++; }
       done += batch.length;
       writeEnrichmentStore(next);
+      mirrorBatch(next, batch);
       setStore({ ...next });
       setProgress({ done: Math.min(done, targets.length), total: targets.length, matched, errors, startedAt });
     };
@@ -445,16 +471,20 @@ export function EnrichmentPage() {
 
       <div className="mt-6 space-y-6">
         <Card
-          className="p-6 border-dashed cursor-pointer hover:bg-muted/30 transition-colors"
-          onClick={() => fileRef.current?.click()}
+          className={`p-6 border-dashed transition-colors ${isAdmin ? "cursor-pointer hover:bg-muted/30" : "opacity-60"}`}
+          onClick={() => isAdmin && fileRef.current?.click()}
           onDragOver={(e) => e.preventDefault()}
-          onDrop={(e) => { e.preventDefault(); const f = e.dataTransfer.files?.[0]; if (f) onFile(f); }}
+          onDrop={(e) => { e.preventDefault(); if (!isAdmin) return; const f = e.dataTransfer.files?.[0]; if (f) onFile(f); }}
         >
           <div className="flex items-center gap-3 text-sm">
             <Upload className="h-5 w-5 text-muted-foreground" />
             <div className="flex-1">
-              <div className="font-medium">Actualizar CSV</div>
-              <div className="text-xs text-muted-foreground">Solo se enriquecerán las nuevas empresas</div>
+              <div className="font-medium">Actualizar CSV {isAdmin ? "" : "(solo admins)"}</div>
+              <div className="text-xs text-muted-foreground">
+                {isAdmin
+                  ? "Se sube a Supabase y todos los usuarios verán el nuevo CSV"
+                  : "Solo los administradores pueden subir un CSV nuevo"}
+              </div>
             </div>
           </div>
           <input ref={fileRef} type="file" accept=".csv" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) onFile(f); e.target.value = ""; }} />
