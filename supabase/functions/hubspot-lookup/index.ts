@@ -5,7 +5,7 @@ const CORS = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
-const HS_TOKEN = Deno.env.get("HUBSPOT_TOKEN") ?? "";
+const HS_TOKEN = Deno.env.get("HUBSPOT_PAT_TOKEN") ?? "";
 const HS_SEARCH = "https://api.hubapi.com/crm/v3/objects/companies/search";
 
 interface HsCompany {
