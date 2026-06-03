@@ -54,6 +54,7 @@ export function EnrichmentPage() {
   const [running, setRunning] = useState<RunType>(null);
   const [progress, setProgress] = useState({ done: 0, total: 0, matched: 0, errors: 0, startedAt: 0 });
   const [testResult, setTestResult] = useState<{ total: number; found: number; withRegion: number; samples: { name: string; city: string | null; region: string }[] } | null>(null);
+  const [uploadResult, setUploadResult] = useState<{ kind: "ok"; newCount: number; total: number; fileName: string } | { kind: "err"; message: string } | null>(null);
   const [filter, setFilter] = useState("");
   const cancelRef = useRef(false);
   const fileRef = useRef<HTMLInputElement>(null);
@@ -92,15 +93,16 @@ export function EnrichmentPage() {
   }).length, [frDeals, store]);
 
   const onFile = useCallback(async (file: File) => {
+    setUploadResult(null);
     if (!isAdmin) {
-      alert("Solo administradores pueden subir un CSV nuevo.");
+      setUploadResult({ kind: "err", message: "Solo administradores pueden subir un CSV nuevo." });
       return;
     }
     try {
       const text = await file.text();
       const parsed = parseCsv(text);
-      if (parsed.length === 0) throw new Error("CSV vacío");
-      const { merged } = mergeDeals(deals, parsed);
+      if (parsed.length === 0) throw new Error("CSV vacío o sin columna 'company_name'.");
+      const { merged, newCount } = mergeDeals(deals, parsed);
       setDeals(merged);                       // setDeals already mirrors to cloud
       const cs = countryStats(merged);
       const meta = {
@@ -114,10 +116,18 @@ export function EnrichmentPage() {
         // Push the whole merged set explicitly — setDeals' cloud mirror runs
         // in the background, but we want to be sure the meta and rows land
         // together so other users see a consistent state.
-        void cloudUpsertDeals(merged).then(() => cloudWriteMeta(meta));
+        const { ok, error } = await cloudUpsertDeals(merged);
+        if (!ok) {
+          setUploadResult({ kind: "err", message: `Subida a la nube falló: ${error ?? "error desconocido"}` });
+          return;
+        }
+        await cloudWriteMeta(meta);
       }
+      setUploadResult({ kind: "ok", newCount, total: merged.length, fileName: file.name });
       refresh();
-    } catch { /* ignore */ }
+    } catch (e) {
+      setUploadResult({ kind: "err", message: e instanceof Error ? e.message : "Error parseando CSV" });
+    }
   }, [isAdmin, deals, setDeals, refresh]);
 
   // Best-effort: mirror the records for a batch to Supabase after they're
@@ -489,6 +499,20 @@ export function EnrichmentPage() {
           </div>
           <input ref={fileRef} type="file" accept=".csv" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) onFile(f); e.target.value = ""; }} />
         </Card>
+
+        {uploadResult && uploadResult.kind === "ok" && (
+          <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-900 dark:border-emerald-800/40 dark:bg-emerald-950/30 dark:text-emerald-200">
+            <strong className="tabular-nums">+{uploadResult.newCount.toLocaleString()}</strong>{" "}
+            {uploadResult.newCount === 1 ? "deal nuevo" : "deals nuevos"} añadidos desde{" "}
+            <span className="font-mono text-xs">{uploadResult.fileName}</span>.{" "}
+            Total ahora: <strong className="tabular-nums">{uploadResult.total.toLocaleString()}</strong>.
+          </div>
+        )}
+        {uploadResult && uploadResult.kind === "err" && (
+          <div className="rounded-xl border border-destructive/40 bg-destructive/10 px-4 py-3 text-sm text-destructive">
+            {uploadResult.message}
+          </div>
+        )}
 
         <Tabs defaultValue="companies">
           <TabsList>
