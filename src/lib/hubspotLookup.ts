@@ -12,6 +12,7 @@ export interface HubspotHit {
   zip: string | null;
   hubspotId: string | null;
   domain: string | null;
+  nps: string | null;
 }
 
 async function callBatch(names: string[]): Promise<HubspotHit[]> {

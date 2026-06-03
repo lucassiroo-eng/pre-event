@@ -150,6 +150,7 @@ export function EnrichmentPage() {
             next[deal.companyId] = {
               companyId: deal.companyId, companyName: deal.companyName,
               hubspotId: hit.hubspotId, hubspotCity: hit.city, hubspotZip: hit.zip, domain: hit.domain ?? null,
+              nps: hit.nps ?? null,
               sireneCity: null, sirenePostal: null, sireneSiren: null,
               regionCode: region as any, status: "hs-matched",
               enrichedAt: new Date().toISOString(), error: null,
@@ -158,6 +159,7 @@ export function EnrichmentPage() {
             next[deal.companyId] = {
               companyId: deal.companyId, companyName: deal.companyName,
               hubspotId: null, hubspotCity: null, hubspotZip: null, domain: null,
+              nps: null,
               sireneCity: null, sirenePostal: null, sireneSiren: null,
               regionCode: "unknown", status: "no-match",
               enrichedAt: new Date().toISOString(), error: null,
@@ -307,6 +309,7 @@ export function EnrichmentPage() {
             next[deal.companyId] = {
               companyId: deal.companyId, companyName: deal.companyName,
               hubspotId: hit.hubspotId, hubspotCity: hit.city, hubspotZip: hit.zip, domain: hit.domain ?? null,
+              nps: hit.nps ?? null,
               sireneCity: null, sirenePostal: null, sireneSiren: null,
               regionCode: region as any, status: "hs-matched",
               enrichedAt: new Date().toISOString(), error: null,
@@ -315,6 +318,7 @@ export function EnrichmentPage() {
             next[deal.companyId] = {
               companyId: deal.companyId, companyName: deal.companyName,
               hubspotId: null, hubspotCity: null, hubspotZip: null, domain: null,
+              nps: null,
               sireneCity: null, sirenePostal: null, sireneSiren: null,
               regionCode: "unknown", status: "no-match",
               enrichedAt: new Date().toISOString(), error: null,

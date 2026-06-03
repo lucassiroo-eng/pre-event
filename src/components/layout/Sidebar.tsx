@@ -1,23 +1,24 @@
 import { useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import {
-  LayoutDashboard, Table2, Sparkles, Shield, LogOut, Globe, ChevronDown, FlaskConical, Eye, EyeOff,
+  LayoutDashboard, Table2, Sparkles, Shield, LogOut, Globe, ChevronDown, FlaskConical,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/lib/auth";
-import { useHideMrr, toggleHideMrr } from "@/lib/useHideMrr";
+import { useT } from "@/lib/i18n";
+import { getCountryConfig } from "@/lib/countryConfig";
 
-type NavItem = { to: string; label: string; icon: typeof LayoutDashboard };
+type NavItem = { to: string; labelKey: string; icon: typeof LayoutDashboard };
 
 const MAIN_NAV: NavItem[] = [
-  { to: "/", label: "Countries", icon: Globe },
-  { to: "/overview", label: "Overview", icon: LayoutDashboard },
-  { to: "/table", label: "Detail", icon: Table2 },
+  { to: "/", labelKey: "nav.countries", icon: Globe },
+  { to: "/overview", labelKey: "nav.overview", icon: LayoutDashboard },
+  { to: "/table", labelKey: "nav.detail", icon: Table2 },
 ];
 
 const ADMIN_NAV: NavItem[] = [
-  { to: "/enrichment", label: "Enrichment", icon: Sparkles },
-  { to: "/admin", label: "Admin", icon: Shield },
+  { to: "/enrichment", labelKey: "nav.enrichment", icon: Sparkles },
+  { to: "/admin", labelKey: "nav.admin", icon: Shield },
 ];
 
 export function Sidebar() {
@@ -25,9 +26,10 @@ export function Sidebar() {
   const { email, isAdmin, logout } = useAuth();
   const navigate = useNavigate();
   const [adminOpen, setAdminOpen] = useState(false);
-  const hideMrr = useHideMrr();
+  const t = useT();
 
   const selectedCountry = window.localStorage.getItem("pre-event-country") ?? "";
+  const cfg = selectedCountry ? getCountryConfig(selectedCountry) : null;
 
   const renderItem = (item: NavItem) => {
     const active = item.to === "/" ? pathname === "/" : pathname.startsWith(item.to);
@@ -44,7 +46,7 @@ export function Sidebar() {
         )}
       >
         <Icon className="h-4 w-4" />
-        {item.label}
+        {t(item.labelKey)}
       </Link>
     );
   };
@@ -56,29 +58,15 @@ export function Sidebar() {
           F
         </div>
         <div className="flex flex-col leading-tight">
-          <span className="text-sm font-semibold">Pre-Event</span>
-          <span className="text-[11px] text-sidebar-foreground/60">
-            {selectedCountry ? selectedCountry.toUpperCase() : "Select country"}
+          <span className="text-sm font-semibold">{t("app.name")}</span>
+          <span className="text-[11px] text-sidebar-foreground/60 inline-flex items-center gap-1">
+            {cfg ? <><span>{cfg.flag}</span><span>{cfg.name}</span></> : t("nav.countries")}
           </span>
         </div>
       </div>
 
       <nav className="flex-1 space-y-0.5 px-3 py-4">
         {MAIN_NAV.map(renderItem)}
-
-        <button
-          type="button"
-          onClick={toggleHideMrr}
-          className={cn(
-            "mt-2 flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors",
-            hideMrr
-              ? "bg-sidebar-accent text-sidebar-accent-foreground"
-              : "text-sidebar-foreground/75 hover:bg-sidebar-accent/60 hover:text-sidebar-foreground",
-          )}
-        >
-          {hideMrr ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-          {hideMrr ? "Mostrar MRR" : "Esconder MRR"}
-        </button>
       </nav>
 
       {isAdmin && (
@@ -89,7 +77,7 @@ export function Sidebar() {
             className="flex w-full items-center gap-1.5 rounded-md px-3 py-1.5 text-[10px] font-semibold uppercase tracking-wider text-sidebar-foreground/55 hover:bg-sidebar-accent/40"
           >
             <FlaskConical className="h-3 w-3" />
-            Admin
+            {t("nav.admin")}
             <ChevronDown className={cn("ml-auto h-3.5 w-3.5 transition-transform", adminOpen && "rotate-180")} />
           </button>
           {adminOpen && (
@@ -102,7 +90,7 @@ export function Sidebar() {
 
       <div className="border-t border-sidebar-border p-4 space-y-2">
         <div className="text-[10px] uppercase tracking-wider text-sidebar-foreground/45">
-          Signed in as
+          {t("auth.signedIn")}
         </div>
         <div className="w-full rounded-md border border-sidebar-border bg-sidebar-accent/30 px-2 py-1.5 text-xs text-sidebar-foreground truncate">
           {email ?? "—"}
@@ -113,7 +101,7 @@ export function Sidebar() {
           className="flex w-full items-center justify-center gap-2 rounded-md border border-sidebar-border bg-sidebar-accent/20 px-2 py-1.5 text-xs text-sidebar-foreground/75 hover:bg-sidebar-accent/50 hover:text-sidebar-foreground transition-colors"
         >
           <LogOut className="h-3.5 w-3.5" />
-          Cerrar sesión
+          {t("auth.logout")}
         </button>
       </div>
     </aside>

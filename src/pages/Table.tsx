@@ -11,11 +11,12 @@ import { groupIndustry, industryColorClass } from "@/lib/industryGroups";
 import { getModulesForPlan, getExcluded } from "@/lib/bundleModules";
 import { readEnrichmentStore } from "@/lib/enrichmentStore";
 import { useHideMrr } from "@/lib/useHideMrr";
+import { useT } from "@/lib/i18n";
 import { hubspotCompanyUrl } from "@/lib/hubspot";
 import { cn } from "@/lib/utils";
 
 const SEATS_BUCKETS = [
-  { label: "All sizes", value: "all", test: () => true },
+  { label: "all", value: "all", test: () => true },
   { label: "1–10", value: "1-10", test: (n: number) => n >= 1 && n <= 10 },
   { label: "11–50", value: "11-50", test: (n: number) => n >= 11 && n <= 50 },
   { label: "51–200", value: "51-200", test: (n: number) => n >= 51 && n <= 200 },
@@ -46,6 +47,7 @@ export function TablePage() {
   const { byCountry } = useDeals();
   const deals = useMemo(() => byCountry(country), [byCountry, country]);
   const hideMrr = useHideMrr();
+  const t = useT();
   const enrichment = useMemo(() => readEnrichmentStore(), []);
 
   // Show the region column/filter for any country that resolves regions.
@@ -127,10 +129,10 @@ export function TablePage() {
   if (deals.length === 0) {
     return (
       <div className="mx-auto max-w-[1500px] px-6 py-6 lg:px-8 lg:py-8">
-        <PageHeader title={`${cfg.flag} Detail`} subtitle="Wons table" />
+        <PageHeader title={`${cfg.flag} ${t("table.title")}`} subtitle={t("table.subtitle")} />
         <div className="mt-6 flex min-h-[300px] flex-col items-center justify-center gap-3 rounded-2xl border border-dashed border-border bg-card/40 p-8 text-center">
           <Cloud className="h-8 w-8 text-muted-foreground" />
-          <p className="text-sm text-muted-foreground">No data. Upload a CSV first.</p>
+          <p className="text-sm text-muted-foreground">{t("table.noData")}</p>
         </div>
       </div>
     );
@@ -138,34 +140,34 @@ export function TablePage() {
 
   return (
     <div className="mx-auto max-w-[1500px] px-6 py-6 lg:px-8 lg:py-8">
-      <PageHeader title={`${cfg.flag} Detail`} subtitle="Wons table" />
+      <PageHeader title={`${cfg.flag} ${t("table.title")}`} subtitle={t("table.subtitle")} />
 
       <div className="mt-6 rounded-2xl border border-border bg-card shadow-sm">
         <div className="flex flex-wrap items-center gap-4 border-b border-border px-5 py-4">
-          <Stat label="Wons" value={filtered.length.toLocaleString()} />
+          <Stat label={t("table.wons")} value={filtered.length.toLocaleString()} />
           {!hideMrr && <Stat label="MRR" value={formatEUR(filteredMrr)} />}
           {filtered.length !== deals.length && (
-            <span className="ml-auto text-xs text-muted-foreground">of {deals.length} total</span>
+            <span className="ml-auto text-xs text-muted-foreground">{t("table.of")} {deals.length} {t("table.total")}</span>
           )}
         </div>
 
         <div className="border-b border-border bg-muted/30 px-5 py-4">
           <div className="grid gap-2.5 sm:grid-cols-2 lg:grid-cols-4">
             {hasRegions && (
-              <FilterSelect label="Region" value={region} onChange={(v) => { setRegion(v); }}>
-                <SelectItem value="all">All regions</SelectItem>
+              <FilterSelect label={t("table.region")} value={region} onChange={(v) => { setRegion(v); }}>
+                <SelectItem value="all">{t("table.allRegions")}</SelectItem>
                 {regions.map((r) => <SelectItem key={r} value={r}>{regionNameForCountry(country, r)}</SelectItem>)}
               </FilterSelect>
             )}
-            <FilterSelect label="Sector" value={sectorFilter} onChange={setSectorFilter}>
-              <SelectItem value="all">All sectors</SelectItem>
+            <FilterSelect label={t("table.sector")} value={sectorFilter} onChange={setSectorFilter}>
+              <SelectItem value="all">{t("table.allSectors")}</SelectItem>
               {sectors.map((s) => <SelectItem key={s} value={s}>{s}</SelectItem>)}
             </FilterSelect>
-            <FilterSelect label="Seats" value={seatsFilter} onChange={setSeatsFilter}>
-              {SEATS_BUCKETS.map((b) => <SelectItem key={b.value} value={b.value}>{b.label}</SelectItem>)}
+            <FilterSelect label={t("table.seats")} value={seatsFilter} onChange={setSeatsFilter}>
+              {SEATS_BUCKETS.map((b) => <SelectItem key={b.value} value={b.value}>{b.value === "all" ? t("table.allSizes") : b.label}</SelectItem>)}
             </FilterSelect>
-            <FilterSelect label="Quarter" value={quarterFilter} onChange={setQuarterFilter}>
-              <SelectItem value="all">All quarters</SelectItem>
+            <FilterSelect label={t("table.quarter")} value={quarterFilter} onChange={setQuarterFilter}>
+              <SelectItem value="all">{t("table.allQuarters")}</SelectItem>
               {quarters.map((q) => <SelectItem key={q} value={q}>{q}</SelectItem>)}
             </FilterSelect>
           </div>
@@ -175,14 +177,14 @@ export function TablePage() {
           <table className="w-full text-sm">
             <thead className="bg-muted/40">
               <tr className="border-b border-border text-left text-xs uppercase tracking-wide text-muted-foreground">
-                <Th sortKey="company" current={sortKey} dir={sortDir} onClick={toggleSort}>Company</Th>
-                {hasRegions && <Th sortKey="region" current={sortKey} dir={sortDir} onClick={toggleSort}>Region</Th>}
-                <Th sortKey="sector" current={sortKey} dir={sortDir} onClick={toggleSort}>Sector</Th>
-                <Th sortKey="seats" current={sortKey} dir={sortDir} onClick={toggleSort} align="right">Seats</Th>
+                <Th sortKey="company" current={sortKey} dir={sortDir} onClick={toggleSort}>{t("table.company")}</Th>
+                {hasRegions && <Th sortKey="region" current={sortKey} dir={sortDir} onClick={toggleSort}>{t("table.region")}</Th>}
+                <Th sortKey="sector" current={sortKey} dir={sortDir} onClick={toggleSort}>{t("table.sector")}</Th>
+                <Th sortKey="seats" current={sortKey} dir={sortDir} onClick={toggleSort} align="right">{t("table.seats")}</Th>
                 {!hideMrr && <Th sortKey="mrr" current={sortKey} dir={sortDir} onClick={toggleSort} align="right">MRR</Th>}
-                <th className="px-3 py-2.5 font-medium text-left">Módulos</th>
-                <Th sortKey="converted" current={sortKey} dir={sortDir} onClick={toggleSort}>Converted</Th>
-                <th className="px-3 py-2.5 font-medium text-right">HubSpot</th>
+                <th className="px-3 py-2.5 font-medium text-left">{t("table.modules")}</th>
+                <Th sortKey="converted" current={sortKey} dir={sortDir} onClick={toggleSort}>{t("table.converted")}</Th>
+                <th className="px-3 py-2.5 font-medium text-right">{t("table.hubspot")}</th>
               </tr>
             </thead>
             <tbody>
@@ -238,7 +240,7 @@ export function TablePage() {
                 );
               })}
               {sorted.length === 0 && (
-                <tr><td colSpan={8} className="px-3 py-8 text-center text-sm text-muted-foreground">No deals match your filters.</td></tr>
+                <tr><td colSpan={8} className="px-3 py-8 text-center text-sm text-muted-foreground">{t("table.noMatch")}</td></tr>
               )}
             </tbody>
           </table>
@@ -246,13 +248,13 @@ export function TablePage() {
 
         {sorted.length > 0 && (
           <div className="flex flex-wrap items-center justify-between gap-3 border-t border-border px-5 py-3 text-xs text-muted-foreground">
-            <span className="tabular-nums">{pageStart + 1}–{Math.min(pageStart + PAGE_SIZE, sorted.length)} of {sorted.length}</span>
+            <span className="tabular-nums">{pageStart + 1}–{Math.min(pageStart + PAGE_SIZE, sorted.length)} {t("table.of")} {sorted.length}</span>
             <div className="flex items-center gap-1">
-              <PagBtn onClick={() => setPage(1)} disabled={page === 1}>« First</PagBtn>
-              <PagBtn onClick={() => setPage((p) => Math.max(1, p - 1))} disabled={page === 1}>‹ Prev</PagBtn>
-              <span className="px-2 tabular-nums">Page {page} / {pageCount}</span>
-              <PagBtn onClick={() => setPage((p) => Math.min(pageCount, p + 1))} disabled={page >= pageCount}>Next ›</PagBtn>
-              <PagBtn onClick={() => setPage(pageCount)} disabled={page >= pageCount}>Last »</PagBtn>
+              <PagBtn onClick={() => setPage(1)} disabled={page === 1}>{t("table.first")}</PagBtn>
+              <PagBtn onClick={() => setPage((p) => Math.max(1, p - 1))} disabled={page === 1}>{t("table.prev")}</PagBtn>
+              <span className="px-2 tabular-nums">{t("table.page")} {page} / {pageCount}</span>
+              <PagBtn onClick={() => setPage((p) => Math.min(pageCount, p + 1))} disabled={page >= pageCount}>{t("table.next")}</PagBtn>
+              <PagBtn onClick={() => setPage(pageCount)} disabled={page >= pageCount}>{t("table.last")}</PagBtn>
             </div>
           </div>
         )}

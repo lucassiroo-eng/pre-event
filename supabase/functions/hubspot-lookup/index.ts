@@ -15,6 +15,7 @@ interface HsCompany {
     city: string | null;
     zip: string | null;
     domain: string | null;
+    nps: string | null;
   };
 }
 
@@ -23,7 +24,7 @@ async function searchCompany(name: string): Promise<HsCompany | null> {
     filterGroups: [{
       filters: [{ propertyName: "name", operator: "EQ", value: name }],
     }],
-    properties: ["name", "city", "zip", "domain"],
+    properties: ["name", "city", "zip", "domain", "nps"],
     limit: 1,
   };
 
@@ -51,7 +52,7 @@ serve(async (req) => {
 
     const results = await Promise.all(names.map(async (query) => {
       const company = await searchCompany(query);
-      if (!company) return { query, found: false, city: null, zip: null, hubspotId: null, domain: null };
+      if (!company) return { query, found: false, city: null, zip: null, hubspotId: null, domain: null, nps: null };
       return {
         query,
         found: true,
@@ -59,6 +60,7 @@ serve(async (req) => {
         zip: company.properties.zip ?? null,
         hubspotId: company.id,
         domain: company.properties.domain ?? null,
+        nps: company.properties.nps ?? null,
       };
     }));
 

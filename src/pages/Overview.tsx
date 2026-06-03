@@ -11,8 +11,10 @@ import { groupIndustry } from "@/lib/industryGroups";
 import { generateRegionSlide } from "@/lib/generateSlide";
 import { readEnrichmentStore } from "@/lib/enrichmentStore";
 import { useHideMrr } from "@/lib/useHideMrr";
+import { useT } from "@/lib/i18n";
+import { industryColorClass } from "@/lib/industryGroups";
 import { cn } from "@/lib/utils";
-import { Target, MapPin, Zap } from "lucide-react";
+import { Target, MapPin, Zap, Layers, ChevronDown } from "lucide-react";
 
 type MapMetric = "wons" | "mrr";
 
@@ -30,6 +32,7 @@ export function OverviewPage() {
   const { byCountry } = useDeals();
   const deals = useMemo(() => byCountry(country), [byCountry, country]);
   const hideMrr = useHideMrr();
+  const t = useT();
 
   const [metric, setMetric] = useState<MapMetric>("wons");
   const [selected, setSelected] = useState<string | undefined>(undefined);
@@ -107,11 +110,13 @@ export function OverviewPage() {
     <div className="mx-auto max-w-[1500px] px-6 py-6 lg:px-8 lg:py-8">
       <PageHeader
         title={`${cfg.flag} ${cfg.name}`}
-        subtitle={hideMrr ? `${totalWons.toLocaleString()} wons` : `${totalWons.toLocaleString()} wons · MRR ${formatEUR(totalMrr)}`}
+        subtitle={hideMrr
+          ? `${totalWons.toLocaleString()} ${t("overview.subtitle.noMrr")}`
+          : `${totalWons.toLocaleString()} ${t("overview.subtitle.withMrr")} ${formatEUR(totalMrr)}`}
         actions={
           <div className="flex items-center gap-1.5 rounded-full bg-white/15 px-3 py-1.5 text-xs text-white backdrop-blur">
             <MapPin className="h-3 w-3" />
-            {pctMapped}% mapeados ({withRegion}/{totalWons})
+            {pctMapped}% {t("overview.mapped")} ({withRegion}/{totalWons})
           </div>
         }
       />
@@ -120,14 +125,14 @@ export function OverviewPage() {
         <div className="mt-4 flex items-center gap-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
           <Zap className="h-4 w-4 shrink-0 text-amber-500" />
           <span className="flex-1">
-            <strong>0 deals mapeados</strong> — re-sube el CSV si incluye columnas de ciudad/zip, o ve a{" "}
+            <strong>{t("overview.zeroMapped")}</strong> — {t("overview.zeroMappedHint")}{" "}
             <button
               onClick={() => navigate("/enrichment")}
               className="font-semibold underline underline-offset-2 hover:text-amber-900"
             >
               Enrichment
             </button>{" "}
-            para poblar el mapa con HubSpot.
+            {t("overview.zeroMappedHintEnd")}
           </span>
         </div>
       )}
@@ -146,30 +151,50 @@ export function OverviewPage() {
               : "mx-auto w-full max-w-xl p-5 lg:p-6 shadow-[var(--shadow-pink-soft)]",
           )}>
             {!hasSelection && (
-              <div className="mb-3 flex items-end justify-between">
+              <div className="mb-3 flex items-end justify-between gap-3">
                 <div>
                   <h2 className="text-sm font-semibold text-foreground">
-                    {cfg.name} · Wons
+                    {cfg.name} · {t("picker.wons")}
                   </h2>
                   <p className="text-xs text-muted-foreground">
-                    {withRegion} wons con región de {totalWons} totales ({pctMapped}%)
+                    {withRegion} {t("overview.wonsHere")} {totalWons} {t("overview.totals")} ({pctMapped}%)
                   </p>
                 </div>
               </div>
             )}
             {verticals.length > 0 && (
-              <div className="mb-3 flex items-center gap-2">
-                <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
-                  Vertical
-                </span>
+              <div className="mb-3">
                 <Select value={vertical} onValueChange={setVertical}>
-                  <SelectTrigger className="h-9 w-[240px] bg-background">
-                    <SelectValue />
+                  <SelectTrigger
+                    className={cn(
+                      "group h-10 w-auto min-w-[260px] gap-2 rounded-full border-border bg-background px-2.5 pr-3 text-sm font-medium shadow-sm transition-colors hover:border-primary/40 hover:bg-muted/40 focus:ring-2 focus:ring-primary/20",
+                    )}
+                  >
+                    <span className="grid h-7 w-7 place-items-center rounded-full bg-primary/10 text-primary">
+                      <Layers className="h-3.5 w-3.5" />
+                    </span>
+                    <span className="flex flex-col items-start leading-tight">
+                      <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+                        {t("overview.vertical")}
+                      </span>
+                      <span className="text-sm font-semibold text-foreground">
+                        {vertical === "all" ? t("overview.allVerticals") : vertical}
+                      </span>
+                    </span>
+                    <ChevronDown className="ml-auto h-4 w-4 text-muted-foreground transition-transform group-data-[state=open]:rotate-180" />
                   </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">Todos los verticales</SelectItem>
+                  <SelectContent className="rounded-xl">
+                    <SelectItem value="all" className="rounded-lg">
+                      <span className="font-medium">{t("overview.allVerticals")}</span>
+                    </SelectItem>
                     {verticals.map((v) => (
-                      <SelectItem key={v} value={v}>{v}</SelectItem>
+                      <SelectItem key={v} value={v} className="rounded-lg">
+                        <span className={cn(
+                          "mr-2 inline-flex h-2 w-2 rounded-full ring-1 ring-inset align-middle",
+                          industryColorClass(v),
+                        )} />
+                        <span>{v}</span>
+                      </SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
@@ -208,7 +233,7 @@ export function OverviewPage() {
           <div className="rounded-2xl border border-border bg-card p-6 shadow-sm">
             <div className="flex items-center gap-3 mb-6">
               <Target className="h-5 w-5 text-muted-foreground" />
-              <h2 className="text-base font-semibold">Top sectores</h2>
+              <h2 className="text-base font-semibold">{t("overview.topSectors")}</h2>
             </div>
             <SectorGrid deals={deals} />
           </div>

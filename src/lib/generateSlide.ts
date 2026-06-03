@@ -288,7 +288,7 @@ export async function generateRegionSlide(
               status: prev?.status ?? "hs-matched",
               enrichedAt: new Date().toISOString(),
               error: null,
-              nps: prev?.nps,
+              nps: hit.nps ?? prev?.nps ?? null,
             };
           }
         }

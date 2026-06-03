@@ -3,6 +3,7 @@ import { Routes, Route, Navigate, useNavigate, useLocation } from "react-router-
 import { AuthProvider, useAuth } from "@/lib/auth";
 import { DealsProvider } from "@/lib/useDeals";
 import { Sidebar } from "@/components/layout/Sidebar";
+import { TopBar } from "@/components/layout/TopBar";
 import { LoginPage } from "@/pages/Login";
 import { CountryPicker } from "@/pages/CountryPicker";
 import { OverviewPage } from "@/pages/Overview";
@@ -50,6 +51,7 @@ function AuthGate() {
       <div className="flex min-h-screen w-full bg-background">
         <Sidebar />
         <main className="min-w-0 flex-1">
+          <TopBar />
           <Routes>
             <Route path="/" element={<CountryPicker />} />
             <Route path="/overview" element={<OverviewPage />} />
