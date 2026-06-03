@@ -36,6 +36,10 @@ interface DealRow {
   hubspot_team: string;
   region_code: string;
   city: string;
+  nps: string | null;
+  nps_score: number | null;
+  nps_category: string;
+  nps_date: string;
 }
 
 function rowToDeal(r: DealRow): WonDeal {
@@ -57,6 +61,10 @@ function rowToDeal(r: DealRow): WonDeal {
     hubspotTeam: r.hubspot_team ?? "",
     regionCode: r.region_code ?? "unknown",
     city: r.city ?? "",
+    nps: r.nps ?? null,
+    npsScore: r.nps_score ?? null,
+    npsCategory: r.nps_category ?? "",
+    npsDate: r.nps_date ?? "",
   };
 }
 
@@ -79,6 +87,10 @@ function dealToRow(d: WonDeal): DealRow {
     hubspot_team: d.hubspotTeam ?? "",
     region_code: d.regionCode ?? "unknown",
     city: d.city ?? "",
+    nps: d.nps ?? null,
+    nps_score: d.npsScore ?? null,
+    nps_category: d.npsCategory ?? "",
+    nps_date: d.npsDate ?? "",
   };
 }
 

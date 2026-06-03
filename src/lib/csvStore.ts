@@ -21,6 +21,20 @@ export interface WonDeal {
   hubspotTeam: string;
   regionCode: string; // computed for FR, "unknown" otherwise
   city: string; // enriched later
+  // NPS pulled straight from the wons CSV (last_nps_score), bucketed:
+  //   9-10 → "Promoter", 7-8 → "Passive", 0-6 → "Detractor", missing → null.
+  nps: string | null;
+  npsScore: number | null;
+  npsCategory: string;
+  npsDate: string;
+}
+
+export function npsLabelForScore(score: number | null | undefined): string | null {
+  if (score == null || !Number.isFinite(score)) return null;
+  if (score >= 9) return "Promoter";
+  if (score >= 7) return "Passive";
+  if (score >= 0) return "Detractor";
+  return null;
 }
 
 const STORAGE_KEY = "pre-event-csv-v1";
@@ -88,6 +102,10 @@ export function parseCsv(text: string): WonDeal[] {
   const iCity = idx("city") >= 0 ? idx("city") : idx("company_city");
   const iZip = idx("zip") >= 0 ? idx("zip") : idx("postal_code") >= 0 ? idx("postal_code") : idx("zipcode");
   const iState = idx("state") >= 0 ? idx("state") : idx("province") >= 0 ? idx("province") : idx("region");
+  // NPS columns from the Factorial wons export
+  const iNpsScore = idx("last_nps_score");
+  const iNpsCategory = idx("last_nps_category");
+  const iNpsDate = idx("last_nps_date");
 
   if (iCompanyName === -1) throw new Error("CSV: column 'company_name' not found");
 
@@ -133,6 +151,17 @@ export function parseCsv(text: string): WonDeal[] {
       hubspotTeam: (cells[iTeam] ?? "").trim(),
       regionCode,
       city,
+      ...(() => {
+        const raw = iNpsScore >= 0 ? (cells[iNpsScore] ?? "").trim() : "";
+        const score = raw ? Number(raw) : null;
+        const valid = score != null && Number.isFinite(score);
+        return {
+          npsScore: valid ? score : null,
+          nps: valid ? npsLabelForScore(score) : null,
+          npsCategory: iNpsCategory >= 0 ? (cells[iNpsCategory] ?? "").trim() : "",
+          npsDate: iNpsDate >= 0 ? (cells[iNpsDate] ?? "").trim() : "",
+        };
+      })(),
     });
   }
 

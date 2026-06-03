@@ -191,7 +191,9 @@ export function TablePage() {
               {paged.map((d) => {
                 const enr = enrichment[d.companyId];
                 const hsUrl = hubspotCompanyUrl(enr?.hubspotId);
-                const nps = enr?.nps;
+                // Prefer the NPS straight from the CSV (always fresh), fall back to
+                // whatever HubSpot enrichment stored.
+                const nps = d.nps ?? enr?.nps ?? null;
                 return (
                 <tr key={d.companyId} className="border-b border-border/60 hover:bg-muted/40">
                   <td className="px-3 py-2 font-medium text-foreground">
