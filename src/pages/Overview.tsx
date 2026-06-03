@@ -213,7 +213,7 @@ export function OverviewPage() {
           {hasSelection && (
             <aside
               key={selected}
-              className="overflow-hidden rounded-2xl border border-border bg-card shadow-[var(--shadow-pink-soft)] animate-[fade-in_0.5s_ease-out,scale-in_0.5s_cubic-bezier(0.22,1,0.36,1)]"
+              className="sticky top-16 max-h-[calc(100vh-6rem)] overflow-hidden rounded-2xl border border-border bg-card shadow-[var(--shadow-pink-soft)] animate-[fade-in_0.5s_ease-out,scale-in_0.5s_cubic-bezier(0.22,1,0.36,1)]"
             >
               <RegionDetail
                 code={selected! as any}

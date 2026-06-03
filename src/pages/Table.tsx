@@ -197,14 +197,7 @@ export function TablePage() {
                   <td className="px-3 py-2 font-medium text-foreground">
                     <span className="inline-flex items-center gap-2">
                       {d.companyName}
-                      {nps && (
-                        <span
-                          title={`NPS: ${nps}`}
-                          className="inline-flex items-center rounded-full bg-sky-500/10 px-1.5 py-0.5 text-[10px] font-semibold text-sky-700 dark:text-sky-400"
-                        >
-                          {nps}
-                        </span>
-                      )}
+                      <NpsBadge nps={nps} />
                     </span>
                   </td>
                   {hasRegions && (
@@ -260,6 +253,33 @@ export function TablePage() {
         )}
       </div>
     </div>
+  );
+}
+
+// Color the NPS pill by its semantic label so Promoter/Passive/Detractor are
+// readable at a glance. Always render the pill so the column has rhythm even
+// before the sync populates the field.
+function NpsBadge({ nps }: { nps: string | null | undefined }) {
+  const label = (nps ?? "").trim();
+  const lower = label.toLowerCase();
+  let tone =
+    "bg-muted text-muted-foreground ring-1 ring-inset ring-border"; // placeholder
+  if (lower.includes("promoter") || lower.includes("promotor")) {
+    tone = "bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 ring-1 ring-inset ring-emerald-500/20";
+  } else if (lower.includes("passive") || lower.includes("pasivo") || lower.includes("passif") || lower.includes("passivo")) {
+    tone = "bg-amber-500/10 text-amber-700 dark:text-amber-400 ring-1 ring-inset ring-amber-500/20";
+  } else if (lower.includes("detractor") || lower.includes("détract")) {
+    tone = "bg-rose-500/10 text-rose-700 dark:text-rose-400 ring-1 ring-inset ring-rose-500/20";
+  } else if (label) {
+    tone = "bg-sky-500/10 text-sky-700 dark:text-sky-400 ring-1 ring-inset ring-sky-500/20";
+  }
+  return (
+    <span
+      title={label ? `NPS: ${label}` : "NPS — sin sincronizar"}
+      className={cn("inline-flex items-center rounded-full px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide", tone)}
+    >
+      NPS · {label || "—"}
+    </span>
   );
 }
 

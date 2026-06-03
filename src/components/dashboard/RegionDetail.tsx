@@ -29,7 +29,7 @@ export function RegionDetail({ code, deals, allDeals, onClose, onGenerateSlide }
   const [clientDialogOpen, setClientDialogOpen] = useState(false);
   const [showAllInd, setShowAllInd] = useState(false);
 
-  const TOP_N = 5;
+  const TOP_N = 4;
 
   const clientsByMrr = useMemo(
     () => [...deals].filter((d) => d.totalActualMrr > 0).sort((a, b) => b.totalActualMrr - a.totalActualMrr),
@@ -119,7 +119,7 @@ export function RegionDetail({ code, deals, allDeals, onClose, onGenerateSlide }
               {t("region.viewAll")} {clientsByMrr.length} <ChevronRight className="h-3 w-3" />
             </button>
           </header>
-          <ClientsTable deals={clientsByMrr.slice(0, 4)} hideMrr={hideMrr} t={t} />
+          <ClientsTable deals={clientsByMrr.slice(0, 3)} hideMrr={hideMrr} t={t} />
         </section>
 
         {/* Industrias + drill-down de módulos — flat */}
