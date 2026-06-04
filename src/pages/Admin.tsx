@@ -1,12 +1,37 @@
-import { useMemo } from "react";
+import { useMemo, useEffect, useState } from "react";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { Card } from "@/components/ui/card";
 import { readUsersList, type UserEntry } from "@/lib/auth";
+import { cloudFetchUsers, type CloudUserEntry } from "@/lib/cloudStore";
 import { readApiCalls, readPptDownloads, type ApiCallLog, type PptDownload } from "@/lib/enrichmentStore";
-import { Users, Activity, FileDown } from "lucide-react";
+import { Users, Activity, FileDown, Loader2 } from "lucide-react";
 
 export function AdminPage() {
-  const users = useMemo(() => readUsersList(), []);
+  const localUsers = useMemo(() => readUsersList(), []);
+  const [cloudUsers, setCloudUsers] = useState<CloudUserEntry[] | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    cloudFetchUsers()
+      .then((data) => setCloudUsers(data))
+      .finally(() => setLoading(false));
+  }, []);
+
+  const users: UserEntry[] = useMemo(() => {
+    if (!cloudUsers) return localUsers;
+    const map = new Map<string, UserEntry>();
+    for (const u of cloudUsers) {
+      map.set(u.email, { email: u.email, lastLogin: u.lastLogin, loginCount: u.loginCount });
+    }
+    for (const u of localUsers) {
+      if (!map.has(u.email)) {
+        map.set(u.email, u);
+      }
+    }
+    return Array.from(map.values()).sort(
+      (a, b) => new Date(b.lastLogin).getTime() - new Date(a.lastLogin).getTime()
+    );
+  }, [cloudUsers, localUsers]);
   const apiCalls = useMemo(() => readApiCalls(), []);
   const pptDownloads = useMemo(() => readPptDownloads(), []);
 
@@ -23,7 +48,12 @@ export function AdminPage() {
             <Users className="h-4 w-4" />
             <h2 className="text-base font-semibold">Usuarios registrados ({users.length})</h2>
           </div>
-          {users.length === 0 ? (
+          {loading ? (
+            <div className="flex items-center gap-2 text-sm text-muted-foreground py-4">
+              <Loader2 className="h-4 w-4 animate-spin" />
+              Cargando usuarios…
+            </div>
+          ) : users.length === 0 ? (
             <p className="text-sm text-muted-foreground">Ningún usuario registrado todavía.</p>
           ) : (
             <div className="overflow-hidden rounded-lg border border-border">

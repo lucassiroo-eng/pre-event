@@ -151,6 +151,47 @@ export async function cloudWriteMeta(m: CsvMeta): Promise<void> {
   });
 }
 
+// ── users_log ───────────────────────────────────────────────────────────────
+export interface CloudUserEntry {
+  email: string;
+  lastLogin: string;
+  loginCount: number;
+}
+
+export async function cloudRecordLogin(email: string): Promise<void> {
+  if (!supa) return;
+  const { data } = await supa
+    .from("users_log")
+    .select("login_count")
+    .eq("email", email)
+    .maybeSingle();
+
+  if (data) {
+    await supa
+      .from("users_log")
+      .update({ last_login: new Date().toISOString(), login_count: data.login_count + 1 })
+      .eq("email", email);
+  } else {
+    await supa
+      .from("users_log")
+      .insert({ email, last_login: new Date().toISOString(), login_count: 1 });
+  }
+}
+
+export async function cloudFetchUsers(): Promise<CloudUserEntry[] | null> {
+  if (!supa) return null;
+  const { data, error } = await supa
+    .from("users_log")
+    .select("*")
+    .order("last_login", { ascending: false });
+  if (error || !data) return null;
+  return data.map((r: any) => ({
+    email: r.email,
+    lastLogin: r.last_login,
+    loginCount: r.login_count,
+  }));
+}
+
 // ── enrichment ───────────────────────────────────────────────────────────────
 interface EnrichRow {
   company_id: string;

@@ -1,4 +1,5 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
+import { cloudRecordLogin } from "./cloudStore";
 
 const ADMIN_EMAILS = [
   "jonathan.bakikatula@factorial.co",
@@ -106,6 +107,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     window.localStorage.setItem(SESSION_KEY, e);
     setEmail(e);
     recordLogin(e);
+    cloudRecordLogin(e).catch(() => {});
     return { ok: true };
   };
 
@@ -123,6 +125,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     window.localStorage.setItem(SESSION_KEY, e);
     setEmail(e);
     recordLogin(e);
+    cloudRecordLogin(e).catch(() => {});
     return { ok: true };
   };
 
