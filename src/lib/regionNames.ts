@@ -48,3 +48,7 @@ export function regionNameForCountry(country: string, code: string): string {
   if (!code || code === "unknown") return "—";
   return lookupFor(country)[code] ?? code;
 }
+
+export function regionCodesForCountry(country: string): Record<string, string> {
+  return { ...lookupFor(country) };
+}

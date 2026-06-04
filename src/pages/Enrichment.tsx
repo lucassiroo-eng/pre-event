@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
-import { Upload, Square, Download, Trash2, Database, Search, FlaskConical, Globe, Gauge } from "lucide-react";
+import { Upload, Square, Download, Trash2, Database, Search, FlaskConical, Globe, Gauge, Sparkles } from "lucide-react";
 import { readDeals, parseCsv, mergeDeals, writeMeta, countryStats, type WonDeal } from "@/lib/csvStore";
 import { useDeals } from "@/lib/useDeals";
 import { readEnrichmentStore, writeEnrichmentStore, addTrackingEntry, readTracking, recordApiCall, type EnrichmentRecord, type EnrichmentStore, type TrackingEntry } from "@/lib/enrichmentStore";
@@ -13,11 +13,17 @@ import { cityToRegion } from "@/lib/cityToRegionByCountry";
 import { postalToRegion } from "@/lib/postalToRegionByCountry";
 import { cloudEnabled, cloudUpsertDeals, cloudUpsertEnrichment, cloudWriteMeta } from "@/lib/cloudStore";
 import { useAuth } from "@/lib/auth";
+import { regionCodesForCountry } from "@/lib/regionNames";
 
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL ?? "";
 const SUPABASE_ANON = import.meta.env.VITE_SUPABASE_ANON_KEY ?? "";
 
-type RunType = "hubspot" | "sirene" | "all" | null;
+type RunType = "hubspot" | "sirene" | "all" | "ai" | null;
+
+const COUNTRY_NAMES: Record<string, string> = {
+  es: "Spain", it: "Italy", de: "Germany", fr: "France",
+  br: "Brazil", pt: "Portugal", mx: "Mexico",
+};
 
 // Always keeps `concurrency` tasks in flight — no barrier between groups.
 async function runWithConcurrency<T>(
@@ -305,6 +311,80 @@ export function EnrichmentPage() {
     setRunning(null);
   }, [running, sirenePending, store, deals, refresh]);
 
+  const aiPending = useMemo(() => frDeals.filter((d) => {
+    const rec = store[d.companyId];
+    if (!rec) return false;
+    return rec.regionCode === "unknown";
+  }), [frDeals, store]);
+
+  const runAiRegion = useCallback(async () => {
+    if (running || aiPending.length === 0 || !SUPABASE_URL) return;
+    cancelRef.current = false;
+    setRunning("ai");
+    setTestResult(null);
+    const startedAt = Date.now();
+    setProgress({ done: 0, total: aiPending.length, matched: 0, errors: 0, startedAt });
+
+    const regions = regionCodesForCountry(selectedCountry);
+    const countryName = COUNTRY_NAMES[selectedCountry] ?? selectedCountry.toUpperCase();
+    const next = { ...store };
+    const BATCH = 20;
+    let matched = 0;
+    let errors = 0;
+    let done = 0;
+
+    const chunks: WonDeal[][] = [];
+    for (let i = 0; i < aiPending.length; i += BATCH) chunks.push(aiPending.slice(i, i + BATCH));
+
+    for (const batch of chunks) {
+      if (cancelRef.current) break;
+      try {
+        const payload = {
+          companies: batch.map((d) => ({ id: d.companyId, name: d.companyName })),
+          country: countryName,
+          regions,
+        };
+        const res = await fetch(`${SUPABASE_URL}/functions/v1/ai-region-lookup`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Authorization: `Bearer ${SUPABASE_ANON}` },
+          body: JSON.stringify(payload),
+        });
+        if (res.ok) {
+          const data = await res.json() as { results: Record<string, { region: string; city: string }> };
+          for (const deal of batch) {
+            const hit = data.results[deal.companyId];
+            if (!hit || hit.region === "unknown") continue;
+            matched++;
+            const existing = next[deal.companyId];
+            next[deal.companyId] = {
+              ...existing!,
+              sireneCity: hit.city || existing!.sireneCity,
+              sirenePostal: existing!.sirenePostal,
+              sireneSiren: "ai",
+              regionCode: hit.region as any,
+              status: "sirene-enriched",
+              enrichedAt: new Date().toISOString(),
+            };
+          }
+        } else {
+          errors++;
+        }
+      } catch { errors++; }
+
+      done += batch.length;
+      writeEnrichmentStore(next);
+      mirrorBatch(next, batch);
+      setStore({ ...next });
+      setProgress({ done: Math.min(done, aiPending.length), total: aiPending.length, matched, errors, startedAt });
+    }
+
+    applyEnrichmentToDeals(next);
+    refresh();
+    addTrackingEntry({ timestamp: new Date().toISOString(), type: "sirene", batchSize: aiPending.length, matched, errors });
+    setTracking(readTracking());
+    setRunning(null);
+  }, [running, aiPending, store, selectedCountry, refresh]);
+
   const runAllCountries = useCallback(async () => {
     if (running || !SUPABASE_URL) return;
     const allPending = deals.filter((d) => {
@@ -477,7 +557,7 @@ export function EnrichmentPage() {
 
   return (
     <div className="mx-auto max-w-[1500px] px-6 py-6 lg:px-8 lg:py-8">
-      <PageHeader title="Enrichment" subtitle={`HubSpot${selectedCountry === "fr" ? " + SIRENE" : ""} · ${selectedCountry.toUpperCase()}`} />
+      <PageHeader title="Enrichment" subtitle={`HubSpot${selectedCountry === "fr" ? " + SIRENE" : ""} + AI · ${selectedCountry.toUpperCase()}`} />
 
       <div className="mt-6 space-y-6">
         <Card
@@ -569,10 +649,20 @@ export function EnrichmentPage() {
                       <Gauge className="h-4 w-4 mr-2" />
                       NPS {selectedCountry.toUpperCase()} ({frDeals.length})
                     </Button>
+                    <div className="h-5 w-px bg-border" />
+                    <Button
+                      onClick={runAiRegion}
+                      disabled={aiPending.length === 0 || !SUPABASE_URL}
+                      variant="outline"
+                      title="Usa IA para resolver la región de empresas con region unknown"
+                    >
+                      <Sparkles className="h-4 w-4 mr-2" />
+                      {aiPending.length === 0 ? "AI Region: sin pendientes" : `AI Region (${aiPending.length})`}
+                    </Button>
                   </>
                 ) : (
                   <Button variant="destructive" onClick={() => { cancelRef.current = true; }}>
-                    <Square className="h-4 w-4 mr-2" /> Cancelar {running === "all" ? "Enrich All" : running === "hubspot" ? "HubSpot" : "SIRENE"}
+                    <Square className="h-4 w-4 mr-2" /> Cancelar {running === "all" ? "Enrich All" : running === "hubspot" ? "HubSpot" : running === "ai" ? "AI Region" : "SIRENE"}
                   </Button>
                 )}
                 <Button variant="outline" onClick={exportCsv} disabled={frDeals.length === 0}>
@@ -595,7 +685,7 @@ export function EnrichmentPage() {
                 return (
                   <div className="space-y-1.5">
                     <div className="flex items-center justify-between text-xs text-muted-foreground">
-                      <span className="font-medium text-primary">{running === "hubspot" ? "HubSpot" : "SIRENE"}</span>
+                      <span className="font-medium text-primary">{running === "hubspot" ? "HubSpot" : running === "ai" ? "AI Region" : "SIRENE"}</span>
                       <div className="flex gap-3 tabular-nums">
                         {matchRate !== null && <span className="text-emerald-600 font-medium">{matchRate}% match</span>}
                         <span>{progress.done} / {progress.total}</span>
@@ -668,7 +758,7 @@ export function EnrichmentPage() {
                         <td className="px-3 py-1.5">
                           {!row.record ? <span className="text-muted-foreground">Pendiente</span>
                             : row.record.status === "hs-matched" ? <span className="text-blue-600">HubSpot</span>
-                            : row.record.status === "sirene-enriched" ? <span className="text-emerald-600">SIRENE</span>
+                            : row.record.status === "sirene-enriched" ? <span className="text-emerald-600">{row.record.sireneSiren === "ai" ? "AI" : "SIRENE"}</span>
                             : row.record.status === "no-match" ? <span className="text-amber-600">No match</span>
                             : row.record.status === "error" ? <span className="text-destructive">Error</span>
                             : <span className="text-muted-foreground">Pendiente</span>}
