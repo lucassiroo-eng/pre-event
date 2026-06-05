@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -11,7 +11,7 @@ import { useDeals } from "@/lib/useDeals";
 import { readEnrichmentStore, writeEnrichmentStore, addTrackingEntry, readTracking, recordApiCall, type EnrichmentRecord, type EnrichmentStore, type TrackingEntry } from "@/lib/enrichmentStore";
 import { cityToRegion } from "@/lib/cityToRegionByCountry";
 import { postalToRegion } from "@/lib/postalToRegionByCountry";
-import { cloudEnabled, cloudUpsertDeals, cloudUpsertEnrichment, cloudWriteMeta } from "@/lib/cloudStore";
+import { cloudEnabled, cloudFetchEnrichment, cloudUpsertDeals, cloudUpsertEnrichment, cloudWriteMeta } from "@/lib/cloudStore";
 import { useAuth } from "@/lib/auth";
 import { regionCodesForCountry } from "@/lib/regionNames";
 
@@ -57,6 +57,25 @@ export function EnrichmentPage() {
   const selectedCountry = window.localStorage.getItem("pre-event-country") ?? "fr";
   const [store, setStore] = useState<EnrichmentStore>(() => readEnrichmentStore());
   const [tracking, setTracking] = useState<TrackingEntry[]>(() => readTracking());
+
+  useEffect(() => {
+    if (!cloudEnabled) return;
+    cloudFetchEnrichment().then((cloudRecords) => {
+      if (!cloudRecords || cloudRecords.length === 0) return;
+      const local = readEnrichmentStore();
+      let changed = false;
+      for (const rec of cloudRecords) {
+        if (!local[rec.companyId] || local[rec.companyId].status === "pending" || local[rec.companyId].status === "error") {
+          local[rec.companyId] = rec;
+          changed = true;
+        }
+      }
+      if (changed) {
+        writeEnrichmentStore(local);
+        setStore({ ...local });
+      }
+    });
+  }, []);
   const [running, setRunning] = useState<RunType>(null);
   const [progress, setProgress] = useState({ done: 0, total: 0, matched: 0, errors: 0, startedAt: 0 });
   const [testResult, setTestResult] = useState<{ total: number; found: number; withRegion: number; samples: { name: string; city: string | null; region: string }[] } | null>(null);
