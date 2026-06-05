@@ -350,7 +350,8 @@ export function EnrichmentPage() {
           body: JSON.stringify(payload),
         });
         if (res.ok) {
-          const data = await res.json() as { results: Record<string, { region: string; city: string }> };
+          const data = await res.json() as { results: Record<string, { region: string; city: string }>; debug?: string };
+          if (data.debug) console.warn("[ai-region]", data.debug);
           for (const deal of batch) {
             const hit = data.results[deal.companyId];
             if (!hit || hit.region === "unknown") continue;
@@ -367,6 +368,8 @@ export function EnrichmentPage() {
             };
           }
         } else {
+          const errBody = await res.text().catch(() => "");
+          console.error("[ai-region] HTTP", res.status, errBody);
           errors++;
         }
       } catch { errors++; }
@@ -630,25 +633,6 @@ export function EnrichmentPage() {
                       <Database className="h-4 w-4 mr-2" />
                       {hsPending.length === 0 ? "HS: sin pendientes" : `HS ${selectedCountry.toUpperCase()} (${hsPending.length})`}
                     </Button>
-                    <Button variant="outline" onClick={runTest} disabled={hsPending.length === 0 || !SUPABASE_URL} title="Prueba con 20 empresas para ver si el enrich funciona en este país">
-                      <FlaskConical className="h-4 w-4 mr-2" />
-                      Probar 20
-                    </Button>
-                    {selectedCountry === "fr" && (
-                      <Button onClick={runSirene} disabled={sirenePending.length === 0 || !SUPABASE_URL} variant="outline">
-                        <Search className="h-4 w-4 mr-2" />
-                        {sirenePending.length === 0 ? "SIRENE: sin pendientes" : `SIRENE (${sirenePending.length})`}
-                      </Button>
-                    )}
-                    <Button
-                      onClick={runNps}
-                      disabled={frDeals.length === 0 || !SUPABASE_URL}
-                      variant="outline"
-                      title="Refresca solo el NPS label desde HubSpot para todas las empresas del país"
-                    >
-                      <Gauge className="h-4 w-4 mr-2" />
-                      NPS {selectedCountry.toUpperCase()} ({frDeals.length})
-                    </Button>
                     <div className="h-5 w-px bg-border" />
                     <Button
                       onClick={runAiRegion}
@@ -665,9 +649,6 @@ export function EnrichmentPage() {
                     <Square className="h-4 w-4 mr-2" /> Cancelar {running === "all" ? "Enrich All" : running === "hubspot" ? "HubSpot" : running === "ai" ? "AI Region" : "SIRENE"}
                   </Button>
                 )}
-                <Button variant="outline" onClick={exportCsv} disabled={frDeals.length === 0}>
-                  <Download className="h-4 w-4 mr-2" /> Export CSV
-                </Button>
                 <Button variant="ghost" onClick={clearStore} disabled={Object.keys(store).length === 0}>
                   <Trash2 className="h-4 w-4 mr-2" /> Limpiar cache
                 </Button>

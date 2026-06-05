@@ -12,17 +12,10 @@ let AI_ENDPOINT: string;
 let AI_API_KEY: string;
 let AI_MODEL: string;
 
-const azureCfg = Deno.env.get("AZURE_CONFIG");
-if (azureCfg) {
-  const [ep, model, key] = azureCfg.split("|");
-  AI_ENDPOINT = ep;
-  AI_MODEL = model;
-  AI_API_KEY = key;
-} else {
-  AI_ENDPOINT = Deno.env.get("AI_ENDPOINT") ?? "https://api.anthropic.com/v1/messages";
-  AI_API_KEY = Deno.env.get("AI_API_KEY") ?? "";
-  AI_MODEL = Deno.env.get("AI_MODEL") ?? "claude-haiku-4-5-20251001";
-}
+AI_ENDPOINT = Deno.env.get("AI_ENDPOINT") ?? "https://api.anthropic.com/v1/messages";
+AI_API_KEY = Deno.env.get("AI_API_KEY") ?? "";
+AI_MODEL = Deno.env.get("AI_MODEL") ?? "claude-sonnet-4-6";
+const IS_AZURE = AI_ENDPOINT.includes("azure");
 
 interface CompanyIn {
   id: string;
@@ -33,13 +26,14 @@ async function askRegions(
   companies: CompanyIn[],
   country: string,
   regions: Record<string, string>,
-): Promise<Record<string, { region: string; city: string }>> {
+): Promise<{ mapped: Record<string, { region: string; city: string }>; debug?: string }> {
   const regionList = Object.entries(regions)
     .map(([code, name]) => `${code} = ${name}`)
     .join("\n");
 
+  // Use numeric indices — much more reliable than passing long companyIds
   const companyList = companies
-    .map((c, i) => `${i + 1}. [${c.id}] ${c.name}`)
+    .map((c, i) => `${i}. ${c.name}`)
     .join("\n");
 
   const prompt = `For each company, return the region code where it is headquartered in ${country}.
@@ -48,8 +42,8 @@ Valid regions:
 ${regionList}
 
 Reply ONLY with a JSON array, no other text:
-[{"id":"<company_id>","r":"<region_code>","c":"<city_name>"}]
-Use "unknown" for r if unsure. Keep c short (city name only).
+[{"i":0,"r":"region_code","c":"city_name"},{"i":1,"r":"...","c":"..."}]
+Use "unknown" for r if unsure. Keep c short (city name only). "i" is the company index number.
 
 Companies:
 ${companyList}`;
@@ -59,8 +53,9 @@ ${companyList}`;
     headers: {
       "Content-Type": "application/json",
       "anthropic-version": "2023-06-01",
-      "x-api-key": AI_API_KEY,
-      "api-key": AI_API_KEY,
+      ...(IS_AZURE
+        ? { "Authorization": `Bearer ${AI_API_KEY}` }
+        : { "x-api-key": AI_API_KEY }),
     },
     body: JSON.stringify({
       model: AI_MODEL,
@@ -69,30 +64,36 @@ ${companyList}`;
     }),
   });
 
-  if (!res.ok) throw new Error(`AI ${res.status}: ${await res.text()}`);
+  if (!res.ok) {
+    const body = await res.text();
+    return { mapped: {}, debug: `AI returned ${res.status}: ${body.slice(0, 500)}` };
+  }
+
   const data = await res.json();
   const text: string = data.content?.[0]?.text ?? "";
 
+  if (!text) {
+    return { mapped: {}, debug: `Empty AI response. Full payload: ${JSON.stringify(data).slice(0, 500)}` };
+  }
+
   const jsonMatch = text.match(/\[[\s\S]*\]/);
-  if (!jsonMatch) return {};
+  if (!jsonMatch) {
+    return { mapped: {}, debug: `No JSON array in AI response: ${text.slice(0, 300)}` };
+  }
 
   try {
-    const arr = JSON.parse(jsonMatch[0]) as Array<{
-      id: string;
-      r: string;
-      c?: string;
-    }>;
+    const arr = JSON.parse(jsonMatch[0]) as Array<{ i: number; r: string; c?: string }>;
     const validCodes = new Set(Object.keys(regions));
-    validCodes.add("unknown");
-    const out: Record<string, { region: string; city: string }> = {};
+    const mapped: Record<string, { region: string; city: string }> = {};
     for (const item of arr) {
-      if (item.id && item.r && validCodes.has(item.r)) {
-        out[item.id] = { region: item.r, city: item.c ?? "" };
+      const company = companies[item.i];
+      if (company && item.r && item.r !== "unknown" && validCodes.has(item.r)) {
+        mapped[company.id] = { region: item.r, city: item.c ?? "" };
       }
     }
-    return out;
-  } catch {
-    return {};
+    return { mapped };
+  } catch (e) {
+    return { mapped: {}, debug: `JSON parse error: ${e}. Raw: ${jsonMatch[0].slice(0, 300)}` };
   }
 }
 
@@ -115,9 +116,9 @@ serve(async (req) => {
       regions: Record<string, string>;
     };
 
-    const results = await askRegions(companies, country, regions);
+    const { mapped, debug } = await askRegions(companies, country, regions);
 
-    return new Response(JSON.stringify({ results }), {
+    return new Response(JSON.stringify({ results: mapped, debug }), {
       headers: { ...CORS, "Content-Type": "application/json" },
     });
   } catch (err) {
