@@ -97,8 +97,8 @@ function buildSlideHtml(
     const modRows = ind.modules.length > 0
       ? ind.modules.map((m, mi) =>
         "<tr>" +
-        '<td style="width:28px;height:28px;border-radius:6px;background:' + c + ";color:#fff;font-size:11px;font-weight:700;text-align:center;vertical-align:middle;\">" + (mi + 1) + "</td>" +
-        '<td style="padding-left:8px;font-size:13px;font-weight:600;color:#25253D;vertical-align:middle;">' + m.module + "</td>" +
+        '<td style="width:20px;font-size:13px;font-weight:700;color:' + c + ';vertical-align:top;">' + (mi + 1) + ".</td>" +
+        '<td style="font-size:13px;font-weight:600;color:#25253D;vertical-align:top;padding-left:4px;">' + m.module + "</td>" +
         "</tr>").join("")
       : '<tr><td style="font-size:12px;color:#AEAEB8;">&mdash;</td></tr>';
 
