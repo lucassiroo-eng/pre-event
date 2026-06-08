@@ -35,6 +35,8 @@ const COUNTRY_FLAGS: Record<string, string> = {
 
 const FONT = "-apple-system, BlinkMacSystemFont, 'Segoe UI', 'Helvetica Neue', Arial, sans-serif";
 
+const FACTORIAL_LOGO_WHITE = "data:image/png;base64,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";
+
 const SLIDE_STRINGS: Record<Locale, {
   title: (count: number, region: string) => string;
   subtitle: (region: string) => string;
@@ -93,17 +95,17 @@ function buildSlideHtml(
 
     const modulesHtml = ind.modules.length > 0
       ? ind.modules.map((m, mi) =>
-        `<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">` +
-        `<div style="width:24px;height:24px;min-width:24px;border-radius:6px;background:${color};color:#fff;font-size:11px;font-weight:700;text-align:center;line-height:24px;">${mi + 1}</div>` +
-        `<div style="font-size:13px;font-weight:600;color:#25253D;">${m.module}</div>` +
-        `</div>`).join("")
+        `<table style="border-collapse:collapse;margin-bottom:8px;"><tr>` +
+        `<td style="width:24px;height:24px;border-radius:6px;background:${color};color:#fff;font-size:11px;font-weight:700;text-align:center;vertical-align:middle;">${mi + 1}</td>` +
+        `<td style="padding-left:8px;font-size:13px;font-weight:600;color:#25253D;vertical-align:middle;">${m.module}</td>` +
+        `</tr></table>`).join("")
       : `<div style="font-size:12px;color:#AEAEB8;">—</div>`;
 
     const clientsHtml = ind.clients.map((c, ci) =>
-      `<div style="display:flex;align-items:baseline;gap:6px;margin-bottom:5px;">` +
-      `<div style="font-size:12px;font-weight:700;color:${color};min-width:18px;">${ci + 1}.</div>` +
-      `<div style="font-size:12px;font-weight:500;color:#25253D;word-break:break-word;">${c.name}</div>` +
-      `</div>`).join("");
+      `<table style="border-collapse:collapse;margin-bottom:4px;width:100%;"><tr>` +
+      `<td style="width:20px;font-size:12px;font-weight:700;color:${color};vertical-align:top;padding-right:4px;">${ci + 1}.</td>` +
+      `<td style="font-size:12px;font-weight:500;color:#25253D;vertical-align:top;word-break:break-word;">${c.name}</td>` +
+      `</tr></table>`).join("");
 
     return `<div style="flex:1;min-width:0;background:#fff;border-radius:12px;border:1px solid #E9E9EC;display:flex;flex-direction:column;overflow:hidden;">` +
       `<div style="padding:16px 16px 10px;border-bottom:1px solid #F0F0F4;">` +
@@ -136,12 +138,7 @@ function buildSlideHtml(
       `<span style="font-size:22px;">${flag}</span>` +
       `<span style="font-size:11px;font-weight:600;color:rgba(255,255,255,0.8);">Pre-event · Factorial</span>` +
     `</div>` +
-    `<div style="display:flex;align-items:center;gap:8px;">` +
-      `<div style="width:22px;height:22px;border-radius:5px;background:rgba(255,255,255,0.25);display:flex;align-items:center;justify-content:center;">` +
-        `<div style="color:#fff;font-size:13px;font-weight:800;line-height:1;">F</div>` +
-      `</div>` +
-      `<div style="font-size:16px;font-weight:800;color:#fff;letter-spacing:-0.3px;">factorial</div>` +
-    `</div>` +
+    `<img src="${FACTORIAL_LOGO_WHITE}" style="height:26px;width:auto;" />` +
   `</div>` +
 
   `<div style="position:absolute;top:68px;left:80px;right:80px;">` +
