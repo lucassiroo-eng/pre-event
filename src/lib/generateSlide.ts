@@ -1,9 +1,9 @@
 import { type WonDeal } from "@/lib/csvStore";
 import { groupIndustry } from "@/lib/industryGroups";
 import { recordPptDownload, readEnrichmentStore, writeEnrichmentStore, type EnrichmentStore } from "@/lib/enrichmentStore";
-import { fetchLogos } from "@/lib/logoStore";
 import { lookupHubspotByName } from "@/lib/hubspotLookup";
 import { countModulesForIndustry } from "@/lib/bundleModules";
+import { localeForCountry, type Locale } from "@/lib/i18n";
 
 import geoFR from "@/data/france-regions.geojson.json";
 import geoES from "@/data/spain-regions.geojson.json";
@@ -29,8 +29,81 @@ function getRegionName(country: string, code: string): string {
   return GEO_NAMES[country]?.[code] ?? code;
 }
 
-// ─── Factorial isotype SVG (inline) ──────────────────────────────────────────
-const FACTORIAL_ISO = `<svg width="32" height="32" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg"><rect width="32" height="32" rx="8" fill="#FF355E"/><path d="M9 10h14v3H12.5v2.5H21v3h-8.5V24H9V10z" fill="#fff"/></svg>`;
+// ─── i18n for slides ────────────────────────────────────────────────────────
+const SLIDE_STRINGS: Record<Locale, {
+  title: (count: number, region: string) => string;
+  subtitle: (region: string) => string;
+  clients: string;
+  topModules: string;
+  topClients: string;
+  brandLabel: string;
+}> = {
+  es: {
+    title: (n, r) => `Factorial cuenta con <span style="color:#FF355E;">${n}</span> clientes en ${r}`,
+    subtitle: (r) => `Las 3 industrias más presentes en ${r} son:`,
+    clients: "clientes",
+    topModules: "TOP MÓDULOS",
+    topClients: "TOP CLIENTES",
+    brandLabel: "Pre-event · Factorial",
+  },
+  fr: {
+    title: (n, r) => `Factorial compte <span style="color:#FF355E;">${n}</span> clients dans ${r}`,
+    subtitle: (r) => `Les 3 industries les plus présentes dans ${r} sont :`,
+    clients: "clients",
+    topModules: "TOP MODULES",
+    topClients: "TOP CLIENTS",
+    brandLabel: "Pre-event · Factorial",
+  },
+  it: {
+    title: (n, r) => `Factorial ha <span style="color:#FF355E;">${n}</span> clienti in ${r}`,
+    subtitle: (r) => `Le 3 industrie più presenti in ${r} sono:`,
+    clients: "clienti",
+    topModules: "TOP MODULI",
+    topClients: "TOP CLIENTI",
+    brandLabel: "Pre-event · Factorial",
+  },
+  de: {
+    title: (n, r) => `Factorial hat <span style="color:#FF355E;">${n}</span> Kunden in ${r}`,
+    subtitle: (r) => `Die 3 wichtigsten Branchen in ${r} sind:`,
+    clients: "Kunden",
+    topModules: "TOP MODULE",
+    topClients: "TOP KUNDEN",
+    brandLabel: "Pre-event · Factorial",
+  },
+  pt: {
+    title: (n, r) => `Factorial tem <span style="color:#FF355E;">${n}</span> clientes em ${r}`,
+    subtitle: (r) => `As 3 indústrias mais presentes em ${r} são:`,
+    clients: "clientes",
+    topModules: "TOP MÓDULOS",
+    topClients: "TOP CLIENTES",
+    brandLabel: "Pre-event · Factorial",
+  },
+  en: {
+    title: (n, r) => `Factorial has <span style="color:#FF355E;">${n}</span> clients in ${r}`,
+    subtitle: (r) => `The top 3 industries in ${r} are:`,
+    clients: "clients",
+    topModules: "TOP MODULES",
+    topClients: "TOP CLIENTS",
+    brandLabel: "Pre-event · Factorial",
+  },
+};
+
+// ─── Factorial logo (Brandfetch CDN, base64 fallback text) ──────────────────
+const FACTORIAL_LOGO_URL = "https://cdn.brandfetch.io/factorial.co/w/512/h/100/theme/light/logo?c=1id_n1gqX639u9z8SB8";
+
+async function loadFactorialLogo(): Promise<string> {
+  try {
+    const res = await fetch(FACTORIAL_LOGO_URL);
+    if (!res.ok) return "";
+    const blob = await res.blob();
+    return new Promise((resolve) => {
+      const reader = new FileReader();
+      reader.onloadend = () => resolve(reader.result as string);
+      reader.onerror = () => resolve("");
+      reader.readAsDataURL(blob);
+    });
+  } catch { return ""; }
+}
 
 // ─── Colors ──────────────────────────────────────────────────────────────────
 const BLOCK_COLORS = ["#FF355E", "#FB923C", "#14B8A6"];
@@ -44,10 +117,17 @@ function buildSlideHtml(
     industry: string;
     count: number;
     modules: { module: string }[];
-    clients: { name: string; companyId: string; logoDataUrl: string }[];
+    clients: { name: string }[];
   }[],
+  locale: Locale,
+  logoDataUrl: string,
 ): string {
+  const t = SLIDE_STRINGS[locale] ?? SLIDE_STRINGS.en;
   const industryNames = industryData.map((d) => d.industry).join(", ");
+
+  const logoHtml = logoDataUrl
+    ? `<img src="${logoDataUrl}" style="height:28px;width:auto;" />`
+    : `<span style="font-size:18px;font-weight:800;color:#FF355E;letter-spacing:-0.5px;">factorial</span>`;
 
   const blocksHtml = industryData.map((ind, i) => {
     const color = BLOCK_COLORS[i] ?? "#6B7280";
@@ -55,38 +135,40 @@ function buildSlideHtml(
 
     const modulesHtml = ind.modules.length > 0
       ? ind.modules.map((m, mi) => `
-        <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px;">
-          <div style="width:24px;height:24px;border-radius:6px;background:${color};color:#fff;font-size:12px;font-weight:700;display:flex;align-items:center;justify-content:center;flex-shrink:0;">${mi + 1}</div>
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;">
+          <div style="width:26px;height:26px;border-radius:7px;background:${color};color:#fff;font-size:12px;font-weight:700;display:flex;align-items:center;justify-content:center;flex-shrink:0;">${mi + 1}</div>
           <span style="font-size:14px;font-weight:600;color:#25253D;">${m.module}</span>
         </div>`).join("")
       : `<span style="font-size:13px;color:#AEAEB8;">—</span>`;
 
-    const clientsHtml = ind.clients.map((c) => {
-      const logoOrInitial = c.logoDataUrl
-        ? `<img src="${c.logoDataUrl}" style="width:40px;height:40px;border-radius:8px;object-fit:contain;background:#fff;border:1px solid #E9E9EC;" />`
-        : `<div style="width:40px;height:40px;border-radius:8px;background:#E9E9EC;display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:700;color:#6C6C7D;">${c.name.charAt(0)}</div>`;
-      return `
-        <div style="display:flex;align-items:center;gap:10px;margin-bottom:6px;">
-          ${logoOrInitial}
-          <span style="font-size:13px;font-weight:500;color:#25253D;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:220px;">${c.name}</span>
-        </div>`;
-    }).join("");
+    const clientsHtml = ind.clients.map((c, ci) => `
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;">
+        <span style="font-size:12px;font-weight:600;color:${color};min-width:14px;">${ci + 1}.</span>
+        <span style="font-size:13px;font-weight:500;color:#25253D;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${c.name}</span>
+      </div>`).join("");
 
     return `
-      <div style="flex:1;background:#fff;border-radius:12px;border:1px solid #E9E9EC;padding:24px 20px;display:flex;flex-direction:column;gap:0;overflow:hidden;">
-        <div style="display:flex;align-items:center;gap:10px;margin-bottom:4px;">
-          <div style="width:6px;height:28px;border-radius:3px;background:${color};flex-shrink:0;"></div>
-          <span style="font-size:16px;font-weight:700;color:#25253D;">${ind.industry}</span>
+      <div style="flex:1;background:#fff;border-radius:14px;border:1px solid #E9E9EC;display:flex;flex-direction:column;overflow:hidden;">
+        <!-- Header -->
+        <div style="padding:20px 20px 12px;border-bottom:1px solid #F3F3F6;">
+          <div style="display:flex;align-items:center;gap:10px;margin-bottom:6px;">
+            <div style="width:5px;height:32px;border-radius:3px;background:${color};flex-shrink:0;"></div>
+            <div>
+              <div style="font-size:15px;font-weight:700;color:#25253D;line-height:1.2;">${ind.industry}</div>
+              <div style="font-size:11px;color:#AEAEB8;margin-top:2px;">${ind.count} ${t.clients}</div>
+            </div>
+          </div>
         </div>
-        <div style="font-size:12px;color:#6C6C7D;margin-bottom:16px;padding-left:16px;">${ind.count} clientes</div>
 
-        <div style="background:${bg};border-radius:8px;padding:14px 12px;margin-bottom:14px;">
-          <div style="font-size:10px;font-weight:700;color:#AEAEB8;letter-spacing:1.5px;margin-bottom:10px;">TOP MÓDULOS</div>
+        <!-- Modules -->
+        <div style="padding:16px 20px;background:${bg};border-bottom:1px solid #F3F3F6;">
+          <div style="font-size:9px;font-weight:700;color:#AEAEB8;letter-spacing:1.8px;margin-bottom:12px;">${t.topModules}</div>
           ${modulesHtml}
         </div>
 
-        <div style="padding:0 2px;">
-          <div style="font-size:10px;font-weight:700;color:#AEAEB8;letter-spacing:1.5px;margin-bottom:10px;">TOP CLIENTES</div>
+        <!-- Clients -->
+        <div style="padding:16px 20px;flex:1;">
+          <div style="font-size:9px;font-weight:700;color:#AEAEB8;letter-spacing:1.8px;margin-bottom:10px;">${t.topClients}</div>
           ${clientsHtml}
         </div>
       </div>`;
@@ -105,31 +187,27 @@ function buildSlideHtml(
 <body style="background:#E5E5E5;">
 <div class="slide" id="slide-0" style="width:1280px;height:720px;position:relative;background:#F9F9FB;font-family:'DM Sans',sans-serif;overflow:hidden;">
 
-  <!-- Brand label -->
-  <div style="position:absolute;top:24px;left:80px;font-size:12px;font-weight:500;color:#6C6C7D;">
-    Pre-event · Factorial
+  <!-- Top bar -->
+  <div style="position:absolute;top:0;left:0;right:0;height:56px;display:flex;align-items:center;justify-content:space-between;padding:0 80px;">
+    <div style="font-size:11px;font-weight:500;color:#AEAEB8;letter-spacing:0.5px;">${t.brandLabel}</div>
+    ${logoHtml}
   </div>
 
-  <!-- Isotype -->
-  <div style="position:absolute;top:20px;right:80px;">
-    ${FACTORIAL_ISO}
-  </div>
+  <!-- Coral accent line -->
+  <div style="position:absolute;top:56px;left:0;right:0;height:3px;background:linear-gradient(90deg,#FF355E 0%,#FF355E 40%,#FB923C 70%,#14B8A6 100%);"></div>
 
   <!-- Title block -->
-  <div style="position:absolute;top:72px;left:80px;right:80px;">
-    <div style="font-size:30px;font-weight:800;color:#25253D;line-height:1.2;">
-      Factorial cuenta con <span style="color:#FF355E;">${totalClients}</span> clientes en ${regionName}
+  <div style="position:absolute;top:76px;left:80px;right:80px;">
+    <div style="font-size:28px;font-weight:800;color:#25253D;line-height:1.25;">
+      ${t.title(totalClients, regionName)}
     </div>
-    <div style="font-size:15px;font-weight:500;color:#6C6C7D;margin-top:8px;">
-      Las 3 industrias más presentes en ${regionName} son: <span style="font-weight:700;color:#25253D;">${industryNames}</span>
+    <div style="font-size:14px;font-weight:500;color:#6C6C7D;margin-top:6px;">
+      ${t.subtitle(regionName)} <span style="font-weight:700;color:#25253D;">${industryNames}</span>
     </div>
   </div>
 
-  <!-- Separator -->
-  <div style="position:absolute;top:168px;left:80px;right:80px;height:1px;background:#E9E9EC;"></div>
-
   <!-- 3 Industry blocks -->
-  <div style="position:absolute;top:184px;left:80px;right:80px;bottom:32px;display:flex;gap:16px;">
+  <div style="position:absolute;top:172px;left:80px;right:80px;bottom:28px;display:flex;gap:16px;">
     ${blocksHtml}
   </div>
 
@@ -181,6 +259,7 @@ export async function generateRegionSlide(
 ) {
   const regionDeals = deals.filter((d) => d.regionCode === code);
   const name = getRegionName(country, code);
+  const locale = localeForCountry(country);
 
   // Top 3 industries
   type IndAcc = { count: number; deals: WonDeal[] };
@@ -201,74 +280,27 @@ export async function generateRegionSlide(
   const industryData = top3Industries.map(([industryName, { count }]) => {
     const modules = countModulesForIndustry(deals, industryName, country).slice(0, 3);
 
-    const clients: { name: string; companyId: string; seats: number }[] = [];
+    const clients: { name: string; companyId: string }[] = [];
     for (const d of [...regionDeals.filter((x) => groupIndustry(x.sector) === industryName)]
       .sort((a, b) => b.seats - a.seats || b.totalActualMrr - a.totalActualMrr)) {
       const key = d.companyName.trim().toLowerCase();
       if (usedCompanies.has(key)) continue;
       usedCompanies.add(key);
-      clients.push({ name: d.companyName, companyId: d.companyId, seats: d.seats });
+      clients.push({ name: d.companyName, companyId: d.companyId });
       if (clients.length >= 3) break;
     }
 
     return { industry: industryName, count, modules, clients };
   });
 
-  // ─── Resolve domains + logos ───────────────────────────────────────────────
-  const slideClients = industryData.flatMap((ind) => ind.clients);
-  const domainById = new Map<string, string>();
-  for (const c of slideClients) {
-    const d = enrichStore?.[c.companyId]?.domain;
-    if (d) domainById.set(c.companyId, d);
-  }
+  const logoDataUrl = await loadFactorialLogo();
 
-  const missing = slideClients.filter((c) => !domainById.has(c.companyId));
-  if (missing.length > 0) {
-    try {
-      const hits = await lookupHubspotByName(missing.map((c) => c.name));
-      if (hits.size > 0) {
-        const persist = readEnrichmentStore();
-        for (const c of missing) {
-          const hit = hits.get(c.name.trim().toLowerCase());
-          if (hit?.found && hit.domain) {
-            domainById.set(c.companyId, hit.domain);
-            const prev = persist[c.companyId];
-            persist[c.companyId] = {
-              companyId: c.companyId,
-              companyName: c.name,
-              hubspotId: hit.hubspotId ?? prev?.hubspotId ?? null,
-              hubspotCity: hit.city ?? prev?.hubspotCity ?? null,
-              hubspotZip: hit.zip ?? prev?.hubspotZip ?? null,
-              domain: hit.domain,
-              sireneCity: prev?.sireneCity ?? null,
-              sirenePostal: prev?.sirenePostal ?? null,
-              sireneSiren: prev?.sireneSiren ?? null,
-              regionCode: prev?.regionCode ?? "unknown",
-              status: prev?.status ?? "hs-matched",
-              enrichedAt: new Date().toISOString(),
-              error: null,
-              nps: hit.nps ?? prev?.nps ?? null,
-            };
-          }
-        }
-        writeEnrichmentStore(persist);
-      }
-    } catch { /* best-effort */ }
-  }
-
-  const allDomains = [...new Set([...domainById.values()])].filter(Boolean);
-  const logoCache = await fetchLogos(allDomains);
-
-  // Build data with logos resolved
-  const dataWithLogos = industryData.map((ind) => ({
+  const htmlData = industryData.map((ind) => ({
     ...ind,
-    clients: ind.clients.map((c) => {
-      const domain = domainById.get(c.companyId) ?? "";
-      return { name: c.name, companyId: c.companyId, logoDataUrl: domain ? (logoCache[domain] ?? "") : "" };
-    }),
+    clients: ind.clients.map((c) => ({ name: c.name })),
   }));
 
-  const html = buildSlideHtml(name, regionDeals.length, dataWithLogos);
+  const html = buildSlideHtml(name, regionDeals.length, htmlData, locale, logoDataUrl);
   await downloadPdf(html, `${name.replace(/\s+/g, "-")}-factorial.pdf`);
 
   const user = window.localStorage.getItem("factorial.session.email") ?? "unknown";
