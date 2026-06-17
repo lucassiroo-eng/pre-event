@@ -59,110 +59,170 @@ const IND_BORDER = ["#FFD4DD", "#FFDBC8", "#B8EDE6"];
 const T: Record<Locale, {
   title: (n: number, r: string) => string;
   subtitle: (r: string) => string;
-  clients: string; topMod: string; topCli: string;
+  clients: string; topMod: string; topCli: string; avgSeats: string; ofTotal: string;
 }> = {
   es: {
     title: (n, r) => `Factorial cuenta con <span style="color:${CORAL};font-weight:800;">${n}</span> clientes en ${r}`,
     subtitle: (r) => `Las 3 industrias m&aacute;s presentes en ${r} son:`,
-    clients: "clientes", topMod: "TOP M&Oacute;DULOS", topCli: "TOP CLIENTES",
+    clients: "clientes", topMod: "TOP M&Oacute;DULOS", topCli: "TOP CLIENTES", avgSeats: "AVG SEATS", ofTotal: "del total",
   },
   fr: {
     title: (n, r) => `Factorial compte <span style="color:${CORAL};font-weight:800;">${n}</span> clients dans ${r}`,
     subtitle: (r) => `Les 3 industries les plus pr&eacute;sentes dans ${r} sont :`,
-    clients: "clients", topMod: "TOP MODULES", topCli: "TOP CLIENTS",
+    clients: "clients", topMod: "TOP MODULES", topCli: "TOP CLIENTS", avgSeats: "MOY. EMPLOY&Eacute;S", ofTotal: "du total",
   },
   it: {
     title: (n, r) => `Factorial ha <span style="color:${CORAL};font-weight:800;">${n}</span> clienti in ${r}`,
     subtitle: (r) => `Le 3 industrie pi&ugrave; presenti in ${r} sono:`,
-    clients: "clienti", topMod: "TOP MODULI", topCli: "TOP CLIENTI",
+    clients: "clienti", topMod: "TOP MODULI", topCli: "TOP CLIENTI", avgSeats: "MEDIA DIPENDENTI", ofTotal: "del totale",
   },
   de: {
     title: (n, r) => `Factorial hat <span style="color:${CORAL};font-weight:800;">${n}</span> Kunden in ${r}`,
     subtitle: (r) => `Die 3 wichtigsten Branchen in ${r} sind:`,
-    clients: "Kunden", topMod: "TOP MODULE", topCli: "TOP KUNDEN",
+    clients: "Kunden", topMod: "TOP MODULE", topCli: "TOP KUNDEN", avgSeats: "&Oslash; MITARBEITER", ofTotal: "vom Gesamt",
   },
   pt: {
     title: (n, r) => `Factorial tem <span style="color:${CORAL};font-weight:800;">${n}</span> clientes em ${r}`,
     subtitle: (r) => `As 3 ind&uacute;strias mais presentes em ${r} s&atilde;o:`,
-    clients: "clientes", topMod: "TOP M&Oacute;DULOS", topCli: "TOP CLIENTES",
+    clients: "clientes", topMod: "TOP M&Oacute;DULOS", topCli: "TOP CLIENTES", avgSeats: "M&Eacute;DIA FUNCION&Aacute;RIOS", ofTotal: "do total",
   },
   en: {
     title: (n, r) => `Factorial has <span style="color:${CORAL};font-weight:800;">${n}</span> clients in ${r}`,
     subtitle: (r) => `The top 3 industries in ${r} are:`,
-    clients: "clients", topMod: "TOP MODULES", topCli: "TOP CLIENTS",
+    clients: "clients", topMod: "TOP MODULES", topCli: "TOP CLIENTS", avgSeats: "AVG EMPLOYEES", ofTotal: "of total",
   },
 };
 
 function buildHtml(
   region: string, total: number,
-  data: { industry: string; count: number; modules: { module: string }[]; clients: { name: string }[] }[],
+  data: { industry: string; count: number; pct: number; avgSeats: number; modules: { module: string }[]; clients: { name: string; seats: number }[] }[],
   locale: Locale, flag: string,
 ): string {
   const t = T[locale] ?? T.en;
   const names = data.map(d => d.industry).join(", ");
 
-  const SLIDE_W = 1280;
-  const SLIDE_H = 720;
-  const MARGIN  = 64;
-  const HERO_H  = 160;
-  const FOOTER_H = 44;
-  const CARDS_TOP = HERO_H + 24;
-  const CARDS_H   = SLIDE_H - CARDS_TOP - FOOTER_H - 16;
-  const CONTENT_W = SLIDE_W - MARGIN * 2;
-  const GAP       = 20;
-  const COL_W     = Math.floor((CONTENT_W - GAP * 2) / 3);
+  const W = 1280;
+  const H = 720;
+  const M = 56;
+  const HERO = 140;
+  const FOOT = 36;
+  const GAP = 16;
+  const CARD_TOP = HERO + 18;
+  const CARD_H = H - CARD_TOP - FOOT - 10;
+  const COL = Math.floor((W - M * 2 - GAP * 2) / 3);
 
   const cards = data.map((d, i) => {
-    const cc  = IND_COLORS[i] ?? CORAL;
+    const cc = IND_COLORS[i] ?? CORAL;
     const cbg = IND_BG[i] ?? "#F9F9FB";
     const cbd = IND_BORDER[i] ?? BORDER;
-    const left = MARGIN + i * (COL_W + GAP);
+    const x = M + i * (COL + GAP);
+    const pctW = Math.max(6, Math.min(100, d.pct));
+    const pad = 18;
 
+    let y = 0;
+
+    // — HEADER: industry name + count pill —
+    const headerH = 56;
     const header = `
-      <div style="padding:18px 20px 14px;border-bottom:1px solid ${BORDER};">
-        <div style="display:table;width:100%;">
-          <div style="display:table-cell;vertical-align:middle;">
-            <div style="font-size:16px;font-weight:700;color:${NAVY};line-height:1.2;letter-spacing:-0.2px;">${d.industry}</div>
-          </div>
-          <div style="display:table-cell;vertical-align:middle;text-align:right;">
-            <div style="display:inline-block;background:${cbg};border:1px solid ${cbd};border-radius:20px;padding:3px 12px;font-size:12px;font-weight:700;color:${cc};font-variant-numeric:tabular-nums;">${d.count}</div>
-          </div>
-        </div>
+      <div style="position:absolute;left:0;top:${y}px;width:${COL}px;height:${headerH}px;padding:${pad}px ${pad}px 0;">
+        <span style="position:absolute;left:${pad}px;top:16px;font-size:14px;font-weight:700;color:${NAVY};letter-spacing:-0.2px;">${d.industry}</span>
+        <span style="position:absolute;right:${pad}px;top:14px;background:${cbg};border:1px solid ${cbd};border-radius:16px;padding:2px 11px;font-size:12px;font-weight:800;color:${cc};">${d.count}</span>
       </div>`;
+    y += headerH;
 
-    const modRows = d.modules.map((m, mi) => `
-      <div style="display:table;width:100%;margin-bottom:6px;">
-        <div style="display:table-cell;width:24px;vertical-align:top;">
-          <div style="width:22px;height:22px;border-radius:6px;background:${cc};color:#FFFFFF;font-size:10px;font-weight:700;text-align:center;line-height:22px;">${mi + 1}</div>
-        </div>
-        <div style="display:table-cell;vertical-align:middle;padding-left:8px;font-size:12px;font-weight:600;color:${NAVY};">${m.module}</div>
-      </div>`).join("");
+    // — PROGRESS BAR + stats —
+    const barH = 36;
+    const barTrackW = COL - pad * 2;
+    const barFillW = Math.round(barTrackW * pctW / 100);
+    const progressSection = `
+      <div style="position:absolute;left:${pad}px;top:${y}px;width:${barTrackW}px;height:${barH}px;">
+        <div style="position:absolute;left:0;top:0;width:${barTrackW}px;height:5px;background:${BORDER};border-radius:3px;"></div>
+        <div style="position:absolute;left:0;top:0;width:${barFillW}px;height:5px;background:${cc};border-radius:3px;"></div>
+        <span style="position:absolute;left:0;top:10px;font-size:9px;font-weight:600;color:${GRAY2};">${Math.round(d.pct)}% ${t.ofTotal}</span>
+        <span style="position:absolute;right:0;top:10px;font-size:9px;font-weight:600;color:${GRAY2};">${t.avgSeats}: ${Math.round(d.avgSeats)}</span>
+      </div>`;
+    y += barH;
+
+    // — SEPARATOR —
+    const sep1 = `<div style="position:absolute;left:0;top:${y}px;width:${COL}px;height:1px;background:${BORDER};"></div>`;
+    y += 1;
+
+    // — MODULES SECTION —
+    const modSectionH = 14 + d.modules.length * 26 + 10;
+    const modRows = d.modules.map((m, mi) => {
+      const rowY = 14 + mi * 26;
+      return `
+        <div style="position:absolute;left:${pad}px;top:${rowY}px;width:${COL - pad * 2}px;height:24px;">
+          <div style="position:absolute;left:0;top:1px;width:20px;height:20px;border-radius:5px;background:${cc};color:#FFF;font-size:9px;font-weight:700;text-align:center;line-height:20px;">${mi + 1}</div>
+          <span style="position:absolute;left:28px;top:2px;font-size:11px;font-weight:600;color:${NAVY};">${m.module}</span>
+        </div>`;
+    }).join("");
 
     const modulesSection = `
-      <div style="background:${cbg};padding:14px 20px;border-bottom:1px solid ${BORDER};">
-        <div style="font-size:9px;font-weight:700;color:${GRAY3};letter-spacing:2px;text-transform:uppercase;margin-bottom:10px;">${t.topMod}</div>
-        ${modRows || `<div style="font-size:12px;color:${GRAY3};">&mdash;</div>`}
+      <div style="position:absolute;left:0;top:${y}px;width:${COL}px;height:${modSectionH}px;background:${cbg};">
+        <span style="position:absolute;left:${pad}px;top:0;font-size:8px;font-weight:700;color:${GRAY3};letter-spacing:2px;text-transform:uppercase;line-height:14px;">${t.topMod}</span>
+        ${modRows}
       </div>`;
+    y += modSectionH;
 
-    const cliRows = d.clients.map((cl, ci) => `
-      <div style="display:table;width:100%;margin-bottom:4px;">
-        <div style="display:table-cell;width:20px;vertical-align:top;font-size:11px;font-weight:700;color:${GRAY3};font-variant-numeric:tabular-nums;">${ci + 1}.</div>
-        <div style="display:table-cell;vertical-align:top;font-size:12px;font-weight:500;color:${GRAY1};padding-left:2px;line-height:1.3;">${cl.name}</div>
-      </div>`).join("");
+    // — SEPARATOR —
+    const sep2 = `<div style="position:absolute;left:0;top:${y}px;width:${COL}px;height:1px;background:${BORDER};"></div>`;
+    y += 1;
+
+    // — CLIENTS SECTION —
+    const cliRows = d.clients.map((cl, ci) => {
+      const rowY = 14 + ci * 22;
+      return `
+        <div style="position:absolute;left:${pad}px;top:${rowY}px;width:${COL - pad * 2}px;height:20px;">
+          <span style="position:absolute;left:0;top:0;font-size:10px;font-weight:700;color:${GRAY3};">${ci + 1}.</span>
+          <span style="position:absolute;left:16px;top:0;font-size:11px;font-weight:500;color:${GRAY1};">${cl.name}</span>
+          ${cl.seats > 0 ? `<span style="position:absolute;right:0;top:1px;font-size:9px;font-weight:600;color:${GRAY3};">${cl.seats} emp</span>` : ""}
+        </div>`;
+    }).join("");
 
     const clientsSection = `
-      <div style="padding:14px 20px;">
-        <div style="font-size:9px;font-weight:700;color:${GRAY3};letter-spacing:2px;text-transform:uppercase;margin-bottom:10px;">${t.topCli}</div>
+      <div style="position:absolute;left:0;top:${y}px;width:${COL}px;height:${14 + d.clients.length * 22 + 8}px;">
+        <span style="position:absolute;left:${pad}px;top:0;font-size:8px;font-weight:700;color:${GRAY3};letter-spacing:2px;text-transform:uppercase;line-height:14px;">${t.topCli}</span>
         ${cliRows}
       </div>`;
 
     return `
-      <div style="position:absolute;left:${left}px;top:${CARDS_TOP}px;width:${COL_W}px;height:${CARDS_H}px;background:${BGCARD};border-radius:14px;border:1px solid ${BORDER};overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,0.04),0 8px 24px rgba(0,0,0,0.03);">
-        ${header}
-        ${modulesSection}
-        ${clientsSection}
+      <div style="position:absolute;left:${x}px;top:${CARD_TOP}px;width:${COL}px;height:${CARD_H}px;background:${BGCARD};border-radius:12px;border:1px solid ${BORDER};overflow:hidden;box-shadow:0 1px 4px rgba(0,0,0,0.04),0 4px 16px rgba(0,0,0,0.02);">
+        ${header}${progressSection}${sep1}${modulesSection}${sep2}${clientsSection}
       </div>`;
   }).join("");
+
+  // Hero — all absolute, no table layout
+  const hero = `
+  <div style="position:absolute;top:0;left:0;width:${W}px;height:${HERO}px;background:linear-gradient(135deg,#FF506B 0%,#E8294F 50%,#C41E3A 100%);overflow:hidden;">
+    <div style="position:absolute;top:-60px;right:-20px;width:450px;height:300px;background:radial-gradient(ellipse,rgba(255,255,255,0.12),transparent 65%);"></div>
+    <div style="position:absolute;bottom:-80px;left:-60px;width:350px;height:250px;background:radial-gradient(ellipse,rgba(0,0,0,0.1),transparent 65%);"></div>
+
+    <div style="position:absolute;top:12px;left:${M}px;">
+      <div style="display:inline-block;background:rgba(255,255,255,0.18);border-radius:7px;padding:4px 6px;">
+        ${ISO_SVG.replace('fill="#FF355E"','fill="rgba(255,255,255,0.95)"').replace('width="36" height="36"','width="24" height="24"').replace('viewBox="0 0 36 36"','viewBox="0 0 36 36"')}
+      </div>
+    </div>
+    <span style="position:absolute;top:20px;left:${M + 44}px;font-size:11px;font-weight:600;color:rgba(255,255,255,0.6);letter-spacing:0.3px;">Factorial Map</span>
+    <span style="position:absolute;top:14px;right:${M}px;font-size:22px;">${flag}</span>
+
+    <div style="position:absolute;bottom:20px;left:${M}px;right:${M}px;">
+      <div style="font-size:28px;font-weight:800;color:#FFF;line-height:1.2;letter-spacing:-0.5px;">
+        ${t.title(total, region).replace(`color:${CORAL}`, "color:#FFF;text-decoration:underline;text-decoration-color:rgba(255,255,255,0.35);text-underline-offset:4px")}
+      </div>
+      <div style="font-size:11px;font-weight:400;color:rgba(255,255,255,0.6);margin-top:4px;">
+        ${t.subtitle(region)}&ensp;<strong style="color:#FFF;font-weight:600;">${names}</strong>
+      </div>
+    </div>
+  </div>`;
+
+  // Footer — all absolute
+  const footer = `
+  <div style="position:absolute;bottom:0;left:0;width:${W}px;height:${FOOT}px;background:${NAVY};">
+    <span style="position:absolute;left:${M}px;top:50%;transform:translateY(-50%);font-size:10px;font-weight:600;color:rgba(255,255,255,0.4);letter-spacing:0.5px;">factorial.com</span>
+    <span style="position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);font-size:9px;font-weight:500;color:rgba(255,255,255,0.25);letter-spacing:1.5px;text-transform:uppercase;">Confidential</span>
+    <span style="position:absolute;right:${M}px;top:50%;transform:translateY(-50%);font-size:10px;font-weight:500;color:rgba(255,255,255,0.3);">${region} · ${total} ${t.clients}</span>
+  </div>`;
 
   return `<!DOCTYPE html>
 <html>
@@ -170,59 +230,15 @@ function buildHtml(
 <meta charset="utf-8">
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
 <style>
-  * { margin: 0; padding: 0; box-sizing: border-box; }
-  body { font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif; -webkit-font-smoothing: antialiased; }
-  @media print { .slide { page-break-after: always; } }
+  *{margin:0;padding:0;box-sizing:border-box;}
+  body,div,span{font-family:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',Arial,sans-serif;-webkit-font-smoothing:antialiased;}
 </style>
 </head>
 <body>
-<div class="slide" id="slide-0" style="width:${SLIDE_W}px;height:${SLIDE_H}px;position:relative;background:${BGSLIDE};overflow:hidden;font-family:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',Arial,sans-serif;">
-
-  <!-- Hero banner with gradient -->
-  <div style="position:absolute;top:0;left:0;width:${SLIDE_W}px;height:${HERO_H}px;background:linear-gradient(135deg, #FF506B 0%, #E8294F 60%, #C41E3A 100%);overflow:hidden;">
-    <!-- Decorative glow -->
-    <div style="position:absolute;top:-60px;right:-40px;width:400px;height:300px;background:radial-gradient(ellipse, rgba(255,255,255,0.15), transparent 70%);"></div>
-    <div style="position:absolute;bottom:-80px;left:-60px;width:350px;height:250px;background:radial-gradient(ellipse, rgba(0,0,0,0.12), transparent 70%);"></div>
-
-    <!-- Header row -->
-    <div style="position:absolute;top:0;left:0;right:0;height:44px;display:table;table-layout:fixed;width:${SLIDE_W}px;">
-      <div style="display:table-cell;vertical-align:middle;padding-left:${MARGIN}px;">
-        <div style="display:inline-block;background:rgba(255,255,255,0.2);border-radius:8px;padding:5px 8px;">
-          ${ISO_SVG.replace('fill="#FF355E"', 'fill="rgba(255,255,255,0.95)"')}
-        </div>
-        <span style="font-size:12px;font-weight:600;color:rgba(255,255,255,0.75);margin-left:10px;letter-spacing:0.3px;">Factorial Map</span>
-      </div>
-      <div style="display:table-cell;vertical-align:middle;padding-right:${MARGIN}px;text-align:right;">
-        <span style="font-size:24px;">${flag}</span>
-      </div>
-    </div>
-
-    <!-- Title -->
-    <div style="position:absolute;bottom:28px;left:${MARGIN}px;right:${MARGIN}px;">
-      <div style="font-size:32px;font-weight:800;color:#FFFFFF;line-height:1.2;letter-spacing:-0.5px;">
-        ${t.title(total, region).replace(`color:${CORAL}`, "color:#FFFFFF;text-decoration:underline;text-decoration-color:rgba(255,255,255,0.4);text-underline-offset:4px")}
-      </div>
-      <div style="font-size:13px;font-weight:400;color:rgba(255,255,255,0.7);margin-top:6px;">
-        ${t.subtitle(region)}&nbsp;<strong style="color:#FFFFFF;font-weight:600;">${names}</strong>
-      </div>
-    </div>
-  </div>
-
+<div class="slide" id="slide-0" style="width:${W}px;height:${H}px;position:relative;background:${BGSLIDE};overflow:hidden;">
+  ${hero}
   ${cards}
-
-  <!-- Footer -->
-  <div style="position:absolute;bottom:0;left:0;width:${SLIDE_W}px;height:${FOOTER_H}px;background:${NAVY};display:table;table-layout:fixed;">
-    <div style="display:table-cell;vertical-align:middle;padding-left:${MARGIN}px;">
-      <span style="font-size:11px;font-weight:600;color:rgba(255,255,255,0.45);letter-spacing:0.5px;">factorial.com</span>
-    </div>
-    <div style="display:table-cell;vertical-align:middle;text-align:center;">
-      <span style="font-size:10px;font-weight:500;color:rgba(255,255,255,0.3);letter-spacing:1.5px;text-transform:uppercase;">Confidential</span>
-    </div>
-    <div style="display:table-cell;vertical-align:middle;padding-right:${MARGIN}px;text-align:right;">
-      <span style="font-size:11px;font-weight:500;color:rgba(255,255,255,0.35);font-variant-numeric:tabular-nums;">${region} &middot; ${total} ${t.clients}</span>
-    </div>
-  </div>
-
+  ${footer}
 </div>
 </body>
 </html>`;
@@ -284,18 +300,21 @@ export async function generateRegionSlide(
     .slice(0, 3);
 
   const used = new Set<string>();
-  const industryData = top3.map(([indName, { count }]) => {
+  const industryData = top3.map(([indName, { count, deals: indDeals }]) => {
     const modules = countModulesForIndustry(deals, indName, country).slice(0, 3);
-    const clients: { name: string }[] = [];
+    const pct = regionDeals.length > 0 ? (count / regionDeals.length) * 100 : 0;
+    const totalSeats = indDeals.reduce((s, d) => s + (d.seats || 0), 0);
+    const avgSeats = indDeals.length > 0 ? totalSeats / indDeals.length : 0;
+    const clients: { name: string; seats: number }[] = [];
     for (const d of [...regionDeals.filter(x => groupIndustry(x.sector) === indName)]
       .sort((a, b) => b.seats - a.seats || b.totalActualMrr - a.totalActualMrr)) {
       const key = d.companyName.trim().toLowerCase();
       if (used.has(key)) continue;
       used.add(key);
-      clients.push({ name: d.companyName });
+      clients.push({ name: d.companyName, seats: d.seats || 0 });
       if (clients.length >= 3) break;
     }
-    return { industry: indName, count, modules, clients };
+    return { industry: indName, count, pct, avgSeats, modules, clients };
   });
 
   const html = buildHtml(name, regionDeals.length, industryData, locale, flag);
