@@ -40,17 +40,21 @@ const ISO_SVG = `<svg width="36" height="36" viewBox="0 0 36 36" fill="none" xml
   <path d="M6 30c0-6.627 5.373-12 12-12s12 5.373 12 12" stroke="white" stroke-width="2.5" stroke-linecap="round" fill="none"/>
 </svg>`;
 
-// Brand colors — all hex, no var()
+// Brand colors — Factorial design system
 const CORAL  = "#FF355E";
-const NAVY   = "#25253D";
+const CORAL2 = "#E8294F";
+const NAVY   = "#1A1A2E";
+const GRAY1  = "#4A4A5C";
 const GRAY2  = "#6C6C7D";
-const GRAY3  = "#AEAEB8";
-const BORDER = "#E9E9EC";
+const GRAY3  = "#A0A0B0";
+const BORDER = "#EDEDF0";
+const BGSLIDE = "#FAFAFA";
 const BGCARD = "#FFFFFF";
 
-// Industry accent colors (matching Factorial palette)
-const IND_COLORS = ["#FF355E", "#FB923C", "#14B8A6"];
-const IND_BG     = ["#FFF1F3", "#FFF7ED", "#F0FDFA"];
+// Industry accent colors (warm palette)
+const IND_COLORS = ["#FF355E", "#FF6B35", "#00B4A0"];
+const IND_BG     = ["#FFF0F3", "#FFF4ED", "#EDFAF8"];
+const IND_BORDER = ["#FFD4DD", "#FFDBC8", "#B8EDE6"];
 
 const T: Record<Locale, {
   title: (n: number, r: string) => string;
@@ -97,63 +101,63 @@ function buildHtml(
   const t = T[locale] ?? T.en;
   const names = data.map(d => d.industry).join(", ");
 
-  // Layout constants
   const SLIDE_W = 1280;
   const SLIDE_H = 720;
-  const MARGIN  = 72;
-  const HEADER_H = 56;
-  const FOOTER_H = 48;
-  const TITLE_TOP = 72;
-  const TITLE_H   = 80;
-  const SEP_TOP   = TITLE_TOP + TITLE_H + 8;
-  const CARDS_TOP = SEP_TOP + 12;
-  const CARDS_H   = SLIDE_H - CARDS_TOP - FOOTER_H - 8;
+  const MARGIN  = 64;
+  const HERO_H  = 160;
+  const FOOTER_H = 44;
+  const CARDS_TOP = HERO_H + 24;
+  const CARDS_H   = SLIDE_H - CARDS_TOP - FOOTER_H - 16;
   const CONTENT_W = SLIDE_W - MARGIN * 2;
-  const GAP       = 18;
+  const GAP       = 20;
   const COL_W     = Math.floor((CONTENT_W - GAP * 2) / 3);
 
   const cards = data.map((d, i) => {
     const cc  = IND_COLORS[i] ?? CORAL;
     const cbg = IND_BG[i] ?? "#F9F9FB";
+    const cbd = IND_BORDER[i] ?? BORDER;
     const left = MARGIN + i * (COL_W + GAP);
 
-    // Navy header row
     const header = `
-      <div style="background:${NAVY};border-radius:10px 10px 0 0;padding:14px 16px 12px;">
-        <div style="font-size:15px;font-weight:700;color:#FFFFFF;line-height:1.2;">${d.industry}</div>
-        <div style="font-size:11px;color:rgba(255,255,255,0.55);margin-top:2px;font-variant-numeric:tabular-nums;">${d.count} ${t.clients}</div>
+      <div style="padding:18px 20px 14px;border-bottom:1px solid ${BORDER};">
+        <div style="display:table;width:100%;">
+          <div style="display:table-cell;vertical-align:middle;">
+            <div style="font-size:16px;font-weight:700;color:${NAVY};line-height:1.2;letter-spacing:-0.2px;">${d.industry}</div>
+          </div>
+          <div style="display:table-cell;vertical-align:middle;text-align:right;">
+            <div style="display:inline-block;background:${cbg};border:1px solid ${cbd};border-radius:20px;padding:3px 12px;font-size:12px;font-weight:700;color:${cc};font-variant-numeric:tabular-nums;">${d.count}</div>
+          </div>
+        </div>
       </div>`;
 
-    // Modules section (tinted bg)
     const modRows = d.modules.map((m, mi) => `
-      <div style="display:table;width:100%;margin-bottom:8px;">
-        <div style="display:table-cell;width:28px;vertical-align:top;">
-          <div style="width:26px;height:26px;border-radius:7px;background:${cc};color:#FFFFFF;font-size:11px;font-weight:700;text-align:center;line-height:26px;">${mi + 1}</div>
+      <div style="display:table;width:100%;margin-bottom:6px;">
+        <div style="display:table-cell;width:24px;vertical-align:top;">
+          <div style="width:22px;height:22px;border-radius:6px;background:${cc};color:#FFFFFF;font-size:10px;font-weight:700;text-align:center;line-height:22px;">${mi + 1}</div>
         </div>
-        <div style="display:table-cell;vertical-align:middle;padding-left:8px;font-size:13px;font-weight:600;color:${NAVY};">${m.module}</div>
+        <div style="display:table-cell;vertical-align:middle;padding-left:8px;font-size:12px;font-weight:600;color:${NAVY};">${m.module}</div>
       </div>`).join("");
 
     const modulesSection = `
-      <div style="background:${cbg};padding:14px 16px;border-bottom:1px solid ${BORDER};">
-        <div style="font-size:9px;font-weight:700;color:${GRAY3};letter-spacing:1.8px;margin-bottom:10px;">${t.topMod}</div>
+      <div style="background:${cbg};padding:14px 20px;border-bottom:1px solid ${BORDER};">
+        <div style="font-size:9px;font-weight:700;color:${GRAY3};letter-spacing:2px;text-transform:uppercase;margin-bottom:10px;">${t.topMod}</div>
         ${modRows || `<div style="font-size:12px;color:${GRAY3};">&mdash;</div>`}
       </div>`;
 
-    // Clients section
     const cliRows = d.clients.map((cl, ci) => `
-      <div style="display:table;width:100%;margin-bottom:5px;">
-        <div style="display:table-cell;width:22px;vertical-align:top;font-size:12px;font-weight:700;color:${cc};font-variant-numeric:tabular-nums;">${ci + 1}.</div>
-        <div style="display:table-cell;vertical-align:top;font-size:12px;font-weight:500;color:${NAVY};padding-left:2px;">${cl.name}</div>
+      <div style="display:table;width:100%;margin-bottom:4px;">
+        <div style="display:table-cell;width:20px;vertical-align:top;font-size:11px;font-weight:700;color:${GRAY3};font-variant-numeric:tabular-nums;">${ci + 1}.</div>
+        <div style="display:table-cell;vertical-align:top;font-size:12px;font-weight:500;color:${GRAY1};padding-left:2px;line-height:1.3;">${cl.name}</div>
       </div>`).join("");
 
     const clientsSection = `
-      <div style="padding:14px 16px;">
-        <div style="font-size:9px;font-weight:700;color:${GRAY3};letter-spacing:1.8px;margin-bottom:10px;">${t.topCli}</div>
+      <div style="padding:14px 20px;">
+        <div style="font-size:9px;font-weight:700;color:${GRAY3};letter-spacing:2px;text-transform:uppercase;margin-bottom:10px;">${t.topCli}</div>
         ${cliRows}
       </div>`;
 
     return `
-      <div style="position:absolute;left:${left}px;top:${CARDS_TOP}px;width:${COL_W}px;height:${CARDS_H}px;background:${BGCARD};border-radius:10px;border:1px solid ${BORDER};overflow:hidden;box-shadow:0 1px 4px rgba(0,0,0,0.06);">
+      <div style="position:absolute;left:${left}px;top:${CARDS_TOP}px;width:${COL_W}px;height:${CARDS_H}px;background:${BGCARD};border-radius:14px;border:1px solid ${BORDER};overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,0.04),0 8px 24px rgba(0,0,0,0.03);">
         ${header}
         ${modulesSection}
         ${clientsSection}
@@ -164,48 +168,58 @@ function buildHtml(
 <html>
 <head>
 <meta charset="utf-8">
-<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; }
-  body { font-family: 'DM Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif; }
+  body { font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif; -webkit-font-smoothing: antialiased; }
   @media print { .slide { page-break-after: always; } }
 </style>
 </head>
 <body>
-<div class="slide" id="slide-0" style="width:${SLIDE_W}px;height:${SLIDE_H}px;position:relative;background:#F9F9FB;overflow:hidden;font-family:'DM Sans',-apple-system,BlinkMacSystemFont,'Segoe UI',Arial,sans-serif;">
+<div class="slide" id="slide-0" style="width:${SLIDE_W}px;height:${SLIDE_H}px;position:relative;background:${BGSLIDE};overflow:hidden;font-family:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',Arial,sans-serif;">
 
-  <!-- Top header bar -->
-  <div style="position:absolute;top:0;left:0;width:${SLIDE_W}px;height:${HEADER_H}px;background:#F9F9FB;border-bottom:1px solid ${BORDER};display:table;table-layout:fixed;">
-    <div style="display:table-cell;vertical-align:middle;padding-left:${MARGIN}px;">
-      <span style="font-size:11px;font-weight:500;color:${GRAY3};">${flag}&nbsp;&nbsp;Pre-event &middot; Factorial</span>
+  <!-- Hero banner with gradient -->
+  <div style="position:absolute;top:0;left:0;width:${SLIDE_W}px;height:${HERO_H}px;background:linear-gradient(135deg, #FF506B 0%, #E8294F 60%, #C41E3A 100%);overflow:hidden;">
+    <!-- Decorative glow -->
+    <div style="position:absolute;top:-60px;right:-40px;width:400px;height:300px;background:radial-gradient(ellipse, rgba(255,255,255,0.15), transparent 70%);"></div>
+    <div style="position:absolute;bottom:-80px;left:-60px;width:350px;height:250px;background:radial-gradient(ellipse, rgba(0,0,0,0.12), transparent 70%);"></div>
+
+    <!-- Header row -->
+    <div style="position:absolute;top:0;left:0;right:0;height:44px;display:table;table-layout:fixed;width:${SLIDE_W}px;">
+      <div style="display:table-cell;vertical-align:middle;padding-left:${MARGIN}px;">
+        <div style="display:inline-block;background:rgba(255,255,255,0.2);border-radius:8px;padding:5px 8px;">
+          ${ISO_SVG.replace('fill="#FF355E"', 'fill="rgba(255,255,255,0.95)"')}
+        </div>
+        <span style="font-size:12px;font-weight:600;color:rgba(255,255,255,0.75);margin-left:10px;letter-spacing:0.3px;">Factorial &middot; Pre-Event</span>
+      </div>
+      <div style="display:table-cell;vertical-align:middle;padding-right:${MARGIN}px;text-align:right;">
+        <span style="font-size:24px;">${flag}</span>
+      </div>
     </div>
-    <div style="display:table-cell;vertical-align:middle;padding-right:${MARGIN}px;text-align:right;">
-      ${ISO_SVG}
+
+    <!-- Title -->
+    <div style="position:absolute;bottom:28px;left:${MARGIN}px;right:${MARGIN}px;">
+      <div style="font-size:32px;font-weight:800;color:#FFFFFF;line-height:1.2;letter-spacing:-0.5px;">
+        ${t.title(total, region).replace(`color:${CORAL}`, "color:#FFFFFF;text-decoration:underline;text-decoration-color:rgba(255,255,255,0.4);text-underline-offset:4px")}
+      </div>
+      <div style="font-size:13px;font-weight:400;color:rgba(255,255,255,0.7);margin-top:6px;">
+        ${t.subtitle(region)}&nbsp;<strong style="color:#FFFFFF;font-weight:600;">${names}</strong>
+      </div>
     </div>
   </div>
-
-  <!-- Title area -->
-  <div style="position:absolute;top:${TITLE_TOP}px;left:${MARGIN}px;right:${MARGIN}px;">
-    <div style="font-size:30px;font-weight:800;color:${NAVY};line-height:1.25;letter-spacing:-0.3px;">
-      ${t.title(total, region)}
-    </div>
-    <div style="font-size:13px;font-weight:400;color:${GRAY2};margin-top:6px;">
-      ${t.subtitle(region)}&nbsp;<strong style="color:${NAVY};font-weight:700;">${names}</strong>
-    </div>
-  </div>
-
-  <!-- Separator -->
-  <div style="position:absolute;top:${SEP_TOP}px;left:${MARGIN}px;right:${MARGIN}px;height:1px;background:${BORDER};"></div>
 
   ${cards}
 
-  <!-- Footer bar -->
+  <!-- Footer -->
   <div style="position:absolute;bottom:0;left:0;width:${SLIDE_W}px;height:${FOOTER_H}px;background:${NAVY};display:table;table-layout:fixed;">
     <div style="display:table-cell;vertical-align:middle;padding-left:${MARGIN}px;">
-      <span style="font-size:11px;font-weight:600;color:rgba(255,255,255,0.5);letter-spacing:0.3px;">factorial.com</span>
+      <span style="font-size:11px;font-weight:600;color:rgba(255,255,255,0.45);letter-spacing:0.5px;">factorial.com</span>
+    </div>
+    <div style="display:table-cell;vertical-align:middle;text-align:center;">
+      <span style="font-size:10px;font-weight:500;color:rgba(255,255,255,0.3);letter-spacing:1.5px;text-transform:uppercase;">Confidential</span>
     </div>
     <div style="display:table-cell;vertical-align:middle;padding-right:${MARGIN}px;text-align:right;">
-      <span style="font-size:11px;font-weight:500;color:rgba(255,255,255,0.4);font-variant-numeric:tabular-nums;">${region} &middot; ${total} ${t.clients}</span>
+      <span style="font-size:11px;font-weight:500;color:rgba(255,255,255,0.35);font-variant-numeric:tabular-nums;">${region} &middot; ${total} ${t.clients}</span>
     </div>
   </div>
 
@@ -224,7 +238,7 @@ async function downloadPdf(html: string, fileName: string) {
   doc.write(html);
   doc.close();
 
-  // Wait for DM Sans to load inside the iframe
+  // Wait for Inter to load inside the iframe
   await new Promise(r => setTimeout(r, 1200));
   try { await (doc as any).fonts?.ready; } catch { /* ignore */ }
 
@@ -233,7 +247,7 @@ async function downloadPdf(html: string, fileName: string) {
 
   const { default: html2canvas } = await import("html2canvas");
   const canvas = await html2canvas(el, {
-    scale: 2, useCORS: true, backgroundColor: "#F9F9FB",
+    scale: 2, useCORS: true, backgroundColor: BGSLIDE,
     width: 1280, height: 720,
   });
 
