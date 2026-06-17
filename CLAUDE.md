@@ -2,10 +2,10 @@
 
 Internal Factorial dashboard for visualizing won deals (CSV from Superset) on
 a choropleth map per country (FR, ES, IT, DE, PT, BR, MX). React + Vite +
-TypeScript + Tailwind + shadcn/ui, hosted on GitHub Pages, backed by Supabase
+TypeScript + Tailwind + shadcn/ui, hosted on Vercel, backed by Supabase
 (deals + enrichment + edge functions).
 
-GitHub: `lucassiroo-eng/pre-event`. Branch: `main` → GH Pages on push.
+GitHub: `lucassiroo-eng/pre-event`. Deploy: Vercel (auto-deploy from `main`).
 
 ## Quick orientation
 
@@ -41,7 +41,7 @@ GitHub: `lucassiroo-eng/pre-event`. Branch: `main` → GH Pages on push.
    `postalToRegionByCountry.ts`, `cityToRegionByCountry.ts`. All countries
    resolve regions, not just France.
 
-## Supabase setup (project `Factorial`, ref `dsmovbahvtbzxgfyndyj`)
+## Supabase setup (project `Preevent`, ref `dnfnqniaxsgxbaorgahe`)
 
 - Tables (migrations in `supabase/migrations/`):
   - `deals` — full CSV, including NPS columns (`nps`, `nps_score`,
@@ -56,7 +56,7 @@ GitHub: `lucassiroo-eng/pre-event`. Branch: `main` → GH Pages on push.
 
 ## Env (`.env`, also in GitHub Actions secrets)
 
-- `VITE_SUPABASE_URL=https://dsmovbahvtbzxgfyndyj.supabase.co`
+- `VITE_SUPABASE_URL=https://dnfnqniaxsgxbaorgahe.supabase.co`
 - `VITE_SUPABASE_ANON_KEY=…`
 - `VITE_BRANDFETCH_CLIENT_ID` optional (default `1id_n1gqX639u9z8SB8`).
 

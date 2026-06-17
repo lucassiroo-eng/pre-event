@@ -32,7 +32,7 @@ export function LoginPage() {
           <div className="mx-auto grid h-10 w-10 place-items-center rounded-lg bg-primary text-primary-foreground font-bold">
             F
           </div>
-          <h1 className="text-lg font-semibold">Pre-Event</h1>
+          <h1 className="text-lg font-semibold">Factorial Map</h1>
           <p className="text-xs text-muted-foreground">Acceso restringido a {EMAIL_DOMAIN}</p>
         </div>
 

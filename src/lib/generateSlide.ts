@@ -190,7 +190,7 @@ function buildHtml(
         <div style="display:inline-block;background:rgba(255,255,255,0.2);border-radius:8px;padding:5px 8px;">
           ${ISO_SVG.replace('fill="#FF355E"', 'fill="rgba(255,255,255,0.95)"')}
         </div>
-        <span style="font-size:12px;font-weight:600;color:rgba(255,255,255,0.75);margin-left:10px;letter-spacing:0.3px;">Factorial &middot; Pre-Event</span>
+        <span style="font-size:12px;font-weight:600;color:rgba(255,255,255,0.75);margin-left:10px;letter-spacing:0.3px;">Factorial Map</span>
       </div>
       <div style="display:table-cell;vertical-align:middle;padding-right:${MARGIN}px;text-align:right;">
         <span style="font-size:24px;">${flag}</span>

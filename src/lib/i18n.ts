@@ -68,7 +68,7 @@ type Dict = Record<string, string>;
 
 const STRINGS: Record<Locale, Dict> = {
   en: {
-    "app.name": "Pre-Event",
+    "app.name": "Factorial Map",
     "app.subtitle": "Pick a country to open the clients dashboard",
     "nav.countries": "Countries",
     "nav.overview": "Overview",
@@ -147,7 +147,7 @@ const STRINGS: Record<Locale, Dict> = {
     "region.slide": "Slide",
   },
   fr: {
-    "app.name": "Pre-Event",
+    "app.name": "Factorial Map",
     "app.subtitle": "Choisis un pays pour ouvrir le dashboard des clients",
     "nav.countries": "Pays",
     "nav.overview": "Vue d'ensemble",
@@ -226,7 +226,7 @@ const STRINGS: Record<Locale, Dict> = {
     "region.slide": "Slide",
   },
   es: {
-    "app.name": "Pre-Event",
+    "app.name": "Factorial Map",
     "app.subtitle": "Selecciona un país para ver el dashboard de clientes",
     "nav.countries": "Países",
     "nav.overview": "Resumen",
@@ -305,7 +305,7 @@ const STRINGS: Record<Locale, Dict> = {
     "region.slide": "Slide",
   },
   it: {
-    "app.name": "Pre-Event",
+    "app.name": "Factorial Map",
     "app.subtitle": "Scegli un paese per aprire la dashboard dei clienti",
     "nav.countries": "Paesi",
     "nav.overview": "Panoramica",
@@ -384,7 +384,7 @@ const STRINGS: Record<Locale, Dict> = {
     "region.slide": "Slide",
   },
   de: {
-    "app.name": "Pre-Event",
+    "app.name": "Factorial Map",
     "app.subtitle": "Wähle ein Land, um das Kunden-Dashboard zu öffnen",
     "nav.countries": "Länder",
     "nav.overview": "Übersicht",
@@ -463,7 +463,7 @@ const STRINGS: Record<Locale, Dict> = {
     "region.slide": "Slide",
   },
   pt: {
-    "app.name": "Pre-Event",
+    "app.name": "Factorial Map",
     "app.subtitle": "Escolhe um país para abrir o painel de clientes",
     "nav.countries": "Países",
     "nav.overview": "Visão geral",
