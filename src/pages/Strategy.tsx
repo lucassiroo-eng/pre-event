@@ -117,7 +117,7 @@ export function StrategyPage() {
 
   const load = useCallback(async () => {
     setLoading(true);
-    const data = await fetchStrategyCompanies("es");
+    const data = await fetchStrategyCompanies();
     setCompanies(data);
     setLoading(false);
   }, []);

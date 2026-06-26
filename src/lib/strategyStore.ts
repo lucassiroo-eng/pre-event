@@ -35,15 +35,24 @@ export const STRATEGY_EMAILS = [
   "marc.macia@factorial.co",
 ];
 
-export async function fetchStrategyCompanies(country: string): Promise<StrategyCompany[]> {
+export async function fetchStrategyCompanies(): Promise<StrategyCompany[]> {
   if (!supa) return [];
-  const { data, error } = await supa
-    .from("strategy_companies")
-    .select("*")
-    .ilike("country", `%${country}%`)
-    .order("cmrr", { ascending: false });
-  if (error) { console.error("strategy fetch", error); return []; }
-  return (data ?? []) as StrategyCompany[];
+  const all: StrategyCompany[] = [];
+  let from = 0;
+  const PAGE = 1000;
+  while (true) {
+    const { data, error } = await supa
+      .from("strategy_companies")
+      .select("*")
+      .order("cmrr", { ascending: false })
+      .range(from, from + PAGE - 1);
+    if (error) { console.error("strategy fetch", error); break; }
+    if (!data || data.length === 0) break;
+    all.push(...(data as StrategyCompany[]));
+    if (data.length < PAGE) break;
+    from += PAGE;
+  }
+  return all;
 }
 
 export async function importStrategyCsv(
