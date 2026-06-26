@@ -97,6 +97,20 @@ export async function importStrategyCsv(
 ): Promise<{ inserted: number; errors: number }> {
   if (!supa) return { inserted: 0, errors: 0 };
 
+  // Fetch existing enrichment data to preserve it across re-imports
+  const { data: existing } = await supa
+    .from("strategy_companies")
+    .select("hubspot_company_id, ciudad_enriched, enriched_source, enriched_at");
+  const enrichmentMap = new Map(
+    (existing ?? [])
+      .filter((r) => r.ciudad_enriched)
+      .map((r) => [r.hubspot_company_id, {
+        ciudad_enriched: r.ciudad_enriched,
+        enriched_source: r.enriched_source,
+        enriched_at: r.enriched_at,
+      }])
+  );
+
   await supa.from("strategy_companies").delete().neq("id", 0);
 
   let inserted = 0;
@@ -104,42 +118,49 @@ export async function importStrategyCsv(
   const BATCH = 500;
 
   for (let i = 0; i < rows.length; i += BATCH) {
-    const batch = rows.slice(i, i + BATCH).map((r) => ({
-      hubspot_company_id: r.hubspot_company_id ?? "",
-      product_company_id: r.product_company_id ?? "",
-      company_name: r.company_name ?? "",
-      stage: r.stage ?? "",
-      pipeline: r.pipeline ?? "",
-      country: r.country ?? "",
-      ciudad: r.ciudad ?? "",
-      codigo_postal: r.codigo_postal ?? "",
-      industria: r.industria ?? "",
-      empresa_size: parseInt(r.empresa_size ?? "0", 10) || 0,
-      provenance: r.provenance ?? "",
-      close_date: safeTs(r.close_date ?? r.hs_close_date ?? ""),
-      after_demo_date: safeTs(r.after_demo_date ?? ""),
-      deal_after_demo_date: safeTs(r.deal_after_demo_date ?? ""),
-      tipo_empresa: r.tipo_empresa ?? "",
-      partner_object_name: r.partner_object_name ?? r.deal_partner_name ?? "",
-      plan: r.plan ?? "",
-      plan_name: r.plan_name ?? "",
-      addons: r.addons ?? "",
-      item_names: r.item_names ?? "",
-      cmrr: parseFloat(r.cmrr ?? "0") || 0,
-      sub_id_status: r.sub_id_status ?? "",
-      sector: r.sector ?? "",
-      total_seats: parseInt(r.total_seats ?? "0", 10) || 0,
-      lead_provenance: r.lead_provenance ?? r.finance_lead_provenance ?? "",
-      deal_closed_date: r.deal_closed_date ?? r.finance_deal_closed_date ?? "",
-      conversion: (r.conversion ?? r["conversion\r"] ?? "").trim(),
-      // New fields from Starburst query
-      has_demo: parseBool(r.has_demo),
-      is_won: parseBool(r.is_won),
-      is_active_client: parseBool(r.is_active_client),
-      provenance_norm: r.provenance_norm ?? null,
-      size_segment: r.size_segment ?? null,
-      ccaa: r.ccaa ?? null,
-    }));
+    const batch = rows.slice(i, i + BATCH).map((r) => {
+      const hsId = r.hubspot_company_id ?? "";
+      const saved = enrichmentMap.get(hsId);
+      return {
+        hubspot_company_id: hsId,
+        product_company_id: r.product_company_id ?? "",
+        company_name: r.company_name ?? "",
+        stage: r.stage ?? "",
+        pipeline: r.pipeline ?? "",
+        country: r.country ?? "",
+        ciudad: r.ciudad ?? "",
+        codigo_postal: r.codigo_postal ?? "",
+        industria: r.industria ?? "",
+        empresa_size: parseInt(r.empresa_size ?? "0", 10) || 0,
+        provenance: r.provenance ?? "",
+        close_date: safeTs(r.close_date ?? r.hs_close_date ?? ""),
+        after_demo_date: safeTs(r.after_demo_date ?? ""),
+        deal_after_demo_date: safeTs(r.deal_after_demo_date ?? ""),
+        tipo_empresa: r.tipo_empresa ?? "",
+        partner_object_name: r.partner_object_name ?? r.deal_partner_name ?? "",
+        plan: r.plan ?? "",
+        plan_name: r.plan_name ?? "",
+        addons: r.addons ?? "",
+        item_names: r.item_names ?? "",
+        cmrr: parseFloat(r.cmrr ?? "0") || 0,
+        sub_id_status: r.sub_id_status ?? "",
+        sector: r.sector ?? "",
+        total_seats: parseInt(r.total_seats ?? "0", 10) || 0,
+        lead_provenance: r.lead_provenance ?? r.finance_lead_provenance ?? "",
+        deal_closed_date: r.deal_closed_date ?? r.finance_deal_closed_date ?? "",
+        conversion: (r.conversion ?? r["conversion\r"] ?? "").trim(),
+        has_demo: parseBool(r.has_demo),
+        is_won: parseBool(r.is_won),
+        is_active_client: parseBool(r.is_active_client),
+        provenance_norm: r.provenance_norm ?? null,
+        size_segment: r.size_segment ?? null,
+        ccaa: r.ccaa ?? null,
+        // Preserve enrichment from previous imports/GitHub Actions runs
+        ciudad_enriched: saved?.ciudad_enriched ?? null,
+        enriched_source: saved?.enriched_source ?? null,
+        enriched_at: saved?.enriched_at ?? null,
+      };
+    });
 
     const { error } = await supa.from("strategy_companies").insert(batch);
     if (error) {
