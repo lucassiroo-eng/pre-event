@@ -35,9 +35,9 @@ if (!SUPABASE_URL || !SUPABASE_KEY) throw new Error("Missing SUPABASE_URL / SUPA
 const supa = createClient(SUPABASE_URL, SUPABASE_KEY);
 
 // Azure AI Foundry requires ?api-version and Bearer auth — use fetch directly
+// Use URL constructor so leading slash replaces path cleanly regardless of endpoint suffix
 const AZURE_MESSAGES_URL = AZURE_ENDPOINT
-  ? AZURE_ENDPOINT.replace(/\/anthropic(\/v1)?$/, "").replace(/\/$/, "") +
-    "/anthropic/v1/messages?api-version=2025-01-01-preview"
+  ? new URL("/anthropic/v1/messages?api-version=2025-01-01-preview", AZURE_ENDPOINT).href
   : null;
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
