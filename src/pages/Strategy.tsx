@@ -273,7 +273,7 @@ export function StrategyPage() {
   // Normalize all rows once
   const companies = useMemo<NormRow[]>(() =>
     raw.map((r) => {
-      const ccaaResult = resolveCCAA(r.ciudad);
+      const ccaaResult = resolveCCAA(r.ciudad_enriched || r.ciudad);
       return {
         ...r,
         _industry: standardIndustry(r.industria),

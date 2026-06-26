@@ -15,6 +15,7 @@ export interface StrategyCompany {
   close_date: string | null;
   after_demo_date: string | null;
   deal_after_demo_date: string | null; // 1=has demo, used for demo_rate
+  ciudad_enriched: string | null;
   tipo_empresa: string;
   partner_object_name: string;
   plan: string;
