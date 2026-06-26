@@ -29,6 +29,8 @@ const [AZURE_ENDPOINT, AZURE_MODEL, AZURE_KEY] = (
 const DRY_RUN = process.env.DRY_RUN === "1";
 const TIER = process.env.TIER ?? "both"; // "1" | "2" | "both"
 const LIMIT = parseInt(process.env.LIMIT ?? "0", 10); // 0 = no limit (all)
+const CONCURRENCY = parseInt(process.env.CONCURRENCY ?? "20", 10); // parallel AI calls
+const BATCH_PAUSE = parseInt(process.env.BATCH_PAUSE ?? "2000", 10); // ms between batches
 
 if (!SUPABASE_URL || !SUPABASE_KEY) throw new Error("Missing SUPABASE_URL / SUPABASE_SERVICE_KEY");
 
@@ -186,7 +188,7 @@ async function duckduckgoSearch(query) {
   }
 }
 
-async function extractCityWithAI(companyName, industry) {
+async function extractCityWithAI(companyName, industry, retries = 3) {
   if (!AZURE_MESSAGES_URL || !AZURE_KEY) return null;
   try {
     const resp = await fetch(AZURE_MESSAGES_URL, {
@@ -213,6 +215,12 @@ Si es una empresa muy genérica o no puedes determinarlo con certeza, responde e
       }),
     });
     if (!resp.ok) {
+      if (resp.status === 429 && retries > 0) {
+        const retryAfter = parseInt(resp.headers.get("retry-after") ?? "10", 10);
+        log(`  429 rate limit — esperando ${retryAfter}s antes de reintentar (${retries} intentos)`);
+        await sleep(retryAfter * 1000);
+        return extractCityWithAI(companyName, industry, retries - 1);
+      }
       const body = await resp.text();
       log(`  WARN AI error: ${resp.status} ${body.slice(0, 120)}`);
       return null;
@@ -220,7 +228,6 @@ Si es una empresa muy genérica o no puedes determinarlo con certeza, responde e
     const data = await resp.json();
     const raw = data.content?.[0]?.text?.trim().replace(/^["']|["']$/g, "") ?? "";
     if (raw === "null" || raw === "" || raw.length > 50) return null;
-    // Reject if it looks like a sentence instead of a city name
     if (raw.split(" ").length > 4) return null;
     return raw;
   } catch (e) {
@@ -230,7 +237,7 @@ Si es una empresa muy genérica o no puedes determinarlo con certeza, responde e
 }
 
 async function runTier2(companies) {
-  log(`Tier 2 — AI (${AZURE_MODEL}): ${companies.length} companies`);
+  log(`Tier 2 — AI (${AZURE_MODEL}): ${companies.length} companies, concurrency=${CONCURRENCY}`);
 
   if (!AZURE_MESSAGES_URL || !AZURE_KEY) {
     log("  SKIP: AZURE_CONFIG not set");
@@ -239,35 +246,43 @@ async function runTier2(companies) {
 
   let updated = 0;
   let notFound = 0;
+  let errors = 0;
+  const total = companies.length;
 
-  for (let i = 0; i < companies.length; i++) {
-    const company = companies[i];
+  for (let i = 0; i < total; i += CONCURRENCY) {
+    const batch = companies.slice(i, i + CONCURRENCY);
 
-    try {
-      const city = await extractCityWithAI(company.company_name, company.industria ?? "");
+    // Fire all requests in the batch concurrently
+    const results = await Promise.allSettled(
+      batch.map((company) =>
+        extractCityWithAI(company.company_name, company.industria ?? "")
+          .then((city) => ({ company, city }))
+      )
+    );
 
-      if (city) {
-        await saveCity(company.id, city, "ai");
-        updated++;
-        log(`  ✓ [${i + 1}/${companies.length}] ${company.company_name} → ${city}`);
-      } else {
-        notFound++;
-      }
-    } catch (e) {
-      log(`  ERR ${company.company_name}: ${e.message}`);
-    }
+    // Save resolved cities (individual Supabase updates, also concurrent)
+    await Promise.allSettled(
+      results.map(async (r) => {
+        if (r.status === "rejected") { errors++; return; }
+        const { company, city } = r.value;
+        if (city) {
+          await saveCity(company.id, city, "ai");
+          updated++;
+          log(`  ✓ ${company.company_name} → ${city}`);
+        } else {
+          notFound++;
+        }
+      })
+    );
 
-    if ((i + 1) % 100 === 0) {
-      log(
-        `  AI progress: ${i + 1}/${companies.length} | ✓ ${updated} | ✗ ${notFound}`
-      );
-    }
+    const done = Math.min(i + CONCURRENCY, total);
+    log(`  [${done}/${total}] ✓ ${updated} | ✗ ${notFound}${errors ? ` | err ${errors}` : ""}`);
 
-    // ~3 req/s — Azure rate limit is generous but avoid hammering
-    await sleep(350);
+    // Pause between batches to respect rate limits
+    if (done < total) await sleep(BATCH_PAUSE);
   }
 
-  log(`Tier 2 done — ${updated} updated, ${notFound} not found`);
+  log(`Tier 2 done — ${updated} updated, ${notFound} not found, ${errors} errors`);
   return { updated };
 }
 

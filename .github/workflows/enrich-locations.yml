@@ -21,6 +21,14 @@ on:
         required: false
         default: "false"
         type: boolean
+      concurrency:
+        description: "Parallel AI calls per batch (default 20)"
+        required: false
+        default: "20"
+      batch_pause:
+        description: "ms to wait between batches (default 2000)"
+        required: false
+        default: "2000"
 
 jobs:
   enrich:
@@ -59,4 +67,6 @@ jobs:
           TIER: ${{ inputs.tier }}
           LIMIT: ${{ inputs.limit }}
           DRY_RUN: ${{ inputs.dry_run == 'true' && '1' || '0' }}
+          CONCURRENCY: ${{ inputs.concurrency }}
+          BATCH_PAUSE: ${{ inputs.batch_pause }}
         run: node scripts/enrich-locations.mjs
