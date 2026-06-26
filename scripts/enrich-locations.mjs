@@ -51,12 +51,9 @@ function log(msg) {
 // ── Supabase helpers ──────────────────────────────────────────────────────────
 
 async function fetchUnresolved() {
-  // Companies where:
-  //  - ciudad_enriched IS NULL (not yet processed by this script)
-  //  - ciudad IS NULL OR ciudad = '' (no raw city either)
   let query = supa
     .from("strategy_companies")
-    .select("id, hubspot_company_id, company_name, ciudad")
+    .select("id, hubspot_company_id, company_name, ciudad, industria")
     .is("ciudad_enriched", null)
     .or("ciudad.is.null,ciudad.eq.");
 
@@ -189,7 +186,7 @@ async function duckduckgoSearch(query) {
   }
 }
 
-async function extractCityWithHaiku(companyName, snippets) {
+async function extractCityWithAI(companyName, industry) {
   if (!AZURE_MESSAGES_URL || !AZURE_KEY) return null;
   try {
     const resp = await fetch(AZURE_MESSAGES_URL, {
@@ -201,17 +198,16 @@ async function extractCityWithHaiku(companyName, snippets) {
       },
       body: JSON.stringify({
         model: AZURE_MODEL,
-        max_tokens: 40,
+        max_tokens: 30,
         messages: [
           {
             role: "user",
-            content: `Empresa española: "${companyName}"
-Resultados de búsqueda web:
-${snippets || "(sin resultados)"}
+            content: `Eres un experto en empresas españolas. Dada esta empresa, di en qué ciudad española está ubicada.
 
-¿En qué ciudad española está ubicada esta empresa?
-Responde SOLO el nombre de la ciudad (ej: "Barcelona" o "Madrid").
-Si no puedes determinarlo con certeza, responde exactamente: null`,
+Empresa: "${companyName}"${industry ? `\nSector: ${industry}` : ""}
+
+Responde SOLO con el nombre de la ciudad española (ej: "Barcelona", "Madrid", "Valencia").
+Si es una empresa muy genérica o no puedes determinarlo con certeza, responde exactamente: null`,
           },
         ],
       }),
@@ -223,7 +219,9 @@ Si no puedes determinarlo con certeza, responde exactamente: null`,
     }
     const data = await resp.json();
     const raw = data.content?.[0]?.text?.trim().replace(/^["']|["']$/g, "") ?? "";
-    if (raw === "null" || raw === "" || raw.length > 40) return null;
+    if (raw === "null" || raw === "" || raw.length > 50) return null;
+    // Reject if it looks like a sentence instead of a city name
+    if (raw.split(" ").length > 4) return null;
     return raw;
   } catch (e) {
     log(`  WARN AI error: ${e.message}`);
@@ -232,7 +230,7 @@ Si no puedes determinarlo con certeza, responde exactamente: null`,
 }
 
 async function runTier2(companies) {
-  log(`Tier 2 — AI: ${companies.length} companies`);
+  log(`Tier 2 — AI (${AZURE_MODEL}): ${companies.length} companies`);
 
   if (!AZURE_MESSAGES_URL || !AZURE_KEY) {
     log("  SKIP: AZURE_CONFIG not set");
@@ -246,15 +244,12 @@ async function runTier2(companies) {
     const company = companies[i];
 
     try {
-      const snippets = await duckduckgoSearch(`${company.company_name} España`);
-      await sleep(1100); // ~1 req/s to DDG
-
-      const city = await extractCityWithHaiku(company.company_name, snippets);
+      const city = await extractCityWithAI(company.company_name, company.industria ?? "");
 
       if (city) {
         await saveCity(company.id, city, "ai");
         updated++;
-        log(`  ✓ ${company.company_name} → ${city}`);
+        log(`  ✓ [${i + 1}/${companies.length}] ${company.company_name} → ${city}`);
       } else {
         notFound++;
       }
@@ -262,11 +257,14 @@ async function runTier2(companies) {
       log(`  ERR ${company.company_name}: ${e.message}`);
     }
 
-    if ((i + 1) % 50 === 0) {
+    if ((i + 1) % 100 === 0) {
       log(
         `  AI progress: ${i + 1}/${companies.length} | ✓ ${updated} | ✗ ${notFound}`
       );
     }
+
+    // ~3 req/s — Azure rate limit is generous but avoid hammering
+    await sleep(350);
   }
 
   log(`Tier 2 done — ${updated} updated, ${notFound} not found`);
