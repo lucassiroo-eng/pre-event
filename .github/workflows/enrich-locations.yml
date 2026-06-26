@@ -41,7 +41,7 @@ jobs:
       - name: Run enrichment
         env:
           SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
-          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+          SUPABASE_SERVICE_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
           HUBSPOT_TOKEN: ${{ secrets.HUBSPOT_TOKEN }}
           AZURE_CONFIG: ${{ secrets.AZURE_CONFIG }}
           TIER: ${{ inputs.tier }}
