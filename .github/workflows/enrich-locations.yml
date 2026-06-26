@@ -25,18 +25,32 @@ on:
 jobs:
   enrich:
     runs-on: ubuntu-latest
-    timeout-minutes: 360 # 6h ceiling for large batches
+    timeout-minutes: 360
 
     steps:
       - uses: actions/checkout@v4
 
       - uses: actions/setup-node@v4
         with:
-          node-version: "20"
-          cache: "npm"
+          node-version: "24"
 
       - name: Install dependencies
-        run: npm ci
+        run: npm install --legacy-peer-deps
+
+      - name: Verify env
+        env:
+          SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
+          SUPABASE_SERVICE_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
+          HUBSPOT_TOKEN: ${{ secrets.HUBSPOT_TOKEN }}
+          AZURE_CONFIG: ${{ secrets.AZURE_CONFIG }}
+        run: |
+          echo "SUPABASE_URL set: $([[ -n '$SUPABASE_URL' ]] && echo yes || echo NO)"
+          echo "SUPABASE_SERVICE_KEY set: $([[ -n '$SUPABASE_SERVICE_KEY' ]] && echo yes || echo NO)"
+          echo "HUBSPOT_TOKEN set: $([[ -n '$HUBSPOT_TOKEN' ]] && echo yes || echo NO)"
+          echo "AZURE_CONFIG set: $([[ -n '$AZURE_CONFIG' ]] && echo yes || echo NO)"
+          node --version
+          node -e "import('@supabase/supabase-js').then(()=>console.log('supabase ok')).catch(e=>console.error('supabase MISSING',e.message))"
+          node -e "import('@anthropic-ai/sdk').then(()=>console.log('anthropic ok')).catch(e=>console.error('anthropic MISSING',e.message))"
 
       - name: Run enrichment
         env:
