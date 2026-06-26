@@ -203,7 +203,7 @@ export function standardIndustry(raw: string): string {
 }
 
 export function normProvenance(raw: string): string {
-  if (!raw) return "";
+  if (!raw) return "Others";
   if (raw === "Partner" || raw === "Partners") return "Partners";
   return raw;
 }

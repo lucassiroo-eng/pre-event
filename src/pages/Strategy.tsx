@@ -29,7 +29,7 @@ interface NormRow extends StrategyCompany {
 }
 
 function sizeSegment(n: number): string {
-  if (!n || n <= 0) return "—";
+  if (!n || n <= 0) return "Others";
   if (n <= 50) return "S (1-50)";
   if (n <= 200) return "M (51-200)";
   if (n <= 500) return "L (201-500)";
@@ -212,7 +212,7 @@ export function StrategyPage() {
         _provenance: normProvenance(r.provenance),
         _pipeline: groupPipeline(r.pipeline),
         _segment: sizeSegment(r.empresa_size),
-        _ccaa: ccaaResult.ccaa,
+        _ccaa: ccaaResult.ccaa === "Unknown" ? "Others" : ccaaResult.ccaa,
         _ccaaCode: ccaaResult.code,
       };
     }),
