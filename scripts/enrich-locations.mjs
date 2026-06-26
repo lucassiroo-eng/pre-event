@@ -15,7 +15,6 @@
  */
 
 import { createClient } from "@supabase/supabase-js";
-import Anthropic from "@anthropic-ai/sdk";
 
 // ── Config ────────────────────────────────────────────────────────────────────
 
@@ -35,12 +34,10 @@ if (!SUPABASE_URL || !SUPABASE_KEY) throw new Error("Missing SUPABASE_URL / SUPA
 
 const supa = createClient(SUPABASE_URL, SUPABASE_KEY);
 
-const ai = AZURE_KEY
-  ? new Anthropic({
-      apiKey: AZURE_KEY,
-      baseURL: AZURE_ENDPOINT,
-      defaultHeaders: { "api-key": AZURE_KEY },
-    })
+// Azure AI Foundry requires ?api-version and Bearer auth — use fetch directly
+const AZURE_MESSAGES_URL = AZURE_ENDPOINT
+  ? AZURE_ENDPOINT.replace(/\/anthropic(\/v1)?$/, "").replace(/\/$/, "") +
+    "/anthropic/v1/messages?api-version=2025-01-01-preview"
   : null;
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -193,29 +190,43 @@ async function duckduckgoSearch(query) {
 }
 
 async function extractCityWithHaiku(companyName, snippets) {
-  if (!ai) return null;
+  if (!AZURE_MESSAGES_URL || !AZURE_KEY) return null;
   try {
-    const msg = await ai.messages.create({
-      model: AZURE_MODEL,
-      max_tokens: 40,
-      messages: [
-        {
-          role: "user",
-          content: `Empresa española: "${companyName}"
+    const resp = await fetch(AZURE_MESSAGES_URL, {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${AZURE_KEY}`,
+        "Content-Type": "application/json",
+        "anthropic-version": "2023-06-01",
+      },
+      body: JSON.stringify({
+        model: AZURE_MODEL,
+        max_tokens: 40,
+        messages: [
+          {
+            role: "user",
+            content: `Empresa española: "${companyName}"
 Resultados de búsqueda web:
 ${snippets || "(sin resultados)"}
 
 ¿En qué ciudad española está ubicada esta empresa?
 Responde SOLO el nombre de la ciudad (ej: "Barcelona" o "Madrid").
 Si no puedes determinarlo con certeza, responde exactamente: null`,
-        },
-      ],
+          },
+        ],
+      }),
     });
-    const raw = msg.content[0].text.trim().replace(/^["']|["']$/g, "");
+    if (!resp.ok) {
+      const body = await resp.text();
+      log(`  WARN AI error: ${resp.status} ${body.slice(0, 120)}`);
+      return null;
+    }
+    const data = await resp.json();
+    const raw = data.content?.[0]?.text?.trim().replace(/^["']|["']$/g, "") ?? "";
     if (raw === "null" || raw === "" || raw.length > 40) return null;
     return raw;
   } catch (e) {
-    log(`  WARN Haiku error: ${e.message}`);
+    log(`  WARN AI error: ${e.message}`);
     return null;
   }
 }
