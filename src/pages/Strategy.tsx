@@ -37,27 +37,21 @@ function sizeSegment(n: number): string {
 }
 
 const FILTER_KEYS: { key: keyof NormRow; label: string }[] = [
-  { key: "_ccaa", label: "CCAA" },
+  { key: "_ccaa", label: "Región" },
   { key: "_segment", label: "Tamaño" },
   { key: "tipo_empresa", label: "Tipo" },
   { key: "_industry", label: "Industria" },
   { key: "_provenance", label: "Provenance" },
-  { key: "conversion", label: "Conversión" },
   { key: "_pipeline", label: "Pipeline" },
 ];
 
 const PIVOT_DIMS: { key: keyof NormRow; label: string }[] = [
-  { key: "_ccaa", label: "CCAA" },
+  { key: "_ccaa", label: "Región" },
   { key: "_industry", label: "Industria" },
   { key: "_segment", label: "Tamaño" },
   { key: "tipo_empresa", label: "Tipo empresa" },
   { key: "_provenance", label: "Provenance" },
-  { key: "conversion", label: "Conversión" },
   { key: "_pipeline", label: "Pipeline" },
-  { key: "plan_name", label: "Plan" },
-  { key: "stage", label: "Stage" },
-  { key: "ciudad", label: "Ciudad" },
-  { key: "sector", label: "Sector" },
 ];
 
 const AGG_OPTIONS: { key: PivotAgg; label: string; unit?: string }[] = [
