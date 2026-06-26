@@ -16,7 +16,7 @@ import { resolveCCAA, CCAA_LIST } from "@/lib/strategyCCAA";
 import { applyCountryTheme } from "@/lib/countryConfig";
 import {
   Upload, Table2, Search, ChevronDown, ChevronUp, X,
-  Building2, Users, TrendingUp, Target, Hash, Trash2, ArrowRight, Shuffle,
+  Target, Hash, Trash2, ArrowRight, Shuffle,
 } from "lucide-react";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -129,6 +129,31 @@ function parseCsvText(text: string): Record<string, string>[] {
   return rows;
 }
 
+// Compute 33rd and 67th percentiles for heat mapping
+function computeQuantiles(values: number[]): { p33: number; p67: number } {
+  const sorted = values.filter((v) => v > 0).sort((a, b) => a - b);
+  if (sorted.length < 3) return { p33: 25, p67: 50 };
+  const p33 = sorted[Math.floor(sorted.length * 0.33)] ?? 25;
+  const p67 = sorted[Math.floor(sorted.length * 0.67)] ?? 50;
+  return { p33, p67: Math.max(p67, p33 + 1) };
+}
+
+// Returns Tailwind classes for heat-mapped rate cells
+function rateHeat(v: number, q: { p33: number; p67: number }): string {
+  if (v <= 0) return "text-muted-foreground/30";
+  if (v >= q.p67) return "bg-emerald-100 text-emerald-800 font-semibold";
+  if (v >= q.p33) return "bg-amber-50 text-amber-700 font-medium";
+  return "text-slate-400";
+}
+
+function segmentBadge(s: string): string {
+  if (s.startsWith("S")) return "bg-sky-50 text-sky-700 ring-sky-200";
+  if (s.startsWith("M")) return "bg-amber-50 text-amber-700 ring-amber-200";
+  if (s.startsWith("L")) return "bg-orange-50 text-orange-700 ring-orange-200";
+  if (s.startsWith("X")) return "bg-rose-50 text-rose-700 ring-rose-200";
+  return "bg-muted text-muted-foreground ring-border";
+}
+
 // ── MultiSelect ───────────────────────────────────────────────────────────────
 
 function MultiSelect({
@@ -153,8 +178,9 @@ function MultiSelect({
       <button
         onClick={() => setOpen((o) => !o)}
         className={`h-8 flex items-center gap-1.5 rounded-lg border px-2.5 text-xs transition-colors select-none ${
-          active ? "border-primary/40 bg-primary/5 text-foreground font-medium"
-                 : "border-border bg-background text-muted-foreground hover:text-foreground"
+          active
+            ? "border-primary/40 bg-primary/5 text-foreground font-medium"
+            : "border-border bg-background text-muted-foreground hover:text-foreground hover:border-border/80"
         }`}
       >
         {label}
@@ -183,24 +209,44 @@ function MultiSelect({
 // ── Funnel Step ───────────────────────────────────────────────────────────────
 
 function FunnelStep({
-  label, value, sub, color, arrow, conversion,
+  step, label, value, sub, accentClass,
+  arrow, conversion,
 }: {
-  label: string; value: number; sub?: string; color: string;
+  step: number; label: string; value: number; sub?: string; accentClass: string;
   arrow?: boolean; conversion?: number;
 }) {
+  const conversionColor =
+    conversion === undefined ? ""
+    : conversion >= 60 ? "bg-emerald-100 text-emerald-700"
+    : conversion >= 35 ? "bg-amber-100 text-amber-700"
+    : "bg-slate-100 text-slate-500";
+
   return (
-    <div className="flex items-center gap-2">
-      <div className={`rounded-xl px-4 py-3 min-w-[110px] text-center ${color}`}>
-        <div className="text-[10px] font-bold uppercase tracking-wider opacity-70 mb-0.5">{label}</div>
-        <div className="text-2xl font-bold tabular-nums leading-none">{fmtNum(value)}</div>
-        {sub && <div className="text-[10px] opacity-60 mt-0.5">{sub}</div>}
+    <div className="flex items-center gap-2.5 flex-shrink-0">
+      <div className="relative rounded-xl border border-border bg-card shadow-sm overflow-hidden min-w-[120px]">
+        {/* Left accent stripe */}
+        <div className={`absolute inset-y-0 left-0 w-[3px] ${accentClass}`} />
+        <div className="px-4 py-3 pl-5">
+          <div className="flex items-center gap-1.5 mb-1">
+            <span className="text-[9px] font-bold text-muted-foreground/50 tabular-nums">{step}</span>
+            <span className="text-[9px] font-bold uppercase tracking-widest text-muted-foreground">{label}</span>
+          </div>
+          <div className="text-[26px] font-bold tabular-nums leading-none text-foreground">
+            {fmtNum(value)}
+          </div>
+          {sub && (
+            <div className="text-[10px] text-muted-foreground mt-1 leading-none">{sub}</div>
+          )}
+        </div>
       </div>
       {arrow && (
-        <div className="flex flex-col items-center gap-0.5 text-muted-foreground">
+        <div className="flex flex-col items-center gap-1">
           {conversion !== undefined && (
-            <span className="text-[10px] font-bold text-primary tabular-nums">{conversion}%</span>
+            <span className={`text-[11px] font-bold tabular-nums px-2 py-0.5 rounded-full ${conversionColor}`}>
+              {conversion}%
+            </span>
           )}
-          <ArrowRight className="h-4 w-4 opacity-40" />
+          <ArrowRight className="h-3.5 w-3.5 text-muted-foreground/30" />
         </div>
       )}
     </div>
@@ -256,7 +302,6 @@ export function StrategyPage() {
     raw
       .filter((r) => isValidTipo(r.tipo_empresa))
       .map((r) => {
-        // Prefer SQL-computed fields, fall back to client-side resolution
         const ccaaFromSql = r.ccaa?.trim();
         const ccaaResolved = (() => {
           if (ccaaFromSql && ccaaFromSql !== "Others") return ccaaFromSql;
@@ -267,7 +312,6 @@ export function StrategyPage() {
         const provNorm = r.provenance_norm?.trim() || normProvenance(r.provenance);
         const segNorm = r.size_segment?.trim() || sizeSegment(r.empresa_size, r.total_seats);
 
-        // Funnel flags: prefer SQL booleans, fall back to legacy fields
         const isWon = r.is_won != null
           ? Boolean(r.is_won)
           : r.conversion === "converted" || r.conversion === "onboarding";
@@ -358,7 +402,6 @@ export function StrategyPage() {
       l2w: pct(g.won, g.hubspot),
     }));
 
-    // Sort
     rows.sort((a, b) => {
       if (segmentDim === "size_segment") {
         const ai = SEGMENT_ORDER.indexOf(a.label);
@@ -376,6 +419,13 @@ export function StrategyPage() {
 
     return rows;
   }, [filtered, segmentDim, segmentSort, segmentAsc]);
+
+  // Quantile thresholds for heat-mapped rate columns (relative to current data)
+  const quantiles = useMemo(() => ({
+    l2d: computeQuantiles(segmentRows.map((r) => r.l2d)),
+    d2w: computeQuantiles(segmentRows.map((r) => r.d2w)),
+    l2w: computeQuantiles(segmentRows.map((r) => r.l2w)),
+  }), [segmentRows]);
 
   // ── Filter options ──────────────────────────────────────────────────────────
 
@@ -471,14 +521,6 @@ export function StrategyPage() {
     else { setSegmentSort(col); setSegmentAsc(false); }
   };
 
-  const segmentColor = (s: string) => {
-    if (s.startsWith("S")) return "bg-sky-50 text-sky-700 ring-sky-200";
-    if (s.startsWith("M")) return "bg-amber-50 text-amber-700 ring-amber-200";
-    if (s.startsWith("L")) return "bg-orange-50 text-orange-700 ring-orange-200";
-    if (s.startsWith("X")) return "bg-rose-50 text-rose-700 ring-rose-200";
-    return "bg-muted text-muted-foreground ring-border";
-  };
-
   if (!hasAccess) {
     return (
       <div className="flex items-center justify-center h-[60vh]">
@@ -495,12 +537,16 @@ export function StrategyPage() {
 
   // ── Render ──────────────────────────────────────────────────────────────────
 
-  return (
-    <div className="mx-auto max-w-[1500px] px-6 py-6 lg:px-8 lg:py-8 space-y-5">
+  const maxHubspot = Math.max(...segmentRows.map((r) => r.hubspot), 1);
 
-      {/* Header */}
-      <div className="rounded-2xl px-6 py-5 sm:px-8 text-white shadow-sm"
-        style={{ background: "var(--gradient-factorial)" }}>
+  return (
+    <div className="mx-auto max-w-[1500px] px-4 py-6 lg:px-8 space-y-5">
+
+      {/* ── Header ── */}
+      <div
+        className="rounded-2xl px-6 py-5 sm:px-8 text-white shadow-sm"
+        style={{ background: "var(--gradient-factorial)" }}
+      >
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="space-y-0.5">
             <div className="flex items-center gap-2">
@@ -527,7 +573,7 @@ export function StrategyPage() {
             <div className="flex rounded-lg bg-white/15 p-0.5 text-xs backdrop-blur-sm">
               {(["segment", "table"] as ViewMode[]).map((v) => (
                 <button key={v} onClick={() => setView(v)}
-                  className={`flex items-center gap-1.5 rounded-md px-3 py-1.5 transition-all capitalize ${
+                  className={`flex items-center gap-1.5 rounded-md px-3 py-1.5 transition-all ${
                     view === v ? "bg-white text-foreground shadow-sm" : "text-white/80 hover:text-white"
                   }`}>
                   {v === "segment" ? <Hash className="h-3.5 w-3.5" /> : <Table2 className="h-3.5 w-3.5" />}
@@ -536,7 +582,6 @@ export function StrategyPage() {
               ))}
             </div>
 
-            {/* Import strategy CSV */}
             <label className="flex items-center gap-1.5 rounded-lg bg-white/15 backdrop-blur-sm px-3 py-1.5 text-xs font-medium cursor-pointer hover:bg-white/25 transition-colors">
               <Upload className="h-3.5 w-3.5" />
               {importing === "strategy" ? importProgress : "CSV HubSpot"}
@@ -544,7 +589,6 @@ export function StrategyPage() {
                 disabled={importing !== null} />
             </label>
 
-            {/* Import SASOR CSV */}
             <label className="flex items-center gap-1.5 rounded-lg bg-white/10 backdrop-blur-sm px-3 py-1.5 text-xs font-medium cursor-pointer hover:bg-white/20 transition-colors">
               <Upload className="h-3.5 w-3.5" />
               {importing === "sasor" ? importProgress : "CSV SASOR"}
@@ -552,7 +596,6 @@ export function StrategyPage() {
                 disabled={importing !== null} />
             </label>
 
-            {/* Cross-enrich CCAA */}
             {raw.length > 0 && (
               <button
                 onClick={handleCrossEnrich}
@@ -565,7 +608,6 @@ export function StrategyPage() {
               </button>
             )}
 
-            {/* Clear */}
             {raw.length > 0 && (
               <button
                 onClick={async () => {
@@ -582,62 +624,80 @@ export function StrategyPage() {
         </div>
       </div>
 
-      {/* Funnel strip */}
+      {/* ── Funnel strip ── */}
       {(companies.length > 0 || sasorTotal > 0) && (
         <div className="rounded-xl border border-border bg-card px-5 py-4 overflow-x-auto">
-          <div className="flex items-center gap-2 flex-nowrap">
+          <div className="text-[9px] font-bold uppercase tracking-widest text-muted-foreground/60 mb-3">
+            Embudo comercial
+          </div>
+          <div className="flex items-start gap-2 flex-nowrap">
             {sasorTotal > 0 && (
-              <FunnelStep label="España TAM" value={funnel.spain}
-                sub="SASOR 20+" color="bg-slate-100 text-slate-700"
-                arrow conversion={funnel.hs2spain ?? undefined} />
+              <FunnelStep
+                step={1} label="Mercado ES" value={funnel.spain}
+                sub="SASOR · empresas +20 empleados"
+                accentClass="bg-slate-300"
+                arrow conversion={funnel.hs2spain ?? undefined}
+              />
             )}
-            <FunnelStep label="HubSpot" value={funnel.hubspot}
-              sub="empresas" color="bg-blue-50 text-blue-700"
-              arrow conversion={funnel.l2d} />
-            <FunnelStep label="Con demo" value={funnel.demos}
-              sub={`L2D ${funnel.l2d}%`} color="bg-violet-50 text-violet-700"
-              arrow conversion={funnel.d2w} />
-            <FunnelStep label="Won" value={funnel.won}
-              sub={`D2W ${funnel.d2w}%`} color="bg-amber-50 text-amber-700"
-              arrow conversion={funnel.w2a} />
-            <FunnelStep label="Activos" value={funnel.activos}
-              sub={`€${fmtNum(funnel.cmrr)} CMRR`} color="bg-emerald-50 text-emerald-700" />
+            <FunnelStep
+              step={sasorTotal > 0 ? 2 : 1} label="En HubSpot" value={funnel.hubspot}
+              sub="empresas en pipeline"
+              accentClass="bg-blue-400"
+              arrow conversion={funnel.l2d}
+            />
+            <FunnelStep
+              step={sasorTotal > 0 ? 3 : 2} label="Con demo" value={funnel.demos}
+              sub={`${funnel.l2d}% de leads`}
+              accentClass="bg-violet-400"
+              arrow conversion={funnel.d2w}
+            />
+            <FunnelStep
+              step={sasorTotal > 0 ? 4 : 3} label="Ganados" value={funnel.won}
+              sub={`${funnel.d2w}% de demos`}
+              accentClass="bg-amber-400"
+              arrow conversion={funnel.w2a}
+            />
+            <FunnelStep
+              step={sasorTotal > 0 ? 5 : 4} label="Activos" value={funnel.activos}
+              sub={`€${fmtNum(funnel.cmrr)} CMRR`}
+              accentClass="bg-emerald-400"
+            />
           </div>
         </div>
       )}
 
-      {/* Filters bar */}
-      <div className="rounded-xl border border-border bg-card p-3">
-        <div className="flex flex-wrap items-center gap-2">
-          <div className="relative">
-            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
-            <input
-              type="text" placeholder="Buscar empresa..."
-              value={search} onChange={(e) => { setSearch(e.target.value); setPage(0); }}
-              className="h-8 rounded-lg border border-border bg-background pl-8 pr-3 text-xs focus:outline-none focus:ring-2 focus:ring-primary/20 w-52"
-            />
-          </div>
-          <div className="h-5 w-px bg-border" />
-          {FILTER_KEYS.map(({ key, label }) => (
-            <MultiSelect key={key} label={label}
-              options={filterOptions[key] ?? []}
-              selected={filters[key] ?? []}
-              onChange={(v) => { setFilters((f) => ({ ...f, [key]: v })); setPage(0); }}
-            />
-          ))}
-          {activeFilterCount > 0 && (
-            <button onClick={() => { setFilters({}); setSearch(""); setPage(0); }}
-              className="flex items-center gap-1 rounded-full bg-primary/10 text-primary px-2.5 py-1 text-[11px] font-medium hover:bg-primary/20 transition-colors">
-              <X className="h-3 w-3" /> Limpiar ({activeFilterCount})
-            </button>
-          )}
-          <span className="text-[10px] text-muted-foreground ml-auto tabular-nums font-medium">
-            {filtered.length.toLocaleString()} resultados
-          </span>
+      {/* ── Filters ── */}
+      <div className="flex flex-wrap items-center gap-2">
+        <div className="relative">
+          <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+          <input
+            type="text" placeholder="Buscar empresa..."
+            value={search} onChange={(e) => { setSearch(e.target.value); setPage(0); }}
+            className="h-8 rounded-lg border border-border bg-background pl-8 pr-3 text-xs focus:outline-none focus:ring-2 focus:ring-primary/20 w-48"
+          />
         </div>
+        <div className="h-5 w-px bg-border" />
+        {FILTER_KEYS.map(({ key, label }) => (
+          <MultiSelect key={key} label={label}
+            options={filterOptions[key] ?? []}
+            selected={filters[key] ?? []}
+            onChange={(v) => { setFilters((f) => ({ ...f, [key]: v })); setPage(0); }}
+          />
+        ))}
+        {activeFilterCount > 0 && (
+          <button
+            onClick={() => { setFilters({}); setSearch(""); setPage(0); }}
+            className="flex items-center gap-1 rounded-full bg-primary/10 text-primary px-2.5 py-1 text-[11px] font-medium hover:bg-primary/20 transition-colors"
+          >
+            <X className="h-3 w-3" /> Limpiar ({activeFilterCount})
+          </button>
+        )}
+        <span className="text-[10px] text-muted-foreground ml-auto tabular-nums">
+          {filtered.length.toLocaleString()} empresas
+        </span>
       </div>
 
-      {/* Content */}
+      {/* ── Content ── */}
       {loading ? (
         <div className="flex items-center justify-center h-40">
           <div className="flex items-center gap-2">
@@ -652,42 +712,52 @@ export function StrategyPage() {
         </div>
       ) : view === "segment" ? (
 
-        /* ── Segment table ── */
-        <div className="space-y-3">
-          {/* Dimension selector */}
-          <div className="flex items-center gap-3">
-            <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Dimensión</span>
-            <div className="flex rounded-lg border border-border bg-background p-0.5 gap-0.5 text-xs">
-              {SEGMENT_DIMS.map((d) => (
-                <button key={d.key} onClick={() => setSegmentDim(d.key)}
-                  className={`px-3 py-1 rounded-md transition-all ${
-                    segmentDim === d.key
-                      ? "bg-primary text-primary-foreground font-semibold shadow-sm"
-                      : "text-muted-foreground hover:text-foreground"
-                  }`}>
-                  {d.label}
-                </button>
-              ))}
+        /* ── Segment view ── */
+        <div className="space-y-0">
+
+          {/* Dimension tabs */}
+          <div className="flex items-center gap-1 border-b border-border">
+            <span className="text-[9px] font-bold uppercase tracking-widest text-muted-foreground/50 pr-3">
+              Agrupar por
+            </span>
+            {SEGMENT_DIMS.map((d) => (
+              <button key={d.key} onClick={() => setSegmentDim(d.key)}
+                className={`px-3 py-2 text-xs font-medium transition-all border-b-2 -mb-px ${
+                  segmentDim === d.key
+                    ? "border-primary text-foreground"
+                    : "border-transparent text-muted-foreground hover:text-foreground"
+                }`}>
+                {d.label}
+              </button>
+            ))}
+            <div className="ml-auto pb-1 flex items-center gap-2 pr-1">
+              <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground">
+                <span className="inline-block h-2 w-4 rounded-sm bg-emerald-100 ring-1 ring-emerald-200" />
+                Alto
+                <span className="inline-block h-2 w-4 rounded-sm bg-amber-50 ring-1 ring-amber-200" />
+                Medio
+              </div>
             </div>
           </div>
 
-          <div className="overflow-x-auto rounded-xl border border-border bg-card shadow-sm">
+          {/* Table */}
+          <div className="overflow-x-auto rounded-b-xl border border-t-0 border-border bg-card shadow-sm">
             <table className="w-full text-xs">
               <thead>
-                <tr className="bg-muted/40 border-b border-border">
+                <tr className="bg-muted/30 border-b border-border">
                   {([
-                    ["label", SEGMENT_DIMS.find(d => d.key === segmentDim)?.label ?? ""],
-                    ["hubspot", "HubSpot"],
-                    ["demos", "Con demo"],
-                    ["won", "Won"],
-                    ["activos", "Activos"],
-                    ["l2d", "L2D%"],
-                    ["d2w", "D2W%"],
-                    ["l2w", "L2W%"],
-                    ["cmrr", "CMRR"],
-                  ] as [keyof SegmentRow, string][]).map(([col, lbl]) => (
+                    ["label",   SEGMENT_DIMS.find((d) => d.key === segmentDim)?.label ?? "", "text-left",  "min-w-[160px]"],
+                    ["hubspot", "Leads",        "text-right", ""],
+                    ["demos",   "Con demo",     "text-right", ""],
+                    ["won",     "Ganados",      "text-right", ""],
+                    ["activos", "Activos",      "text-right", ""],
+                    ["l2d",     "Lead → Demo",  "text-right", "min-w-[90px]"],
+                    ["d2w",     "Demo → Won",   "text-right", "min-w-[90px]"],
+                    ["l2w",     "Lead → Won",   "text-right", "min-w-[90px]"],
+                    ["cmrr",    "CMRR",         "text-right", "min-w-[110px]"],
+                  ] as [keyof SegmentRow, string, string, string][]).map(([col, lbl, align, minW]) => (
                     <th key={col} onClick={() => handleSegSort(col)}
-                      className="px-3 py-2.5 text-right first:text-left text-[10px] uppercase tracking-wider text-muted-foreground font-bold cursor-pointer hover:text-foreground select-none whitespace-nowrap transition-colors">
+                      className={`px-3 py-2.5 ${align} ${minW} text-[10px] uppercase tracking-wider text-muted-foreground font-bold cursor-pointer hover:text-foreground select-none whitespace-nowrap transition-colors`}>
                       {lbl}<SegSortIcon col={col} />
                     </th>
                   ))}
@@ -695,29 +765,60 @@ export function StrategyPage() {
               </thead>
               <tbody>
                 {segmentRows.map((row, idx) => {
-                  const maxCmrr = Math.max(...segmentRows.map(r => r.cmrr), 1);
-                  const cmrrBar = Math.round((row.cmrr / maxCmrr) * 100);
+                  const isOthers = row.label === "Others";
+                  const cmrrBar = Math.round((row.cmrr / Math.max(...segmentRows.map((r) => r.cmrr), 1)) * 100);
+                  const volBar = Math.round((row.hubspot / maxHubspot) * 100);
                   return (
-                    <tr key={row.label} className={`border-t border-border/60 hover:bg-muted/20 transition-colors ${idx % 2 === 0 ? "" : "bg-muted/[0.03]"}`}>
-                      <td className="px-3 py-2 font-semibold text-foreground max-w-[200px] truncate">{row.label}</td>
-                      <td className="px-3 py-2 tabular-nums text-right text-muted-foreground">{row.hubspot.toLocaleString()}</td>
-                      <td className="px-3 py-2 tabular-nums text-right text-muted-foreground">{row.demos.toLocaleString()}</td>
-                      <td className="px-3 py-2 tabular-nums text-right text-muted-foreground">{row.won.toLocaleString()}</td>
-                      <td className="px-3 py-2 tabular-nums text-right">
+                    <tr key={row.label}
+                      className={`border-t border-border/50 transition-colors hover:bg-muted/20 ${
+                        isOthers ? "opacity-50" : ""
+                      } ${idx % 2 === 0 ? "" : "bg-muted/[0.025]"}`}>
+
+                      <td className="px-3 py-2.5">
+                        <span className={`font-semibold ${isOthers ? "text-muted-foreground italic" : "text-foreground"}`}>
+                          {row.label}
+                        </span>
+                        {isOthers && (
+                          <span className="ml-1.5 text-[9px] text-muted-foreground/60">(sin CCAA asignada)</span>
+                        )}
+                      </td>
+
+                      {/* Leads with volume bar */}
+                      <td className="px-3 py-2.5 text-right">
+                        <div className="flex items-center justify-end gap-2">
+                          <div className="w-12 h-1 rounded-full bg-muted overflow-hidden hidden sm:block">
+                            <div className="h-full rounded-full bg-blue-300" style={{ width: `${volBar}%` }} />
+                          </div>
+                          <span className="tabular-nums text-muted-foreground">{row.hubspot.toLocaleString()}</span>
+                        </div>
+                      </td>
+
+                      <td className="px-3 py-2.5 tabular-nums text-right text-muted-foreground">
+                        {row.demos.toLocaleString()}
+                      </td>
+                      <td className="px-3 py-2.5 tabular-nums text-right text-muted-foreground">
+                        {row.won.toLocaleString()}
+                      </td>
+                      <td className="px-3 py-2.5 tabular-nums text-right">
                         <span className="font-semibold text-emerald-700">{row.activos.toLocaleString()}</span>
                       </td>
-                      {/* Rate cells with color coding */}
-                      {([row.l2d, row.d2w, row.l2w] as number[]).map((v, i) => (
-                        <td key={i} className="px-3 py-2 tabular-nums text-right">
-                          <span className={`font-semibold ${
-                            v >= 50 ? "text-emerald-600" : v >= 25 ? "text-amber-600" : "text-muted-foreground"
-                          }`}>{v}%</span>
-                        </td>
-                      ))}
-                      <td className="px-3 py-2 tabular-nums text-right">
+
+                      {/* Heat-mapped rate cells */}
+                      <td className={`px-3 py-2.5 tabular-nums text-right text-sm ${!isOthers ? rateHeat(row.l2d, quantiles.l2d) : "text-muted-foreground/40"}`}>
+                        {row.l2d}%
+                      </td>
+                      <td className={`px-3 py-2.5 tabular-nums text-right text-sm ${!isOthers ? rateHeat(row.d2w, quantiles.d2w) : "text-muted-foreground/40"}`}>
+                        {row.d2w}%
+                      </td>
+                      <td className={`px-3 py-2.5 tabular-nums text-right text-sm ${!isOthers ? rateHeat(row.l2w, quantiles.l2w) : "text-muted-foreground/40"}`}>
+                        {row.l2w}%
+                      </td>
+
+                      {/* CMRR with bar */}
+                      <td className="px-3 py-2.5 tabular-nums text-right">
                         <div className="flex items-center justify-end gap-2">
-                          <div className="w-16 h-1.5 rounded-full bg-muted overflow-hidden hidden sm:block">
-                            <div className="h-full rounded-full bg-primary/40" style={{ width: `${cmrrBar}%` }} />
+                          <div className="w-14 h-1.5 rounded-full bg-muted overflow-hidden hidden sm:block">
+                            <div className="h-full rounded-full bg-primary/35" style={{ width: `${cmrrBar}%` }} />
                           </div>
                           <span className="font-semibold">{fmtNum(row.cmrr)}</span>
                         </div>
@@ -725,12 +826,13 @@ export function StrategyPage() {
                     </tr>
                   );
                 })}
-                {/* Totals row */}
-                <tr className="border-t-2 border-border bg-muted/40 font-bold">
+
+                {/* Totals */}
+                <tr className="border-t-2 border-border bg-muted/30 font-bold text-xs">
                   <td className="px-3 py-2.5 text-foreground">Total</td>
-                  <td className="px-3 py-2.5 tabular-nums text-right">{funnel.hubspot.toLocaleString()}</td>
-                  <td className="px-3 py-2.5 tabular-nums text-right">{funnel.demos.toLocaleString()}</td>
-                  <td className="px-3 py-2.5 tabular-nums text-right">{funnel.won.toLocaleString()}</td>
+                  <td className="px-3 py-2.5 tabular-nums text-right text-muted-foreground">{funnel.hubspot.toLocaleString()}</td>
+                  <td className="px-3 py-2.5 tabular-nums text-right text-muted-foreground">{funnel.demos.toLocaleString()}</td>
+                  <td className="px-3 py-2.5 tabular-nums text-right text-muted-foreground">{funnel.won.toLocaleString()}</td>
                   <td className="px-3 py-2.5 tabular-nums text-right text-emerald-700">{funnel.activos.toLocaleString()}</td>
                   <td className="px-3 py-2.5 tabular-nums text-right">{funnel.l2d}%</td>
                   <td className="px-3 py-2.5 tabular-nums text-right">{funnel.d2w}%</td>
@@ -749,18 +851,18 @@ export function StrategyPage() {
           <div className="overflow-x-auto rounded-xl border border-border bg-card shadow-sm">
             <table className="w-full text-xs">
               <thead>
-                <tr className="bg-muted/40 border-b border-border">
+                <tr className="bg-muted/30 border-b border-border">
                   {([
-                    ["company_name", "Empresa", "text-left"],
-                    ["_ccaa", "Región", "text-left"],
-                    ["_industry", "Industria", "text-left"],
-                    ["_segment", "Tamaño", "text-left"],
-                    ["tipo_empresa", "Tipo", "text-left"],
-                    ["_hasDemo", "Demo", "text-center"],
-                    ["_isWon", "Won", "text-center"],
-                    ["cmrr", "CMRR", "text-right"],
-                    ["total_seats", "Seats", "text-right"],
-                    ["_provenance", "Source", "text-left"],
+                    ["company_name", "Empresa",   "text-left"],
+                    ["_ccaa",        "Región",    "text-left"],
+                    ["_industry",    "Industria", "text-left"],
+                    ["_segment",     "Tamaño",    "text-left"],
+                    ["_isActive",    "Estado",    "text-left"],
+                    ["_hasDemo",     "Demo",      "text-center"],
+                    ["_isWon",       "Won",       "text-center"],
+                    ["cmrr",         "CMRR",      "text-right"],
+                    ["total_seats",  "Seats",     "text-right"],
+                    ["_provenance",  "Canal",     "text-left"],
                   ] as [keyof NormRow, string, string][]).map(([col, label, align]) => (
                     <th key={String(col)} onClick={() => handleSort(col)}
                       className={`px-3 py-2.5 ${align} text-[10px] uppercase tracking-wider text-muted-foreground font-bold cursor-pointer hover:text-foreground select-none whitespace-nowrap transition-colors`}>
@@ -771,33 +873,41 @@ export function StrategyPage() {
               </thead>
               <tbody>
                 {paged.map((r, idx) => (
-                  <tr key={r.id} className={`border-t border-border/60 hover:bg-muted/20 transition-colors ${idx % 2 === 0 ? "" : "bg-muted/[0.04]"}`}>
+                  <tr key={r.id} className={`border-t border-border/50 hover:bg-muted/20 transition-colors ${idx % 2 === 0 ? "" : "bg-muted/[0.03]"}`}>
                     <td className="px-3 py-2 font-semibold max-w-[200px] truncate text-foreground">{r.company_name}</td>
                     <td className="px-3 py-2 text-muted-foreground text-[10px] whitespace-nowrap">
-                      {r._ccaa !== "Others" ? r._ccaa : <span className="text-border">—</span>}
+                      {r._ccaa !== "Others" ? r._ccaa : <span className="text-border/60">—</span>}
                     </td>
                     <td className="px-3 py-2 text-muted-foreground max-w-[140px] truncate">{r._industry}</td>
                     <td className="px-3 py-2">
-                      <span className={`inline-flex rounded-full px-2 py-0.5 text-[10px] font-semibold ring-1 ring-inset ${segmentColor(r._segment)}`}>
+                      <span className={`inline-flex rounded-full px-2 py-0.5 text-[10px] font-semibold ring-1 ring-inset ${segmentBadge(r._segment)}`}>
                         {r._segment}
                       </span>
                     </td>
                     <td className="px-3 py-2">
                       <span className={`inline-flex rounded-full px-2 py-0.5 text-[10px] font-semibold ring-1 ring-inset ${
-                        r._isActive ? "bg-emerald-50 text-emerald-700 ring-emerald-200" : "bg-slate-50 text-slate-500 ring-slate-200"
-                      }`}>{r._isActive ? "Activo" : "Lead"}</span>
+                        r._isActive
+                          ? "bg-emerald-50 text-emerald-700 ring-emerald-200"
+                          : "bg-slate-50 text-slate-500 ring-slate-200"
+                      }`}>
+                        {r._isActive ? "Activo" : "Lead"}
+                      </span>
                     </td>
                     <td className="px-3 py-2 text-center">
-                      {r._hasDemo ? <span className="inline-block w-2 h-2 rounded-full bg-violet-400" /> : <span className="text-border text-[10px]">·</span>}
+                      {r._hasDemo
+                        ? <span className="inline-block w-2 h-2 rounded-full bg-violet-400" />
+                        : <span className="text-border/40 text-[10px]">·</span>}
                     </td>
                     <td className="px-3 py-2 text-center">
-                      {r._isWon ? <span className="inline-block w-2 h-2 rounded-full bg-amber-400" /> : <span className="text-border text-[10px]">·</span>}
+                      {r._isWon
+                        ? <span className="inline-block w-2 h-2 rounded-full bg-amber-400" />
+                        : <span className="text-border/40 text-[10px]">·</span>}
                     </td>
                     <td className="px-3 py-2 tabular-nums text-right font-semibold">
-                      {r.cmrr ? <span className={r.cmrr > 100000 ? "text-emerald-600" : ""}>{fmtNum(r.cmrr)}</span> : "—"}
+                      {r.cmrr ? <span className={r.cmrr > 100000 ? "text-emerald-600" : ""}>{fmtNum(r.cmrr)}</span> : <span className="text-muted-foreground/40">—</span>}
                     </td>
-                    <td className="px-3 py-2 tabular-nums text-right text-muted-foreground">{r.total_seats || "—"}</td>
-                    <td className="px-3 py-2 text-muted-foreground text-[10px]">{r._provenance || "—"}</td>
+                    <td className="px-3 py-2 tabular-nums text-right text-muted-foreground">{r.total_seats || <span className="text-muted-foreground/40">—</span>}</td>
+                    <td className="px-3 py-2 text-muted-foreground text-[10px]">{r._provenance || <span className="text-muted-foreground/40">—</span>}</td>
                   </tr>
                 ))}
               </tbody>
@@ -815,7 +925,7 @@ export function StrategyPage() {
                 <button onClick={() => setPage(Math.max(0, page - 1))} disabled={page === 0}
                   className="rounded-md border border-border px-2.5 py-1 text-xs hover:bg-muted disabled:opacity-30">Anterior</button>
                 {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
-                  let p = totalPages <= 5 ? i : page < 3 ? i : page > totalPages - 4 ? totalPages - 5 + i : page - 2 + i;
+                  const p = totalPages <= 5 ? i : page < 3 ? i : page > totalPages - 4 ? totalPages - 5 + i : page - 2 + i;
                   return (
                     <button key={p} onClick={() => setPage(p)}
                       className={`h-7 w-7 rounded-md text-xs tabular-nums ${p === page ? "bg-primary text-primary-foreground font-bold" : "hover:bg-muted text-muted-foreground"}`}>
