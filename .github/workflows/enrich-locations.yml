@@ -32,10 +32,10 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: "24"
+          node-version: "22"
 
-      - name: Install dependencies
-        run: npm install --legacy-peer-deps
+      - name: Install script dependencies
+        run: npm install @supabase/supabase-js @anthropic-ai/sdk
 
       - name: Verify env
         env:
@@ -44,13 +44,11 @@ jobs:
           HUBSPOT_TOKEN: ${{ secrets.HUBSPOT_TOKEN }}
           AZURE_CONFIG: ${{ secrets.AZURE_CONFIG }}
         run: |
-          echo "SUPABASE_URL set: $([[ -n '$SUPABASE_URL' ]] && echo yes || echo NO)"
-          echo "SUPABASE_SERVICE_KEY set: $([[ -n '$SUPABASE_SERVICE_KEY' ]] && echo yes || echo NO)"
-          echo "HUBSPOT_TOKEN set: $([[ -n '$HUBSPOT_TOKEN' ]] && echo yes || echo NO)"
-          echo "AZURE_CONFIG set: $([[ -n '$AZURE_CONFIG' ]] && echo yes || echo NO)"
           node --version
-          node -e "import('@supabase/supabase-js').then(()=>console.log('supabase ok')).catch(e=>console.error('supabase MISSING',e.message))"
-          node -e "import('@anthropic-ai/sdk').then(()=>console.log('anthropic ok')).catch(e=>console.error('anthropic MISSING',e.message))"
+          [ -n "$SUPABASE_URL" ] && echo "SUPABASE_URL: ok" || echo "SUPABASE_URL: MISSING"
+          [ -n "$SUPABASE_SERVICE_KEY" ] && echo "SUPABASE_SERVICE_KEY: ok" || echo "SUPABASE_SERVICE_KEY: MISSING"
+          [ -n "$HUBSPOT_TOKEN" ] && echo "HUBSPOT_TOKEN: ok" || echo "HUBSPOT_TOKEN: MISSING"
+          [ -n "$AZURE_CONFIG" ] && echo "AZURE_CONFIG: ok" || echo "AZURE_CONFIG: MISSING"
 
       - name: Run enrichment
         env:
