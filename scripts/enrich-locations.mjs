@@ -234,7 +234,7 @@ Si no puedes determinarlo con certeza, responde exactamente: null`,
 async function runTier2(companies) {
   log(`Tier 2 — AI: ${companies.length} companies`);
 
-  if (!ai) {
+  if (!AZURE_MESSAGES_URL || !AZURE_KEY) {
     log("  SKIP: AZURE_CONFIG not set");
     return { updated: 0 };
   }
