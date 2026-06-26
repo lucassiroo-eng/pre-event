@@ -4,6 +4,7 @@ import { useAuth } from "@/lib/auth";
 import {
   fetchStrategyCompanies,
   importStrategyCsv,
+  clearStrategyData,
   STRATEGY_EMAILS,
   type StrategyCompany,
   type PivotAgg,
@@ -13,7 +14,7 @@ import { resolveCCAA, CCAA_LIST } from "@/lib/strategyCCAA";
 import { applyCountryTheme } from "@/lib/countryConfig";
 import {
   Upload, BarChart3, Table2, Search, ChevronDown, ChevronUp, X,
-  Building2, Users, TrendingUp, Target, Hash,
+  Building2, Users, TrendingUp, Target, Hash, Trash2,
 } from "lucide-react";
 
 type ViewMode = "table" | "pivot";
@@ -28,12 +29,23 @@ interface NormRow extends StrategyCompany {
   _ccaaCode: string;
 }
 
-function sizeSegment(n: number): string {
-  if (!n || n <= 0) return "Others";
+const SEGMENT_ORDER = ["S (1-50)", "M (51-200)", "L (201-500)", "XL (500+)", "Unknown", "Others"];
+
+function sizeSegment(empresaSize: number, seats: number): string {
+  const n = empresaSize > 0 ? empresaSize : seats;
+  if (!n || n <= 0) return "Unknown";
   if (n <= 50) return "S (1-50)";
   if (n <= 200) return "M (51-200)";
   if (n <= 500) return "L (201-500)";
   return "XL (500+)";
+}
+
+// valid tipo_empresa: CRM lifecycle stages only, not plan names
+function isValidTipo(s: string): boolean {
+  if (!s) return true;
+  if (s.length > 30) return false;
+  if (/\d|yearly|monthly|business|tracking|v\d/i.test(s)) return false;
+  return true;
 }
 
 const FILTER_KEYS: { key: keyof NormRow; label: string }[] = [
@@ -42,7 +54,6 @@ const FILTER_KEYS: { key: keyof NormRow; label: string }[] = [
   { key: "tipo_empresa", label: "Tipo" },
   { key: "_industry", label: "Industria" },
   { key: "_provenance", label: "Provenance" },
-  { key: "_pipeline", label: "Pipeline" },
 ];
 
 const PIVOT_DIMS: { key: keyof NormRow; label: string }[] = [
@@ -51,7 +62,6 @@ const PIVOT_DIMS: { key: keyof NormRow; label: string }[] = [
   { key: "_segment", label: "Tamaño" },
   { key: "tipo_empresa", label: "Tipo empresa" },
   { key: "_provenance", label: "Provenance" },
-  { key: "_pipeline", label: "Pipeline" },
 ];
 
 const AGG_OPTIONS: { key: PivotAgg; label: string; unit?: string }[] = [
@@ -155,9 +165,16 @@ function pivotNorm(
         cells[ri][ci] = counts[ri][ci] > 0 ? Math.round((cells[ri][ci] / counts[ri][ci]) * 100) : 0;
   }
 
-  // Sort by row total desc
+  // Sort: _segment uses fixed S→XL order; everything else by total desc
   const rowTotals = rowLabels.map((_, ri) => cells[ri].reduce((s, v) => s + v, 0));
-  const indices = rowTotals.map((_, i) => i).sort((a, b) => rowTotals[b] - rowTotals[a]);
+  const indices = rowLabels.map((_, i) => i).sort((a, b) => {
+    if (rowKey === "_segment") {
+      const ai = SEGMENT_ORDER.indexOf(rowLabels[a]);
+      const bi = SEGMENT_ORDER.indexOf(rowLabels[b]);
+      return (ai === -1 ? 99 : ai) - (bi === -1 ? 99 : bi);
+    }
+    return rowTotals[b] - rowTotals[a];
+  });
 
   return {
     rowLabels: indices.map((i) => rowLabels[i]),
@@ -272,18 +289,20 @@ export function StrategyPage() {
 
   // Normalize all rows once
   const companies = useMemo<NormRow[]>(() =>
-    raw.map((r) => {
-      const ccaaResult = resolveCCAA(r.ciudad_enriched || r.ciudad);
-      return {
-        ...r,
-        _industry: standardIndustry(r.industria),
-        _provenance: normProvenance(r.provenance),
-        _pipeline: groupPipeline(r.pipeline),
-        _segment: sizeSegment(r.empresa_size),
-        _ccaa: ccaaResult.ccaa === "Unknown" ? "Others" : ccaaResult.ccaa,
-        _ccaaCode: ccaaResult.code,
-      };
-    }),
+    raw
+      .filter((r) => isValidTipo(r.tipo_empresa))
+      .map((r) => {
+        const ccaaResult = resolveCCAA(r.ciudad_enriched || r.ciudad);
+        return {
+          ...r,
+          _industry: standardIndustry(r.industria),
+          _provenance: normProvenance(r.provenance),
+          _pipeline: groupPipeline(r.pipeline),
+          _segment: sizeSegment(r.empresa_size, r.total_seats),
+          _ccaa: ccaaResult.ccaa === "Unknown" ? "Others" : ccaaResult.ccaa,
+          _ccaaCode: ccaaResult.code,
+        };
+      }),
   [raw]);
 
   const filtered = useMemo(() => {
@@ -464,6 +483,18 @@ export function StrategyPage() {
               {importing ? importProgress : "Importar CSV"}
               <input type="file" accept=".csv" onChange={handleImport} className="hidden" disabled={importing} />
             </label>
+            {raw.length > 0 && (
+              <button
+                onClick={async () => {
+                  if (!window.confirm("¿Borrar todos los datos de Strategy?")) return;
+                  await clearStrategyData();
+                  setRaw([]);
+                }}
+                className="flex items-center gap-1.5 rounded-lg bg-white/10 backdrop-blur-sm px-3 py-1.5 text-xs font-medium hover:bg-red-500/40 transition-colors"
+              >
+                <Trash2 className="h-3.5 w-3.5" /> Borrar datos
+              </button>
+            )}
           </div>
         </div>
       </div>

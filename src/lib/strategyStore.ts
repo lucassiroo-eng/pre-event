@@ -37,6 +37,11 @@ export const STRATEGY_EMAILS = [
   "marc.macia@factorial.co",
 ];
 
+export async function clearStrategyData(): Promise<void> {
+  if (!supa) return;
+  await supa.from("strategy_companies").delete().neq("id", 0);
+}
+
 export async function fetchStrategyCompanies(): Promise<StrategyCompany[]> {
   if (!supa) return [];
   const all: StrategyCompany[] = [];

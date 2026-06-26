@@ -202,10 +202,21 @@ export function standardIndustry(raw: string): string {
   return INDUSTRY_MAP[raw] ?? INDUSTRY_MAP[withUnderscores] ?? "Other";
 }
 
+// Valid provenance values from HubSpot picklist. Anything else (plan names,
+// misaligned CSV columns) goes to Others.
+const VALID_PROVENANCES = new Set([
+  "Inbound", "Outbound", "Partner", "Partners", "Paid", "Referral",
+  "Direct", "Cold", "Event", "SDR", "AE", "Marketing", "Community",
+]);
+
 export function normProvenance(raw: string): string {
   if (!raw) return "Others";
-  if (raw === "Partner" || raw === "Partners") return "Partners";
-  return raw;
+  const s = raw.trim();
+  if (s === "Partner" || s === "Partners") return "Partners";
+  if (VALID_PROVENANCES.has(s)) return s;
+  // Plan names leak into this field (e.g. "Time Tracking Business Yearly V0")
+  if (s.length > 25 || /\d|yearly|monthly|business|tracking|v\d/i.test(s)) return "Others";
+  return s;
 }
 
 export function groupPipeline(raw: string): string {
