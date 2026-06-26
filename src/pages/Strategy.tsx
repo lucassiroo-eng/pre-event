@@ -268,15 +268,16 @@ export function StrategyPage() {
         const segNorm = r.size_segment?.trim() || sizeSegment(r.empresa_size, r.total_seats);
 
         // Funnel flags: prefer SQL booleans, fall back to legacy fields
-        const hasDemo = r.has_demo != null
-          ? Boolean(r.has_demo)
-          : !!(r.deal_after_demo_date || r.after_demo_date);
         const isWon = r.is_won != null
           ? Boolean(r.is_won)
           : r.conversion === "converted" || r.conversion === "onboarding";
         const isActive = r.is_active_client != null
           ? Boolean(r.is_active_client)
           : r.tipo_empresa === "Cliente Activo";
+        // Won/Active implies demo happened
+        const hasDemo = isWon || isActive || (r.has_demo != null
+          ? Boolean(r.has_demo)
+          : !!(r.deal_after_demo_date || r.after_demo_date));
 
         return {
           ...r,
