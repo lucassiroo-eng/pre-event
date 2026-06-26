@@ -1,12 +1,13 @@
 import { useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import {
-  LayoutDashboard, Table2, Sparkles, Shield, LogOut, Globe, ChevronDown, FlaskConical,
+  LayoutDashboard, Table2, Sparkles, Shield, LogOut, Globe, ChevronDown, FlaskConical, Target,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/lib/auth";
 import { useT } from "@/lib/i18n";
 import { getCountryConfig } from "@/lib/countryConfig";
+import { STRATEGY_EMAILS } from "@/lib/strategyStore";
 
 type NavItem = { to: string; labelKey: string; icon: typeof LayoutDashboard };
 
@@ -67,6 +68,9 @@ export function Sidebar() {
 
       <nav className="flex-1 space-y-0.5 px-3 py-4">
         {MAIN_NAV.map(renderItem)}
+        {selectedCountry === "es" && !!email && STRATEGY_EMAILS.includes(email) && (
+          renderItem({ to: "/strategy", labelKey: "Strategy", icon: Target })
+        )}
       </nav>
 
       {isAdmin && (
