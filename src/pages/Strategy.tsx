@@ -163,6 +163,7 @@ function pivotNorm(
     rowLabels: indices.map((i) => rowLabels[i]),
     colLabels,
     cells: indices.map((i) => cells[i]),
+    counts: indices.map((i) => counts[i]),
   };
 }
 
@@ -696,11 +697,15 @@ export function StrategyPage() {
                 <tbody>
                   {pivot.rowLabels.map((r, ri) => {
                     const isRate = pivotAgg === "demo_rate" || pivotAgg === "conv_rate";
-                    const rowVals = pivot.cells[ri].filter(v => v > 0);
-                    const rowSummary = isRate
-                      ? (rowVals.length > 0 ? Math.round(rowVals.reduce((s,v) => s+v, 0) / rowVals.length) : 0)
-                      : pivot.cells[ri].reduce((s, v) => s + v, 0);
                     const aggUnit = AGG_OPTIONS.find(a => a.key === pivotAgg)?.unit;
+                    const rowSummary = isRate
+                      ? (() => {
+                          const totalCount = pivot.counts[ri].reduce((s, v) => s + v, 0);
+                          if (!totalCount) return 0;
+                          const weightedSum = pivot.cells[ri].reduce((s, v, ci) => s + v * pivot.counts[ri][ci], 0);
+                          return Math.round(weightedSum / totalCount);
+                        })()
+                      : pivot.cells[ri].reduce((s, v) => s + v, 0);
                     return (
                       <tr key={r} className="border-t border-border/60 hover:bg-muted/20 transition-colors">
                         <td className="px-4 py-2 font-medium sticky left-0 bg-card z-10 max-w-[200px] truncate border-r border-border/40">
@@ -728,14 +733,18 @@ export function StrategyPage() {
                   })}
                   <tr className="border-t-2 border-border bg-muted/40">
                     <td className="px-4 py-2.5 font-bold sticky left-0 bg-muted/40 z-10 border-r border-border/40">
-                      {(pivotAgg === "demo_rate" || pivotAgg === "conv_rate") ? "Avg %" : "Total"}
+                      {(pivotAgg === "demo_rate" || pivotAgg === "conv_rate") ? "Total %" : "Total"}
                     </td>
                     {pivot.colLabels.map((_, ci) => {
                       const isRate = pivotAgg === "demo_rate" || pivotAgg === "conv_rate";
                       const aggUnit = AGG_OPTIONS.find(a => a.key === pivotAgg)?.unit;
-                      const vals = pivot.cells.map(row => row[ci]).filter(v => v > 0);
                       const colSummary = isRate
-                        ? (vals.length > 0 ? Math.round(vals.reduce((s,v) => s+v, 0) / vals.length) : 0)
+                        ? (() => {
+                            const totalCount = pivot.counts.reduce((s, row) => s + row[ci], 0);
+                            if (!totalCount) return 0;
+                            const weightedSum = pivot.cells.reduce((s, row, ri) => s + row[ci] * pivot.counts[ri][ci], 0);
+                            return Math.round(weightedSum / totalCount);
+                          })()
                         : pivot.cells.reduce((s, row) => s + row[ci], 0);
                       return <td key={ci} className="px-3 py-2.5 tabular-nums text-right font-bold">{fmtNum(colSummary, aggUnit)}</td>;
                     })}
@@ -744,9 +753,10 @@ export function StrategyPage() {
                         const isRate = pivotAgg === "demo_rate" || pivotAgg === "conv_rate";
                         const aggUnit = AGG_OPTIONS.find(a => a.key === pivotAgg)?.unit;
                         if (isRate) {
-                          const allVals = pivot.cells.flat().filter(v => v > 0);
-                          const avg = allVals.length > 0 ? Math.round(allVals.reduce((s,v) => s+v, 0) / allVals.length) : 0;
-                          return fmtNum(avg, aggUnit);
+                          const totalCount = pivot.counts.flat().reduce((s, v) => s + v, 0);
+                          if (!totalCount) return fmtNum(0, aggUnit);
+                          const weightedSum = pivot.cells.flat().reduce((s, v, i) => s + v * pivot.counts.flat()[i], 0);
+                          return fmtNum(Math.round(weightedSum / totalCount), aggUnit);
                         }
                         return fmtNum(pivot.cells.reduce((s, row) => s + row.reduce((rs, v) => rs + v, 0), 0));
                       })()}
