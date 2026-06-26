@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/lib/auth";
 import {
@@ -166,6 +166,73 @@ function pivotNorm(
   };
 }
 
+function MultiSelect({
+  label,
+  options,
+  selected,
+  onChange,
+}: {
+  label: string;
+  options: string[];
+  selected: string[];
+  onChange: (v: string[]) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    function onDown(e: MouseEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    }
+    if (open) document.addEventListener("mousedown", onDown);
+    return () => document.removeEventListener("mousedown", onDown);
+  }, [open]);
+
+  const toggle = (v: string) =>
+    onChange(selected.includes(v) ? selected.filter((x) => x !== v) : [...selected, v]);
+
+  const active = selected.length > 0;
+
+  return (
+    <div ref={ref} className="relative">
+      <button
+        onClick={() => setOpen((o) => !o)}
+        className={`h-8 flex items-center gap-1.5 rounded-lg border px-2.5 text-xs transition-colors select-none ${
+          active
+            ? "border-primary/40 bg-primary/5 text-foreground font-medium"
+            : "border-border bg-background text-muted-foreground hover:text-foreground"
+        }`}
+      >
+        {label}
+        {active && (
+          <span className="inline-flex h-4 min-w-[16px] px-1 items-center justify-center rounded-full bg-primary text-[9px] font-bold text-primary-foreground">
+            {selected.length}
+          </span>
+        )}
+        <ChevronDown className="h-3 w-3 opacity-40" />
+      </button>
+      {open && (
+        <div className="absolute top-9 left-0 z-50 min-w-[180px] max-w-[240px] rounded-xl border border-border bg-card shadow-lg py-1.5 max-h-64 overflow-y-auto">
+          {options.map((v) => (
+            <label
+              key={v}
+              className="flex items-center gap-2.5 px-3 py-1.5 text-xs hover:bg-muted/50 cursor-pointer"
+            >
+              <input
+                type="checkbox"
+                checked={selected.includes(v)}
+                onChange={() => toggle(v)}
+                className="h-3.5 w-3.5 rounded accent-primary"
+              />
+              <span className="truncate">{v}</span>
+            </label>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function StrategyPage() {
   const navigate = useNavigate();
   const { email } = useAuth();
@@ -183,7 +250,7 @@ export function StrategyPage() {
   const [importing, setImporting] = useState(false);
   const [importProgress, setImportProgress] = useState("");
   const [search, setSearch] = useState("");
-  const [filters, setFilters] = useState<Record<string, string>>({});
+  const [filters, setFilters] = useState<Record<string, string[]>>({});
   const [sortCol, setSortCol] = useState<keyof NormRow>("cmrr");
   const [sortAsc, setSortAsc] = useState(false);
   const [view, setView] = useState<ViewMode>("table");
@@ -224,8 +291,8 @@ export function StrategyPage() {
       const q = search.toLowerCase();
       rows = rows.filter((r) => r.company_name.toLowerCase().includes(q));
     }
-    for (const [k, v] of Object.entries(filters)) {
-      if (v) rows = rows.filter((r) => String(r[k as keyof NormRow]) === v);
+    for (const [k, vals] of Object.entries(filters)) {
+      if (vals.length) rows = rows.filter((r) => vals.includes(String(r[k as keyof NormRow])));
     }
     return rows;
   }, [companies, search, filters]);
@@ -275,7 +342,7 @@ export function StrategyPage() {
     return opts;
   }, [companies]);
 
-  const activeFilterCount = Object.values(filters).filter(Boolean).length + (search ? 1 : 0);
+  const activeFilterCount = Object.values(filters).reduce((s, v) => s + v.length, 0) + (search ? 1 : 0);
 
   const kpis = useMemo(() => {
     const total = filtered.length;
@@ -437,26 +504,15 @@ export function StrategyPage() {
             />
           </div>
           <div className="h-5 w-px bg-border" />
-          {FILTER_KEYS.map(({ key, label }) => {
-            const active = !!filters[key];
-            return (
-              <select
-                key={key}
-                value={filters[key] ?? ""}
-                onChange={(e) => { setFilters((f) => ({ ...f, [key]: e.target.value })); setPage(0); }}
-                className={`h-8 rounded-lg border px-2 text-xs focus:outline-none focus:ring-2 focus:ring-primary/20 max-w-[165px] transition-colors ${
-                  active
-                    ? "border-primary/40 bg-primary/5 text-foreground font-medium"
-                    : "border-border bg-background text-muted-foreground"
-                }`}
-              >
-                <option value="">{label}</option>
-                {(filterOptions[key] ?? []).map((v) => (
-                  <option key={v} value={v}>{v}</option>
-                ))}
-              </select>
-            );
-          })}
+          {FILTER_KEYS.map(({ key, label }) => (
+            <MultiSelect
+              key={key}
+              label={label}
+              options={filterOptions[key] ?? []}
+              selected={filters[key] ?? []}
+              onChange={(v) => { setFilters((f) => ({ ...f, [key]: v })); setPage(0); }}
+            />
+          ))}
           {activeFilterCount > 0 && (
             <button
               onClick={() => { setFilters({}); setSearch(""); setPage(0); }}
