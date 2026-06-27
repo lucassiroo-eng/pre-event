@@ -28,7 +28,8 @@ const [AZURE_ENDPOINT, AZURE_MODEL, AZURE_KEY] = (
 
 const DRY_RUN = process.env.DRY_RUN === "1";
 const TIER = process.env.TIER ?? "both"; // "1" | "2" | "both"
-const LIMIT = parseInt(process.env.LIMIT ?? "0", 10); // 0 = no limit (all)
+const LIMIT = parseInt(process.env.LIMIT ?? "0", 10); // 0 = no limit
+const OFFSET = parseInt(process.env.OFFSET ?? "0", 10); // for parallel runs
 const CONCURRENCY = parseInt(process.env.CONCURRENCY ?? "20", 10); // parallel AI calls
 const BATCH_PAUSE = parseInt(process.env.BATCH_PAUSE ?? "2000", 10); // ms between batches
 
@@ -53,17 +54,30 @@ function log(msg) {
 // ── Supabase helpers ──────────────────────────────────────────────────────────
 
 async function fetchUnresolved() {
-  let query = supa
-    .from("strategy_companies")
-    .select("id, hubspot_company_id, company_name, ciudad, industria")
-    .is("ciudad_enriched", null)
-    .or("ciudad.is.null,ciudad.eq.");
+  // Supabase caps at 1000 rows per request — paginate to get all
+  const PAGE = 1000;
+  const all = [];
+  let from = 0;
 
-  if (LIMIT > 0) query = query.limit(LIMIT);
+  while (true) {
+    const { data, error } = await supa
+      .from("strategy_companies")
+      .select("id, hubspot_company_id, company_name, ciudad, industria")
+      .is("ciudad_enriched", null)
+      .or("ciudad.is.null,ciudad.eq.")
+      .order("id")
+      .range(from, from + PAGE - 1);
 
-  const { data, error } = await query;
-  if (error) throw new Error(`Supabase fetch: ${error.message}`);
-  return data ?? [];
+    if (error) throw new Error(`Supabase fetch: ${error.message}`);
+    if (!data || data.length === 0) break;
+    all.push(...data);
+    if (data.length < PAGE) break;
+    from += PAGE;
+  }
+
+  // Slice for this run's window (parallel runs use different offsets)
+  const windowed = OFFSET > 0 ? all.slice(OFFSET) : all;
+  return LIMIT > 0 ? windowed.slice(0, LIMIT) : windowed;
 }
 
 async function saveCity(id, city, source) {
@@ -289,7 +303,7 @@ async function runTier2(companies) {
 // ── Entry point ───────────────────────────────────────────────────────────────
 
 async function main() {
-  log(`Starting enrichment (TIER=${TIER}, LIMIT=${LIMIT || "all"}, DRY_RUN=${DRY_RUN})`);
+  log(`Starting enrichment (TIER=${TIER}, OFFSET=${OFFSET}, LIMIT=${LIMIT || "all"}, CONCURRENCY=${CONCURRENCY}, DRY_RUN=${DRY_RUN})`);
 
   const companies = await fetchUnresolved();
   log(`Found ${companies.length} companies without location`);

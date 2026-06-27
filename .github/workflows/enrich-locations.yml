@@ -21,6 +21,10 @@ on:
         required: false
         default: "false"
         type: boolean
+      offset:
+        description: "Skip first N companies (for parallel runs)"
+        required: false
+        default: "0"
       concurrency:
         description: "Parallel AI calls per batch (default 20)"
         required: false
@@ -65,6 +69,7 @@ jobs:
           HUBSPOT_TOKEN: ${{ secrets.HUBSPOT_TOKEN }}
           AZURE_CONFIG: ${{ secrets.AZURE_CONFIG }}
           TIER: ${{ inputs.tier }}
+          OFFSET: ${{ inputs.offset }}
           LIMIT: ${{ inputs.limit }}
           DRY_RUN: ${{ inputs.dry_run == 'true' && '1' || '0' }}
           CONCURRENCY: ${{ inputs.concurrency }}
