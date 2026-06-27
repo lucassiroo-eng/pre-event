@@ -26,13 +26,17 @@ on:
         required: false
         default: "0"
       concurrency:
-        description: "Parallel AI calls per batch (default 20)"
+        description: "Parallel AI calls per batch (default 5)"
         required: false
-        default: "20"
+        default: "5"
       batch_pause:
-        description: "ms to wait between batches (default 2000)"
+        description: "ms to wait between batches (default 6000)"
         required: false
-        default: "2000"
+        default: "6000"
+      stagger_ms:
+        description: "ms between each request in a batch (default 1200)"
+        required: false
+        default: "1200"
 
 jobs:
   enrich:
@@ -74,4 +78,5 @@ jobs:
           DRY_RUN: ${{ inputs.dry_run == 'true' && '1' || '0' }}
           CONCURRENCY: ${{ inputs.concurrency }}
           BATCH_PAUSE: ${{ inputs.batch_pause }}
+          STAGGER_MS: ${{ inputs.stagger_ms }}
         run: node scripts/enrich-locations.mjs

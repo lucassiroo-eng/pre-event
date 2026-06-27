@@ -30,8 +30,10 @@ const DRY_RUN = process.env.DRY_RUN === "1";
 const TIER = process.env.TIER ?? "both"; // "1" | "2" | "both"
 const LIMIT = parseInt(process.env.LIMIT ?? "0", 10); // 0 = no limit
 const OFFSET = parseInt(process.env.OFFSET ?? "0", 10); // for parallel runs
-const CONCURRENCY = parseInt(process.env.CONCURRENCY ?? "20", 10); // parallel AI calls
-const BATCH_PAUSE = parseInt(process.env.BATCH_PAUSE ?? "2000", 10); // ms between batches
+const CONCURRENCY = parseInt(process.env.CONCURRENCY ?? "5", 10); // parallel AI calls
+const BATCH_PAUSE = parseInt(process.env.BATCH_PAUSE ?? "6000", 10); // ms between batches
+// Stagger delay between each request in a batch (spread requests, avoid thundering herd)
+const STAGGER_MS = parseInt(process.env.STAGGER_MS ?? "1200", 10);
 
 if (!SUPABASE_URL || !SUPABASE_KEY) throw new Error("Missing SUPABASE_URL / SUPABASE_SERVICE_KEY");
 
@@ -202,7 +204,7 @@ async function duckduckgoSearch(query) {
   }
 }
 
-async function extractCityWithAI(companyName, industry, retries = 3) {
+async function extractCityWithAI(companyName, industry, retries = 5) {
   if (!AZURE_MESSAGES_URL || !AZURE_KEY) return null;
   try {
     const resp = await fetch(AZURE_MESSAGES_URL, {
@@ -231,8 +233,9 @@ Si es una empresa muy genérica o no puedes determinarlo con certeza, responde e
     if (!resp.ok) {
       if (resp.status === 429 && retries > 0) {
         const retryAfter = parseInt(resp.headers.get("retry-after") ?? "10", 10);
-        log(`  429 rate limit — esperando ${retryAfter}s antes de reintentar (${retries} intentos)`);
-        await sleep(retryAfter * 1000);
+        // Jitter: 0-4s random so all concurrent retries don't fire at the exact same moment
+        const jitter = Math.floor(Math.random() * 4000);
+        await sleep(retryAfter * 1000 + jitter);
         return extractCityWithAI(companyName, industry, retries - 1);
       }
       const body = await resp.text();
@@ -251,7 +254,7 @@ Si es una empresa muy genérica o no puedes determinarlo con certeza, responde e
 }
 
 async function runTier2(companies) {
-  log(`Tier 2 — AI (${AZURE_MODEL}): ${companies.length} companies, concurrency=${CONCURRENCY}`);
+  log(`Tier 2 — AI (${AZURE_MODEL}): ${companies.length} companies, concurrency=${CONCURRENCY}, stagger=${STAGGER_MS}ms, pause=${BATCH_PAUSE}ms`);
 
   if (!AZURE_MESSAGES_URL || !AZURE_KEY) {
     log("  SKIP: AZURE_CONFIG not set");
@@ -262,19 +265,23 @@ async function runTier2(companies) {
   let notFound = 0;
   let errors = 0;
   const total = companies.length;
+  // Adaptive pause: doubles after a batch where everything 429'd, resets after a good batch
+  let currentPause = BATCH_PAUSE;
 
   for (let i = 0; i < total; i += CONCURRENCY) {
     const batch = companies.slice(i, i + CONCURRENCY);
 
-    // Fire all requests in the batch concurrently
+    // Stagger requests across the batch to avoid thundering herd at t=0
     const results = await Promise.allSettled(
-      batch.map((company) =>
-        extractCityWithAI(company.company_name, company.industria ?? "")
+      batch.map((company, batchIdx) =>
+        sleep(batchIdx * STAGGER_MS)
+          .then(() => extractCityWithAI(company.company_name, company.industria ?? ""))
           .then((city) => ({ company, city }))
       )
     );
 
     // Save resolved cities (individual Supabase updates, also concurrent)
+    let batchResolved = 0;
     await Promise.allSettled(
       results.map(async (r) => {
         if (r.status === "rejected") { errors++; return; }
@@ -282,6 +289,7 @@ async function runTier2(companies) {
         if (city) {
           await saveCity(company.id, city, "ai");
           updated++;
+          batchResolved++;
           log(`  ✓ ${company.company_name} → ${city}`);
         } else {
           notFound++;
@@ -290,10 +298,16 @@ async function runTier2(companies) {
     );
 
     const done = Math.min(i + CONCURRENCY, total);
-    log(`  [${done}/${total}] ✓ ${updated} | ✗ ${notFound}${errors ? ` | err ${errors}` : ""}`);
+    log(`  [${done}/${total}] ✓ ${updated} | ✗ ${notFound}${errors ? ` | err ${errors}` : ""} | pause=${currentPause}ms`);
 
-    // Pause between batches to respect rate limits
-    if (done < total) await sleep(BATCH_PAUSE);
+    // Adaptive back-off: if nothing resolved in this batch, double the pause (cap at 60s)
+    if (batchResolved === 0 && done < total) {
+      currentPause = Math.min(currentPause * 2, 60000);
+    } else if (batchResolved > 0 && currentPause > BATCH_PAUSE) {
+      currentPause = Math.max(BATCH_PAUSE, Math.floor(currentPause / 1.5));
+    }
+
+    if (done < total) await sleep(currentPause);
   }
 
   log(`Tier 2 done — ${updated} updated, ${notFound} not found, ${errors} errors`);
