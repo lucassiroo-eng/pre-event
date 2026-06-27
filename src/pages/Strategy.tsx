@@ -5,6 +5,9 @@ import {
   fetchStrategyCompanies,
   fetchSasorTotal,
   fetchSasorBreakdown,
+  fetchCcaaGapStats,
+  enrichHsCcaaViaHubspot,
+  enrichCcaaViaAI,
   importStrategyCsv,
   importSasorCsv,
   clearStrategyData,
@@ -12,6 +15,7 @@ import {
   STRATEGY_EMAILS,
   type StrategyCompany,
   type SasorBreakdown,
+  type EnrichCcaaProgress,
 } from "@/lib/strategyStore";
 import { standardIndustry, normProvenance, STANDARD_INDUSTRIES } from "@/lib/strategyNormalize";
 import { resolveCCAA, CCAA_LIST } from "@/lib/strategyCCAA";
@@ -19,6 +23,7 @@ import { applyCountryTheme } from "@/lib/countryConfig";
 import {
   Upload, Table2, Search, ChevronDown, ChevronUp, X,
   Target, Hash, Trash2, ArrowRight, Shuffle, LayoutGrid,
+  Sparkles, Square, Database,
 } from "lucide-react";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -336,6 +341,10 @@ export function StrategyPage() {
   const [crossDim, setCrossDim] = useState<SegmentDim | null>(null);
   const [crossMetric, setCrossMetric] = useState<PivotMetric>("l2d");
   const [heatDir, setHeatDir] = useState<HeatDir>("col");
+  const [ccaaGap, setCcaaGap] = useState<{ hs: number; sasor: number } | null>(null);
+  const [enrichRun, setEnrichRun] = useState<"hs_api" | "hs_ai" | "tam_ai" | null>(null);
+  const [enrichProgress, setEnrichProgress] = useState<EnrichCcaaProgress | null>(null);
+  const enrichCancelRef = useRef({ current: false });
   const [page, setPage] = useState(0);
   const PAGE_SIZE = 50;
 
@@ -350,6 +359,7 @@ export function StrategyPage() {
     setSasorTotal(total);
     setSasorBreakdown(breakdown);
     setLoading(false);
+    fetchCcaaGapStats().then(setCcaaGap);
   }, []);
 
   useEffect(() => { if (hasAccess) load(); }, [hasAccess, load]);
@@ -803,6 +813,85 @@ export function StrategyPage() {
           {filtered.length.toLocaleString()} empresas
         </span>
       </div>
+
+      {/* ── Enrich CCAA panel ── */}
+      {ccaaGap && (ccaaGap.hs > 0 || ccaaGap.sasor > 0) && (
+        <div className="rounded-xl border border-border bg-card px-4 py-3 flex flex-wrap items-center gap-x-5 gap-y-2">
+          <div className="flex items-center gap-2 text-xs font-semibold text-muted-foreground shrink-0">
+            <Sparkles className="h-3.5 w-3.5" />
+            Enrich CCAA
+          </div>
+          <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+            <span className="font-mono bg-muted px-1.5 py-0.5 rounded text-[11px]">{ccaaGap.hs.toLocaleString()}</span> HS sin región
+          </div>
+          <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+            <span className="font-mono bg-muted px-1.5 py-0.5 rounded text-[11px]">{ccaaGap.sasor.toLocaleString()}</span> TAM sin región
+          </div>
+          <div className="h-4 w-px bg-border" />
+          {enrichRun === null ? (
+            <div className="flex items-center gap-2 flex-wrap">
+              <button
+                onClick={async () => {
+                  enrichCancelRef.current = { current: false };
+                  setEnrichRun("hs_api"); setEnrichProgress(null);
+                  await enrichHsCcaaViaHubspot((p) => setEnrichProgress(p), enrichCancelRef.current);
+                  setEnrichRun(null); setEnrichProgress(null);
+                  fetchCcaaGapStats().then(setCcaaGap); load();
+                }}
+                disabled={ccaaGap.hs === 0}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-border text-xs font-medium hover:bg-muted transition-colors disabled:opacity-40">
+                <Database className="h-3 w-3" /> HS vía HubSpot API
+              </button>
+              <button
+                onClick={async () => {
+                  enrichCancelRef.current = { current: false };
+                  setEnrichRun("hs_ai"); setEnrichProgress(null);
+                  await enrichCcaaViaAI("strategy_companies", (p) => setEnrichProgress(p), enrichCancelRef.current);
+                  setEnrichRun(null); setEnrichProgress(null);
+                  fetchCcaaGapStats().then(setCcaaGap); load();
+                }}
+                disabled={ccaaGap.hs === 0}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-border text-xs font-medium hover:bg-muted transition-colors disabled:opacity-40">
+                <Sparkles className="h-3 w-3" /> HS vía AI
+              </button>
+              <button
+                onClick={async () => {
+                  enrichCancelRef.current = { current: false };
+                  setEnrichRun("tam_ai"); setEnrichProgress(null);
+                  await enrichCcaaViaAI("strategy_sasor", (p) => setEnrichProgress(p), enrichCancelRef.current);
+                  setEnrichRun(null); setEnrichProgress(null);
+                  fetchCcaaGapStats().then(setCcaaGap);
+                }}
+                disabled={ccaaGap.sasor === 0}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-border text-xs font-medium hover:bg-muted transition-colors disabled:opacity-40">
+                <Sparkles className="h-3 w-3" /> TAM vía AI
+              </button>
+            </div>
+          ) : (
+            <div className="flex items-center gap-3 flex-1">
+              <div className="flex-1 min-w-[200px]">
+                <div className="flex justify-between text-[10px] text-muted-foreground mb-1">
+                  <span className="font-medium">{enrichProgress?.stage ?? enrichRun}</span>
+                  <span className="tabular-nums">
+                    {enrichProgress?.done ?? 0}/{enrichProgress?.total ?? "…"}
+                    {enrichProgress && enrichProgress.updated > 0 && (
+                      <span className="text-emerald-600 ml-2">+{enrichProgress.updated} actualizados</span>
+                    )}
+                  </span>
+                </div>
+                <div className="h-1.5 w-full bg-muted rounded overflow-hidden">
+                  <div className="h-full bg-primary rounded transition-all duration-300"
+                    style={{ width: `${enrichProgress && enrichProgress.total > 0 ? (enrichProgress.done / enrichProgress.total) * 100 : 0}%` }} />
+                </div>
+              </div>
+              <button onClick={() => { enrichCancelRef.current.current = true; }}
+                className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-destructive/10 text-destructive text-xs font-medium hover:bg-destructive/20 transition-colors">
+                <Square className="h-3 w-3" /> Cancelar
+              </button>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* ── Content ── */}
       {loading ? (

@@ -1,5 +1,27 @@
 import { supa } from "./cloudStore";
 
+const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL ?? "";
+const SUPABASE_ANON = import.meta.env.VITE_SUPABASE_ANON_KEY ?? "";
+
+async function runWithConcurrency<T>(
+  items: T[], fn: (item: T) => Promise<void>,
+  concurrency: number, cancelRef: { current: boolean },
+) {
+  const queue = [...items];
+  let inFlight = 0;
+  await new Promise<void>((resolve) => {
+    function next() {
+      while (inFlight < concurrency && queue.length > 0 && !cancelRef.current) {
+        const item = queue.shift()!;
+        inFlight++;
+        fn(item).finally(() => { inFlight--; if (queue.length === 0 && inFlight === 0) resolve(); else next(); });
+      }
+      if ((queue.length === 0 || cancelRef.current) && inFlight === 0) resolve();
+    }
+    next();
+  });
+}
+
 export interface StrategyCompany {
   id: number;
   hubspot_company_id: string;
@@ -424,4 +446,145 @@ export async function crossEnrichCcaa(
   }
 
   return { hsUpdated, sasorUpdated };
+}
+
+// ── Browser-side CCAA enrichment ──────────────────────────────────────────────
+
+export interface EnrichCcaaProgress {
+  stage: string; done: number; total: number; updated: number; errors: number;
+}
+
+async function fetchMissingCcaa(table: "strategy_companies" | "strategy_sasor") {
+  if (!supa) return [];
+  const all: { id: number; company_name: string }[] = [];
+  let from = 0;
+  while (true) {
+    const { data, error } = await supa
+      .from(table)
+      .select("id, company_name")
+      .or("ccaa.is.null,ccaa.eq.,ccaa.eq.Others")
+      .order("id")
+      .range(from, from + 999);
+    if (error || !data || data.length === 0) break;
+    all.push(...(data as { id: number; company_name: string }[]));
+    if (data.length < 1000) break;
+    from += 1000;
+  }
+  return all;
+}
+
+// Quick count of how many are missing CCAA in each table
+export async function fetchCcaaGapStats(): Promise<{ hs: number; sasor: number }> {
+  if (!supa) return { hs: 0, sasor: 0 };
+  const [r1, r2] = await Promise.all([
+    supa.from("strategy_companies").select("*", { count: "exact", head: true }).or("ccaa.is.null,ccaa.eq.,ccaa.eq.Others"),
+    supa.from("strategy_sasor").select("*", { count: "exact", head: true }).or("ccaa.is.null,ccaa.eq.,ccaa.eq.Others"),
+  ]);
+  return { hs: r1.count ?? 0, sasor: r2.count ?? 0 };
+}
+
+// Step 1 (HubSpot only): call hubspot-lookup edge function by company name → city → resolveCCAA
+export async function enrichHsCcaaViaHubspot(
+  onProgress?: (p: EnrichCcaaProgress) => void,
+  cancelRef: { current: boolean } = { current: false },
+): Promise<{ updated: number; errors: number }> {
+  if (!supa || !SUPABASE_URL) return { updated: 0, errors: 0 };
+  const { resolveCCAA } = await import("./strategyCCAA");
+
+  const missing = await fetchMissingCcaa("strategy_companies");
+  let updated = 0, errors = 0, done = 0;
+  const total = missing.length;
+  onProgress?.({ stage: "HubSpot API", done: 0, total, updated: 0, errors: 0 });
+
+  const BATCH = 25;
+  const chunks: typeof missing[] = [];
+  for (let i = 0; i < missing.length; i += BATCH) chunks.push(missing.slice(i, i + BATCH));
+
+  await runWithConcurrency(chunks, async (batch) => {
+    if (cancelRef.current) return;
+    try {
+      const res = await fetch(`${SUPABASE_URL}/functions/v1/hubspot-lookup`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${SUPABASE_ANON}` },
+        body: JSON.stringify({ names: batch.map((c) => c.company_name) }),
+      });
+      if (res.ok) {
+        const data = await res.json() as { results: Array<{ query: string; found: boolean; city: string | null; zip: string | null }> };
+        await Promise.allSettled(data.results.map(async (hit) => {
+          const company = batch.find((c) => c.company_name === hit.query);
+          if (!company || !hit.found) return;
+          const raw = hit.city || hit.zip || "";
+          if (!raw) return;
+          const { ccaa } = resolveCCAA(raw);
+          if (ccaa === "Unknown") return;
+          const { error } = await supa!.from("strategy_companies").update({
+            ccaa,
+            ciudad_enriched: raw,
+            enriched_source: "hubspot_browser",
+            enriched_at: new Date().toISOString(),
+          }).eq("id", company.id);
+          if (!error) updated++; else errors++;
+        }));
+      }
+    } catch { errors++; }
+    done += batch.length;
+    onProgress?.({ stage: "HubSpot API", done: Math.min(done, total), total, updated, errors });
+  }, 10, cancelRef);
+
+  return { updated, errors };
+}
+
+// Step 2: ai-region-lookup for HubSpot or TAM companies still missing CCAA
+export async function enrichCcaaViaAI(
+  table: "strategy_companies" | "strategy_sasor",
+  onProgress?: (p: EnrichCcaaProgress) => void,
+  cancelRef: { current: boolean } = { current: false },
+): Promise<{ updated: number; errors: number }> {
+  if (!supa || !SUPABASE_URL) return { updated: 0, errors: 0 };
+  const { CCAA_LIST } = await import("./strategyCCAA");
+  const regions = CCAA_LIST.filter((c) => c !== "Unknown" && c !== "Others");
+
+  const missing = await fetchMissingCcaa(table);
+  let updated = 0, errors = 0, done = 0;
+  const total = missing.length;
+  const stage = table === "strategy_companies" ? "AI · HubSpot" : "AI · TAM";
+  onProgress?.({ stage, done: 0, total, updated: 0, errors: 0 });
+
+  const BATCH = 20;
+  const chunks: typeof missing[] = [];
+  for (let i = 0; i < missing.length; i += BATCH) chunks.push(missing.slice(i, i + BATCH));
+
+  for (const batch of chunks) {
+    if (cancelRef.current) break;
+    try {
+      const res = await fetch(`${SUPABASE_URL}/functions/v1/ai-region-lookup`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${SUPABASE_ANON}` },
+        body: JSON.stringify({
+          companies: batch.map((c) => ({ id: String(c.id), name: c.company_name })),
+          country: "Spain",
+          regions,
+        }),
+      });
+      if (res.ok) {
+        const data = await res.json() as { results: Record<string, { region: string; city: string }> };
+        await Promise.allSettled(Object.entries(data.results).map(async ([idStr, hit]) => {
+          if (!hit.region || hit.region === "unknown") return;
+          const id = parseInt(idStr, 10);
+          const extra: Record<string, string> = {};
+          if (table === "strategy_companies" && hit.city) {
+            extra.ciudad_enriched = hit.city;
+            extra.enriched_source = "ai_browser";
+            extra.enriched_at = new Date().toISOString();
+          }
+          const { error } = await supa!.from(table).update({ ccaa: hit.region, ...extra }).eq("id", id);
+          if (!error) updated++; else errors++;
+        }));
+      }
+    } catch { errors++; }
+    done += batch.length;
+    onProgress?.({ stage, done: Math.min(done, total), total, updated, errors });
+  }
+
+  return { updated, errors };
 }
