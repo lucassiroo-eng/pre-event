@@ -16,13 +16,14 @@ import { resolveCCAA, CCAA_LIST } from "@/lib/strategyCCAA";
 import { applyCountryTheme } from "@/lib/countryConfig";
 import {
   Upload, Table2, Search, ChevronDown, ChevronUp, X,
-  Target, Hash, Trash2, ArrowRight, Shuffle,
+  Target, Hash, Trash2, ArrowRight, Shuffle, LayoutGrid,
 } from "lucide-react";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
 type ViewMode = "segment" | "table";
 type SegmentDim = "ccaa" | "size_segment" | "industry" | "provenance";
+type PivotMetric = "l2d" | "d2w" | "l2w" | "activos" | "cmrr";
 
 interface NormRow extends StrategyCompany {
   _industry: string;
@@ -46,6 +47,10 @@ interface SegmentRow {
   l2w: number;
 }
 
+interface PivotCell {
+  hubspot: number; demos: number; won: number; activos: number; cmrr: number;
+}
+
 // ── Constants ─────────────────────────────────────────────────────────────────
 
 const SEGMENT_ORDER = ["S (1-50)", "M (51-200)", "L (201-500)", "XL (500+)", "Unknown", "Others"];
@@ -59,10 +64,18 @@ const FILTER_KEYS: { key: keyof NormRow; label: string }[] = [
 ];
 
 const SEGMENT_DIMS: { key: SegmentDim; label: string }[] = [
-  { key: "ccaa", label: "Región" },
+  { key: "ccaa",         label: "Región" },
   { key: "size_segment", label: "Tamaño" },
-  { key: "industry", label: "Industria" },
-  { key: "provenance", label: "Provenance" },
+  { key: "industry",     label: "Industria" },
+  { key: "provenance",   label: "Provenance" },
+];
+
+const CROSS_METRICS: { key: PivotMetric; label: string }[] = [
+  { key: "l2d",     label: "Lead → Demo" },
+  { key: "d2w",     label: "Demo → Won" },
+  { key: "l2w",     label: "Lead → Won" },
+  { key: "activos", label: "Activos" },
+  { key: "cmrr",    label: "CMRR" },
 ];
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -129,7 +142,6 @@ function parseCsvText(text: string): Record<string, string>[] {
   return rows;
 }
 
-// Compute 33rd and 67th percentiles for heat mapping
 function computeQuantiles(values: number[]): { p33: number; p67: number } {
   const sorted = values.filter((v) => v > 0).sort((a, b) => a - b);
   if (sorted.length < 3) return { p33: 25, p67: 50 };
@@ -138,12 +150,49 @@ function computeQuantiles(values: number[]): { p33: number; p67: number } {
   return { p33, p67: Math.max(p67, p33 + 1) };
 }
 
-// Returns Tailwind classes for heat-mapped rate cells
 function rateHeat(v: number, q: { p33: number; p67: number }): string {
   if (v <= 0) return "text-muted-foreground/30";
   if (v >= q.p67) return "bg-emerald-100 text-emerald-800 font-semibold";
   if (v >= q.p33) return "bg-amber-50 text-amber-700 font-medium";
   return "text-slate-400";
+}
+
+function pivotHeat(v: number, allVals: number[]): string {
+  const nonZero = allVals.filter((x) => x > 0);
+  if (nonZero.length < 2 || v === 0) return "text-muted-foreground/30";
+  const { p33, p67 } = computeQuantiles(nonZero);
+  if (v >= p67) return "bg-emerald-100 text-emerald-800 font-semibold";
+  if (v >= p33) return "bg-amber-50 text-amber-700 font-medium";
+  return "text-slate-400";
+}
+
+function getDimFn(dim: SegmentDim) {
+  return (r: NormRow): string => {
+    if (dim === "ccaa")         return r._ccaa || "Others";
+    if (dim === "size_segment") return r._segment || "Others";
+    if (dim === "industry")     return r._industry || "Others";
+    return r._provenance || "Others";
+  };
+}
+
+function getCellValue(cell: PivotCell | undefined, metric: PivotMetric): number {
+  if (!cell || cell.hubspot === 0) return 0;
+  if (metric === "l2d")     return pct(cell.demos, cell.hubspot);
+  if (metric === "d2w")     return pct(cell.won, cell.demos);
+  if (metric === "l2w")     return pct(cell.won, cell.hubspot);
+  if (metric === "activos") return cell.activos;
+  return cell.cmrr;
+}
+
+function formatCellVal(v: number, metric: PivotMetric): string {
+  if (v === 0) return "—";
+  if (metric === "l2d" || metric === "d2w" || metric === "l2w") return `${v}%`;
+  if (metric === "cmrr") return fmtNum(v);
+  return v.toLocaleString();
+}
+
+function shortLabel(s: string): string {
+  return s.replace(" (1-50)", "").replace(" (51-200)", "").replace(" (201-500)", "").replace(" (500+)", "");
 }
 
 function segmentBadge(s: string): string {
@@ -180,7 +229,7 @@ function MultiSelect({
         className={`h-8 flex items-center gap-1.5 rounded-lg border px-2.5 text-xs transition-colors select-none ${
           active
             ? "border-primary/40 bg-primary/5 text-foreground font-medium"
-            : "border-border bg-background text-muted-foreground hover:text-foreground hover:border-border/80"
+            : "border-border bg-background text-muted-foreground hover:text-foreground"
         }`}
       >
         {label}
@@ -209,44 +258,44 @@ function MultiSelect({
 // ── Funnel Step ───────────────────────────────────────────────────────────────
 
 function FunnelStep({
-  step, label, value, sub, accentClass,
+  step, label, value, sub, accentClass, empty,
   arrow, conversion,
 }: {
-  step: number; label: string; value: number; sub?: string; accentClass: string;
+  step: number; label: string; value: number; sub?: string;
+  accentClass: string; empty?: boolean;
   arrow?: boolean; conversion?: number;
 }) {
   const conversionColor =
     conversion === undefined ? ""
-    : conversion >= 60 ? "bg-emerald-100 text-emerald-700"
-    : conversion >= 35 ? "bg-amber-100 text-amber-700"
-    : "bg-slate-100 text-slate-500";
+    : conversion >= 60 ? "bg-emerald-100 text-emerald-700 border border-emerald-200"
+    : conversion >= 35 ? "bg-amber-100 text-amber-700 border border-amber-200"
+    : "bg-slate-100 text-slate-500 border border-slate-200";
 
   return (
-    <div className="flex items-center gap-2.5 flex-shrink-0">
-      <div className="relative rounded-xl border border-border bg-card shadow-sm overflow-hidden min-w-[120px]">
-        {/* Left accent stripe */}
+    <div className={`flex items-center gap-2.5 flex-shrink-0 ${empty ? "opacity-50" : ""}`}>
+      <div className={`relative rounded-xl border ${empty ? "border-dashed border-border/60" : "border-border"} bg-card shadow-sm overflow-hidden min-w-[130px]`}>
         <div className={`absolute inset-y-0 left-0 w-[3px] ${accentClass}`} />
-        <div className="px-4 py-3 pl-5">
-          <div className="flex items-center gap-1.5 mb-1">
-            <span className="text-[9px] font-bold text-muted-foreground/50 tabular-nums">{step}</span>
-            <span className="text-[9px] font-bold uppercase tracking-widest text-muted-foreground">{label}</span>
+        <div className="px-4 py-3.5 pl-5">
+          <div className="flex items-center gap-1.5 mb-1.5">
+            <span className="text-[9px] font-bold text-muted-foreground/40 tabular-nums">{step}</span>
+            <span className="text-[9px] font-bold uppercase tracking-widest text-muted-foreground/70">{label}</span>
           </div>
-          <div className="text-[26px] font-bold tabular-nums leading-none text-foreground">
-            {fmtNum(value)}
+          <div className={`text-[28px] font-bold tabular-nums leading-none ${empty ? "text-muted-foreground/40" : "text-foreground"}`}>
+            {empty ? "—" : fmtNum(value)}
           </div>
           {sub && (
-            <div className="text-[10px] text-muted-foreground mt-1 leading-none">{sub}</div>
+            <div className="text-[10px] text-muted-foreground mt-1.5 leading-none">{sub}</div>
           )}
         </div>
       </div>
       {arrow && (
-        <div className="flex flex-col items-center gap-1">
-          {conversion !== undefined && (
+        <div className="flex flex-col items-center gap-1 flex-shrink-0">
+          {conversion !== undefined && !empty && (
             <span className={`text-[11px] font-bold tabular-nums px-2 py-0.5 rounded-full ${conversionColor}`}>
               {conversion}%
             </span>
           )}
-          <ArrowRight className="h-3.5 w-3.5 text-muted-foreground/30" />
+          <ArrowRight className="h-3.5 w-3.5 text-muted-foreground/25" />
         </div>
       )}
     </div>
@@ -280,15 +329,14 @@ export function StrategyPage() {
   const [segmentDim, setSegmentDim] = useState<SegmentDim>("ccaa");
   const [segmentSort, setSegmentSort] = useState<keyof SegmentRow>("cmrr");
   const [segmentAsc, setSegmentAsc] = useState(false);
+  const [crossDim, setCrossDim] = useState<SegmentDim | null>(null);
+  const [crossMetric, setCrossMetric] = useState<PivotMetric>("l2d");
   const [page, setPage] = useState(0);
   const PAGE_SIZE = 50;
 
   const load = useCallback(async () => {
     setLoading(true);
-    const [data, total] = await Promise.all([
-      fetchStrategyCompanies(),
-      fetchSasorTotal(),
-    ]);
+    const [data, total] = await Promise.all([fetchStrategyCompanies(), fetchSasorTotal()]);
     setRaw(data);
     setSasorTotal(total);
     setLoading(false);
@@ -308,21 +356,17 @@ export function StrategyPage() {
           const res = resolveCCAA(r.ciudad_enriched || r.ciudad);
           return res.ccaa === "Unknown" ? "Others" : res.ccaa;
         })();
-
         const provNorm = r.provenance_norm?.trim() || normProvenance(r.provenance);
         const segNorm = r.size_segment?.trim() || sizeSegment(r.empresa_size, r.total_seats);
-
         const isWon = r.is_won != null
           ? Boolean(r.is_won)
           : r.conversion === "converted" || r.conversion === "onboarding";
         const isActive = r.is_active_client != null
           ? Boolean(r.is_active_client)
           : r.tipo_empresa === "Cliente Activo";
-        // Won/Active implies demo happened
         const hasDemo = isWon || isActive || (r.has_demo != null
           ? Boolean(r.has_demo)
           : !!(r.deal_after_demo_date || r.after_demo_date));
-
         return {
           ...r,
           _industry: standardIndustry(r.industria),
@@ -360,11 +404,7 @@ export function StrategyPage() {
     const cmrr = filtered.reduce((s, r) => s + (r.cmrr || 0), 0);
     return {
       spain: sasorTotal,
-      hubspot,
-      demos,
-      won,
-      activos,
-      cmrr,
+      hubspot, demos, won, activos, cmrr,
       l2d: pct(demos, hubspot),
       d2w: pct(won, demos),
       w2a: pct(activos, won),
@@ -375,13 +415,7 @@ export function StrategyPage() {
   // ── Segment table ───────────────────────────────────────────────────────────
 
   const segmentRows = useMemo<SegmentRow[]>(() => {
-    const dimFn = (r: NormRow): string => {
-      if (segmentDim === "ccaa") return r._ccaa;
-      if (segmentDim === "size_segment") return r._segment;
-      if (segmentDim === "industry") return r._industry;
-      return r._provenance || "Others";
-    };
-
+    const dimFn = getDimFn(segmentDim);
     const map = new Map<string, { hubspot: number; demos: number; won: number; activos: number; cmrr: number }>();
     for (const r of filtered) {
       const key = dimFn(r) || "Others";
@@ -393,15 +427,12 @@ export function StrategyPage() {
       if (r._isActive) g.activos++;
       g.cmrr += r.cmrr || 0;
     }
-
     const rows: SegmentRow[] = Array.from(map.entries()).map(([label, g]) => ({
-      label,
-      ...g,
+      label, ...g,
       l2d: pct(g.demos, g.hubspot),
       d2w: pct(g.won, g.demos),
       l2w: pct(g.won, g.hubspot),
     }));
-
     rows.sort((a, b) => {
       if (segmentDim === "size_segment") {
         const ai = SEGMENT_ORDER.indexOf(a.label);
@@ -412,15 +443,71 @@ export function StrategyPage() {
       const bv = b[segmentSort];
       if (typeof av === "number" && typeof bv === "number")
         return segmentAsc ? av - bv : bv - av;
-      return segmentAsc
-        ? String(av).localeCompare(String(bv))
-        : String(bv).localeCompare(String(av));
+      return segmentAsc ? String(av).localeCompare(String(bv)) : String(bv).localeCompare(String(av));
     });
-
     return rows;
   }, [filtered, segmentDim, segmentSort, segmentAsc]);
 
-  // Quantile thresholds for heat-mapped rate columns (relative to current data)
+  // ── Pivot (cross-dimensional) ───────────────────────────────────────────────
+
+  const pivotData = useMemo(() => {
+    if (!crossDim || crossDim === segmentDim) return null;
+
+    const primaryFn = getDimFn(segmentDim);
+    const secondaryFn = getDimFn(crossDim);
+
+    // Primary: use segmentRows order, exclude Others
+    const primaryVals = segmentRows.filter((r) => r.label !== "Others").map((r) => r.label);
+
+    // Secondary: count, then order
+    const secCount = new Map<string, number>();
+    filtered.forEach((r) => {
+      const s = secondaryFn(r);
+      if (s !== "Others" && s !== "Unknown") secCount.set(s, (secCount.get(s) ?? 0) + 1);
+    });
+
+    let secondaryVals: string[];
+    if (crossDim === "size_segment") {
+      secondaryVals = SEGMENT_ORDER.filter((s) => secCount.has(s) && s !== "Unknown" && s !== "Others");
+    } else {
+      secondaryVals = Array.from(secCount.entries())
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 10)
+        .map(([k]) => k);
+    }
+
+    // Build matrix
+    const matrix = new Map<string, Map<string, PivotCell>>();
+    for (const r of filtered) {
+      const p = primaryFn(r);
+      const s = secondaryFn(r);
+      if (!primaryVals.includes(p) || !secondaryVals.includes(s)) continue;
+      if (!matrix.has(p)) matrix.set(p, new Map());
+      const row = matrix.get(p)!;
+      if (!row.has(s)) row.set(s, { hubspot: 0, demos: 0, won: 0, activos: 0, cmrr: 0 });
+      const cell = row.get(s)!;
+      cell.hubspot++;
+      if (r._hasDemo) cell.demos++;
+      if (r._isWon) cell.won++;
+      if (r._isActive) cell.activos++;
+      cell.cmrr += r.cmrr || 0;
+    }
+
+    return { primaryVals, secondaryVals, matrix };
+  }, [filtered, segmentDim, crossDim, segmentRows]);
+
+  // Pre-compute all pivot cell values for heat mapping
+  const pivotAllVals = useMemo(() => {
+    if (!pivotData) return [];
+    return pivotData.primaryVals.flatMap((p) =>
+      pivotData.secondaryVals.map((s) =>
+        getCellValue(pivotData.matrix.get(p)?.get(s), crossMetric)
+      )
+    );
+  }, [pivotData, crossMetric]);
+
+  // ── Rate quantiles ──────────────────────────────────────────────────────────
+
   const quantiles = useMemo(() => ({
     l2d: computeQuantiles(segmentRows.map((r) => r.l2d)),
     d2w: computeQuantiles(segmentRows.map((r) => r.d2w)),
@@ -468,9 +555,7 @@ export function StrategyPage() {
     const text = await file.text();
     const rows = parseCsvText(text);
     setImportProgress(`${rows.length} filas, importando...`);
-    const { inserted, errors } = await importStrategyCsv(rows, (done, total) => {
-      setImportProgress(`${done}/${total}`);
-    });
+    const { inserted, errors } = await importStrategyCsv(rows, (done, total) => setImportProgress(`${done}/${total}`));
     setImportProgress(`${inserted} importadas${errors ? `, ${errors} errores` : ""}`);
     setImporting(null);
     load();
@@ -478,24 +563,19 @@ export function StrategyPage() {
 
   const handleImportSasor = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]; if (!file) return;
-    setImporting("sasor"); setImportProgress("Leyendo SASOR...");
+    setImporting("sasor"); setImportProgress("Leyendo TAM...");
     const text = await file.text();
     const rows = parseCsvText(text);
     setImportProgress(`${rows.length} empresas...`);
-    const { inserted, errors } = await importSasorCsv(rows, (done, total) => {
-      setImportProgress(`${done}/${total}`);
-    });
+    const { inserted, errors } = await importSasorCsv(rows, (done, total) => setImportProgress(`${done}/${total}`));
     setImportProgress(`${inserted} importadas${errors ? `, ${errors} errores` : ""}`);
     setImporting(null);
     load();
   };
 
   const handleCrossEnrich = async () => {
-    setImporting("cross");
-    setImportProgress("Iniciando...");
-    const { hsUpdated, sasorUpdated } = await crossEnrichCcaa((msg) =>
-      setImportProgress(msg),
-    );
+    setImporting("cross"); setImportProgress("Iniciando...");
+    const { hsUpdated, sasorUpdated } = await crossEnrichCcaa((msg) => setImportProgress(msg));
     setImportProgress(`${hsUpdated} HS + ${sasorUpdated} SASOR actualizados`);
     setImporting(null);
     load();
@@ -535,18 +615,17 @@ export function StrategyPage() {
     );
   }
 
-  // ── Render ──────────────────────────────────────────────────────────────────
-
   const maxHubspot = Math.max(...segmentRows.map((r) => r.hubspot), 1);
+  const crossDimOptions = SEGMENT_DIMS.filter((d) => d.key !== segmentDim);
+
+  // ── Render ──────────────────────────────────────────────────────────────────
 
   return (
     <div className="mx-auto max-w-[1500px] px-4 py-6 lg:px-8 space-y-5">
 
       {/* ── Header ── */}
-      <div
-        className="rounded-2xl px-6 py-5 sm:px-8 text-white shadow-sm"
-        style={{ background: "var(--gradient-factorial)" }}
-      >
+      <div className="rounded-2xl px-6 py-5 sm:px-8 text-white shadow-sm"
+        style={{ background: "var(--gradient-factorial)" }}>
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="space-y-0.5">
             <div className="flex items-center gap-2">
@@ -569,7 +648,6 @@ export function StrategyPage() {
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
-            {/* View toggle */}
             <div className="flex rounded-lg bg-white/15 p-0.5 text-xs backdrop-blur-sm">
               {(["segment", "table"] as ViewMode[]).map((v) => (
                 <button key={v} onClick={() => setView(v)}
@@ -585,24 +663,19 @@ export function StrategyPage() {
             <label className="flex items-center gap-1.5 rounded-lg bg-white/15 backdrop-blur-sm px-3 py-1.5 text-xs font-medium cursor-pointer hover:bg-white/25 transition-colors">
               <Upload className="h-3.5 w-3.5" />
               {importing === "strategy" ? importProgress : "CSV HubSpot"}
-              <input type="file" accept=".csv" onChange={handleImportStrategy} className="hidden"
-                disabled={importing !== null} />
+              <input type="file" accept=".csv" onChange={handleImportStrategy} className="hidden" disabled={importing !== null} />
             </label>
 
             <label className="flex items-center gap-1.5 rounded-lg bg-white/10 backdrop-blur-sm px-3 py-1.5 text-xs font-medium cursor-pointer hover:bg-white/20 transition-colors">
               <Upload className="h-3.5 w-3.5" />
-              {importing === "sasor" ? importProgress : "CSV SASOR"}
-              <input type="file" accept=".csv" onChange={handleImportSasor} className="hidden"
-                disabled={importing !== null} />
+              {importing === "sasor" ? importProgress : "CSV TAM"}
+              <input type="file" accept=".csv" onChange={handleImportSasor} className="hidden" disabled={importing !== null} />
             </label>
 
             {raw.length > 0 && (
-              <button
-                onClick={handleCrossEnrich}
-                disabled={importing !== null}
+              <button onClick={handleCrossEnrich} disabled={importing !== null}
                 title="Cruzar ciudades entre HubSpot y SASOR para mejorar cobertura de Región"
-                className="flex items-center gap-1.5 rounded-lg bg-white/10 backdrop-blur-sm px-3 py-1.5 text-xs font-medium hover:bg-white/20 transition-colors disabled:opacity-40"
-              >
+                className="flex items-center gap-1.5 rounded-lg bg-white/10 backdrop-blur-sm px-3 py-1.5 text-xs font-medium hover:bg-white/20 transition-colors disabled:opacity-40">
                 <Shuffle className="h-3.5 w-3.5" />
                 {importing === "cross" ? importProgress : "Cross-enrich Región"}
               </button>
@@ -615,8 +688,7 @@ export function StrategyPage() {
                   await clearStrategyData();
                   setRaw([]);
                 }}
-                className="flex items-center gap-1.5 rounded-lg bg-white/10 backdrop-blur-sm px-3 py-1.5 text-xs font-medium hover:bg-red-500/40 transition-colors"
-              >
+                className="flex items-center gap-1.5 rounded-lg bg-white/10 backdrop-blur-sm px-3 py-1.5 text-xs font-medium hover:bg-red-500/40 transition-colors">
                 <Trash2 className="h-3.5 w-3.5" />
               </button>
             )}
@@ -625,46 +697,44 @@ export function StrategyPage() {
       </div>
 
       {/* ── Funnel strip ── */}
-      {(companies.length > 0 || sasorTotal > 0) && (
-        <div className="rounded-xl border border-border bg-card px-5 py-4 overflow-x-auto">
-          <div className="text-[9px] font-bold uppercase tracking-widest text-muted-foreground/60 mb-3">
-            Embudo comercial
-          </div>
-          <div className="flex items-start gap-2 flex-nowrap">
-            {sasorTotal > 0 && (
-              <FunnelStep
-                step={1} label="Mercado ES" value={funnel.spain}
-                sub="SASOR · empresas +20 empleados"
-                accentClass="bg-slate-300"
-                arrow conversion={funnel.hs2spain ?? undefined}
-              />
-            )}
-            <FunnelStep
-              step={sasorTotal > 0 ? 2 : 1} label="En HubSpot" value={funnel.hubspot}
-              sub="empresas en pipeline"
-              accentClass="bg-blue-400"
-              arrow conversion={funnel.l2d}
-            />
-            <FunnelStep
-              step={sasorTotal > 0 ? 3 : 2} label="Con demo" value={funnel.demos}
-              sub={`${funnel.l2d}% de leads`}
-              accentClass="bg-violet-400"
-              arrow conversion={funnel.d2w}
-            />
-            <FunnelStep
-              step={sasorTotal > 0 ? 4 : 3} label="Ganados" value={funnel.won}
-              sub={`${funnel.d2w}% de demos`}
-              accentClass="bg-amber-400"
-              arrow conversion={funnel.w2a}
-            />
-            <FunnelStep
-              step={sasorTotal > 0 ? 5 : 4} label="Activos" value={funnel.activos}
-              sub={`€${fmtNum(funnel.cmrr)} CMRR`}
-              accentClass="bg-emerald-400"
-            />
-          </div>
+      <div className="rounded-xl border border-border bg-card px-5 py-4 overflow-x-auto">
+        <div className="text-[9px] font-bold uppercase tracking-widest text-muted-foreground/50 mb-3">
+          Embudo comercial
         </div>
-      )}
+        <div className="flex items-start gap-2 flex-nowrap">
+          {/* TAM — always visible, empty if not loaded */}
+          <FunnelStep
+            step={1} label="TAM España" value={funnel.spain}
+            sub={funnel.spain > 0 ? "empresas +20 empleados" : "Carga CSV TAM"}
+            accentClass="bg-slate-300"
+            empty={funnel.spain === 0}
+            arrow conversion={funnel.hs2spain ?? undefined}
+          />
+          <FunnelStep
+            step={2} label="En HubSpot" value={funnel.hubspot}
+            sub="ICP identificado"
+            accentClass="bg-blue-400"
+            arrow conversion={funnel.l2d}
+          />
+          <FunnelStep
+            step={3} label="Con demo" value={funnel.demos}
+            sub={`${funnel.l2d}% de leads`}
+            accentClass="bg-violet-400"
+            arrow conversion={funnel.d2w}
+          />
+          <FunnelStep
+            step={4} label="Ganados" value={funnel.won}
+            sub={`${funnel.d2w}% de demos`}
+            accentClass="bg-amber-400"
+            arrow conversion={funnel.w2a}
+          />
+          <FunnelStep
+            step={5} label="Activos" value={funnel.activos}
+            sub={`€${fmtNum(funnel.cmrr)} CMRR`}
+            accentClass="bg-emerald-400"
+          />
+        </div>
+      </div>
 
       {/* ── Filters ── */}
       <div className="flex flex-wrap items-center gap-2">
@@ -685,10 +755,8 @@ export function StrategyPage() {
           />
         ))}
         {activeFilterCount > 0 && (
-          <button
-            onClick={() => { setFilters({}); setSearch(""); setPage(0); }}
-            className="flex items-center gap-1 rounded-full bg-primary/10 text-primary px-2.5 py-1 text-[11px] font-medium hover:bg-primary/20 transition-colors"
-          >
+          <button onClick={() => { setFilters({}); setSearch(""); setPage(0); }}
+            className="flex items-center gap-1 rounded-full bg-primary/10 text-primary px-2.5 py-1 text-[11px] font-medium hover:bg-primary/20 transition-colors">
             <X className="h-3 w-3" /> Limpiar ({activeFilterCount})
           </button>
         )}
@@ -712,135 +780,209 @@ export function StrategyPage() {
         </div>
       ) : view === "segment" ? (
 
-        /* ── Segment view ── */
-        <div className="space-y-0">
+        <div className="space-y-6">
 
-          {/* Dimension tabs */}
-          <div className="flex items-center gap-1 border-b border-border">
-            <span className="text-[9px] font-bold uppercase tracking-widest text-muted-foreground/50 pr-3">
-              Agrupar por
-            </span>
-            {SEGMENT_DIMS.map((d) => (
-              <button key={d.key} onClick={() => setSegmentDim(d.key)}
-                className={`px-3 py-2 text-xs font-medium transition-all border-b-2 -mb-px ${
-                  segmentDim === d.key
-                    ? "border-primary text-foreground"
-                    : "border-transparent text-muted-foreground hover:text-foreground"
-                }`}>
-                {d.label}
-              </button>
-            ))}
-            <div className="ml-auto pb-1 flex items-center gap-2 pr-1">
-              <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground">
-                <span className="inline-block h-2 w-4 rounded-sm bg-emerald-100 ring-1 ring-emerald-200" />
-                Alto
-                <span className="inline-block h-2 w-4 rounded-sm bg-amber-50 ring-1 ring-amber-200" />
-                Medio
+          {/* ── Dimension tabs + main table ── */}
+          <div className="space-y-0">
+            <div className="flex items-center gap-1 border-b border-border">
+              <span className="text-[9px] font-bold uppercase tracking-widest text-muted-foreground/50 pr-3">
+                Agrupar por
+              </span>
+              {SEGMENT_DIMS.map((d) => (
+                <button key={d.key} onClick={() => { setSegmentDim(d.key); setCrossDim(null); }}
+                  className={`px-3 py-2 text-xs font-medium transition-all border-b-2 -mb-px ${
+                    segmentDim === d.key
+                      ? "border-primary text-foreground"
+                      : "border-transparent text-muted-foreground hover:text-foreground"
+                  }`}>
+                  {d.label}
+                </button>
+              ))}
+              <div className="ml-auto pb-1 flex items-center gap-2 pr-1">
+                <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground">
+                  <span className="inline-block h-2 w-4 rounded-sm bg-emerald-100 ring-1 ring-emerald-200" />
+                  Alto
+                  <span className="inline-block h-2 w-4 rounded-sm bg-amber-50 ring-1 ring-amber-200" />
+                  Medio
+                </div>
               </div>
+            </div>
+
+            <div className="overflow-x-auto rounded-b-xl border border-t-0 border-border bg-card shadow-sm">
+              <table className="w-full text-xs">
+                <thead>
+                  <tr className="bg-muted/30 border-b border-border">
+                    {([
+                      ["label",   SEGMENT_DIMS.find((d) => d.key === segmentDim)?.label ?? "", "text-left",  "min-w-[160px]"],
+                      ["hubspot", "Leads",        "text-right", ""],
+                      ["demos",   "Con demo",     "text-right", ""],
+                      ["won",     "Ganados",      "text-right", ""],
+                      ["activos", "Activos",      "text-right", ""],
+                      ["l2d",     "Lead → Demo",  "text-right", "min-w-[100px]"],
+                      ["d2w",     "Demo → Won",   "text-right", "min-w-[100px]"],
+                      ["l2w",     "Lead → Won",   "text-right", "min-w-[100px]"],
+                      ["cmrr",    "CMRR",         "text-right", "min-w-[110px]"],
+                    ] as [keyof SegmentRow, string, string, string][]).map(([col, lbl, align, minW]) => (
+                      <th key={col} onClick={() => handleSegSort(col)}
+                        className={`px-3 py-2.5 ${align} ${minW} text-[10px] uppercase tracking-wider text-muted-foreground font-bold cursor-pointer hover:text-foreground select-none whitespace-nowrap transition-colors`}>
+                        {lbl}<SegSortIcon col={col} />
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {segmentRows.map((row, idx) => {
+                    const isOthers = row.label === "Others";
+                    const cmrrBar = Math.round((row.cmrr / Math.max(...segmentRows.map((r) => r.cmrr), 1)) * 100);
+                    const volBar = Math.round((row.hubspot / maxHubspot) * 100);
+                    return (
+                      <tr key={row.label}
+                        className={`border-t border-border/50 transition-colors hover:bg-muted/20 ${isOthers ? "opacity-50" : ""} ${idx % 2 === 0 ? "" : "bg-muted/[0.025]"}`}>
+                        <td className="px-3 py-2.5">
+                          <span className={`font-semibold ${isOthers ? "text-muted-foreground italic" : "text-foreground"}`}>
+                            {row.label}
+                          </span>
+                          {isOthers && <span className="ml-1.5 text-[9px] text-muted-foreground/60">(sin CCAA asignada)</span>}
+                        </td>
+                        <td className="px-3 py-2.5 text-right">
+                          <div className="flex items-center justify-end gap-2">
+                            <div className="w-12 h-1 rounded-full bg-muted overflow-hidden hidden sm:block">
+                              <div className="h-full rounded-full bg-blue-300" style={{ width: `${volBar}%` }} />
+                            </div>
+                            <span className="tabular-nums text-muted-foreground">{row.hubspot.toLocaleString()}</span>
+                          </div>
+                        </td>
+                        <td className="px-3 py-2.5 tabular-nums text-right text-muted-foreground">{row.demos.toLocaleString()}</td>
+                        <td className="px-3 py-2.5 tabular-nums text-right text-muted-foreground">{row.won.toLocaleString()}</td>
+                        <td className="px-3 py-2.5 tabular-nums text-right">
+                          <span className="font-semibold text-emerald-700">{row.activos.toLocaleString()}</span>
+                        </td>
+                        <td className={`px-3 py-2.5 tabular-nums text-right text-sm ${!isOthers ? rateHeat(row.l2d, quantiles.l2d) : "text-muted-foreground/40"}`}>{row.l2d}%</td>
+                        <td className={`px-3 py-2.5 tabular-nums text-right text-sm ${!isOthers ? rateHeat(row.d2w, quantiles.d2w) : "text-muted-foreground/40"}`}>{row.d2w}%</td>
+                        <td className={`px-3 py-2.5 tabular-nums text-right text-sm ${!isOthers ? rateHeat(row.l2w, quantiles.l2w) : "text-muted-foreground/40"}`}>{row.l2w}%</td>
+                        <td className="px-3 py-2.5 tabular-nums text-right">
+                          <div className="flex items-center justify-end gap-2">
+                            <div className="w-14 h-1.5 rounded-full bg-muted overflow-hidden hidden sm:block">
+                              <div className="h-full rounded-full bg-primary/35" style={{ width: `${cmrrBar}%` }} />
+                            </div>
+                            <span className="font-semibold">{fmtNum(row.cmrr)}</span>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                  <tr className="border-t-2 border-border bg-muted/30 font-bold text-xs">
+                    <td className="px-3 py-2.5 text-foreground">Total</td>
+                    <td className="px-3 py-2.5 tabular-nums text-right text-muted-foreground">{funnel.hubspot.toLocaleString()}</td>
+                    <td className="px-3 py-2.5 tabular-nums text-right text-muted-foreground">{funnel.demos.toLocaleString()}</td>
+                    <td className="px-3 py-2.5 tabular-nums text-right text-muted-foreground">{funnel.won.toLocaleString()}</td>
+                    <td className="px-3 py-2.5 tabular-nums text-right text-emerald-700">{funnel.activos.toLocaleString()}</td>
+                    <td className="px-3 py-2.5 tabular-nums text-right">{funnel.l2d}%</td>
+                    <td className="px-3 py-2.5 tabular-nums text-right">{funnel.d2w}%</td>
+                    <td className="px-3 py-2.5 tabular-nums text-right">{pct(funnel.won, funnel.hubspot)}%</td>
+                    <td className="px-3 py-2.5 tabular-nums text-right">{fmtNum(funnel.cmrr)}</td>
+                  </tr>
+                </tbody>
+              </table>
             </div>
           </div>
 
-          {/* Table */}
-          <div className="overflow-x-auto rounded-b-xl border border-t-0 border-border bg-card shadow-sm">
-            <table className="w-full text-xs">
-              <thead>
-                <tr className="bg-muted/30 border-b border-border">
-                  {([
-                    ["label",   SEGMENT_DIMS.find((d) => d.key === segmentDim)?.label ?? "", "text-left",  "min-w-[160px]"],
-                    ["hubspot", "Leads",        "text-right", ""],
-                    ["demos",   "Con demo",     "text-right", ""],
-                    ["won",     "Ganados",      "text-right", ""],
-                    ["activos", "Activos",      "text-right", ""],
-                    ["l2d",     "Lead → Demo",  "text-right", "min-w-[90px]"],
-                    ["d2w",     "Demo → Won",   "text-right", "min-w-[90px]"],
-                    ["l2w",     "Lead → Won",   "text-right", "min-w-[90px]"],
-                    ["cmrr",    "CMRR",         "text-right", "min-w-[110px]"],
-                  ] as [keyof SegmentRow, string, string, string][]).map(([col, lbl, align, minW]) => (
-                    <th key={col} onClick={() => handleSegSort(col)}
-                      className={`px-3 py-2.5 ${align} ${minW} text-[10px] uppercase tracking-wider text-muted-foreground font-bold cursor-pointer hover:text-foreground select-none whitespace-nowrap transition-colors`}>
-                      {lbl}<SegSortIcon col={col} />
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {segmentRows.map((row, idx) => {
-                  const isOthers = row.label === "Others";
-                  const cmrrBar = Math.round((row.cmrr / Math.max(...segmentRows.map((r) => r.cmrr), 1)) * 100);
-                  const volBar = Math.round((row.hubspot / maxHubspot) * 100);
-                  return (
-                    <tr key={row.label}
-                      className={`border-t border-border/50 transition-colors hover:bg-muted/20 ${
-                        isOthers ? "opacity-50" : ""
-                      } ${idx % 2 === 0 ? "" : "bg-muted/[0.025]"}`}>
+          {/* ── Cross-dimensional pivot ── */}
+          <div className="space-y-3">
+            <div className="flex items-center gap-3 flex-wrap">
+              <div className="flex items-center gap-1.5">
+                <LayoutGrid className="h-3.5 w-3.5 text-muted-foreground" />
+                <span className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground/70">
+                  Cruzar con
+                </span>
+              </div>
+              <div className="flex items-center gap-1">
+                {crossDimOptions.map((d) => (
+                  <button key={d.key}
+                    onClick={() => setCrossDim(crossDim === d.key ? null : d.key)}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
+                      crossDim === d.key
+                        ? "bg-primary text-primary-foreground shadow-sm"
+                        : "border border-border text-muted-foreground hover:text-foreground hover:border-border/80"
+                    }`}>
+                    {d.label}
+                  </button>
+                ))}
+              </div>
 
-                      <td className="px-3 py-2.5">
-                        <span className={`font-semibold ${isOthers ? "text-muted-foreground italic" : "text-foreground"}`}>
-                          {row.label}
-                        </span>
-                        {isOthers && (
-                          <span className="ml-1.5 text-[9px] text-muted-foreground/60">(sin CCAA asignada)</span>
-                        )}
-                      </td>
+              {crossDim && (
+                <>
+                  <div className="h-4 w-px bg-border" />
+                  <span className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground/70">Métrica</span>
+                  <div className="flex items-center gap-1">
+                    {CROSS_METRICS.map((m) => (
+                      <button key={m.key}
+                        onClick={() => setCrossMetric(m.key)}
+                        className={`px-2.5 py-1 rounded-lg text-xs transition-all ${
+                          crossMetric === m.key
+                            ? "bg-foreground text-background font-semibold"
+                            : "text-muted-foreground hover:text-foreground"
+                        }`}>
+                        {m.label}
+                      </button>
+                    ))}
+                  </div>
+                </>
+              )}
+            </div>
 
-                      {/* Leads with volume bar */}
-                      <td className="px-3 py-2.5 text-right">
-                        <div className="flex items-center justify-end gap-2">
-                          <div className="w-12 h-1 rounded-full bg-muted overflow-hidden hidden sm:block">
-                            <div className="h-full rounded-full bg-blue-300" style={{ width: `${volBar}%` }} />
-                          </div>
-                          <span className="tabular-nums text-muted-foreground">{row.hubspot.toLocaleString()}</span>
-                        </div>
-                      </td>
-
-                      <td className="px-3 py-2.5 tabular-nums text-right text-muted-foreground">
-                        {row.demos.toLocaleString()}
-                      </td>
-                      <td className="px-3 py-2.5 tabular-nums text-right text-muted-foreground">
-                        {row.won.toLocaleString()}
-                      </td>
-                      <td className="px-3 py-2.5 tabular-nums text-right">
-                        <span className="font-semibold text-emerald-700">{row.activos.toLocaleString()}</span>
-                      </td>
-
-                      {/* Heat-mapped rate cells */}
-                      <td className={`px-3 py-2.5 tabular-nums text-right text-sm ${!isOthers ? rateHeat(row.l2d, quantiles.l2d) : "text-muted-foreground/40"}`}>
-                        {row.l2d}%
-                      </td>
-                      <td className={`px-3 py-2.5 tabular-nums text-right text-sm ${!isOthers ? rateHeat(row.d2w, quantiles.d2w) : "text-muted-foreground/40"}`}>
-                        {row.d2w}%
-                      </td>
-                      <td className={`px-3 py-2.5 tabular-nums text-right text-sm ${!isOthers ? rateHeat(row.l2w, quantiles.l2w) : "text-muted-foreground/40"}`}>
-                        {row.l2w}%
-                      </td>
-
-                      {/* CMRR with bar */}
-                      <td className="px-3 py-2.5 tabular-nums text-right">
-                        <div className="flex items-center justify-end gap-2">
-                          <div className="w-14 h-1.5 rounded-full bg-muted overflow-hidden hidden sm:block">
-                            <div className="h-full rounded-full bg-primary/35" style={{ width: `${cmrrBar}%` }} />
-                          </div>
-                          <span className="font-semibold">{fmtNum(row.cmrr)}</span>
-                        </div>
-                      </td>
+            {crossDim && pivotData && (
+              <div className="overflow-x-auto rounded-xl border border-border bg-card shadow-sm">
+                <table className="text-xs w-full">
+                  <thead>
+                    <tr className="bg-muted/30 border-b border-border">
+                      <th className="px-3 py-2.5 text-left text-[10px] uppercase tracking-wider font-bold text-muted-foreground whitespace-nowrap min-w-[140px] sticky left-0 bg-muted/30">
+                        {SEGMENT_DIMS.find((d) => d.key === segmentDim)?.label}
+                        <span className="text-muted-foreground/40 font-normal"> × </span>
+                        {SEGMENT_DIMS.find((d) => d.key === crossDim)?.label}
+                      </th>
+                      {pivotData.secondaryVals.map((col) => (
+                        <th key={col} className="px-2 py-2.5 text-center text-[10px] uppercase tracking-wider font-bold text-muted-foreground min-w-[70px] whitespace-nowrap">
+                          {shortLabel(col)}
+                        </th>
+                      ))}
                     </tr>
-                  );
-                })}
-
-                {/* Totals */}
-                <tr className="border-t-2 border-border bg-muted/30 font-bold text-xs">
-                  <td className="px-3 py-2.5 text-foreground">Total</td>
-                  <td className="px-3 py-2.5 tabular-nums text-right text-muted-foreground">{funnel.hubspot.toLocaleString()}</td>
-                  <td className="px-3 py-2.5 tabular-nums text-right text-muted-foreground">{funnel.demos.toLocaleString()}</td>
-                  <td className="px-3 py-2.5 tabular-nums text-right text-muted-foreground">{funnel.won.toLocaleString()}</td>
-                  <td className="px-3 py-2.5 tabular-nums text-right text-emerald-700">{funnel.activos.toLocaleString()}</td>
-                  <td className="px-3 py-2.5 tabular-nums text-right">{funnel.l2d}%</td>
-                  <td className="px-3 py-2.5 tabular-nums text-right">{funnel.d2w}%</td>
-                  <td className="px-3 py-2.5 tabular-nums text-right">{pct(funnel.won, funnel.hubspot)}%</td>
-                  <td className="px-3 py-2.5 tabular-nums text-right">{fmtNum(funnel.cmrr)}</td>
-                </tr>
-              </tbody>
-            </table>
+                  </thead>
+                  <tbody>
+                    {pivotData.primaryVals.map((rowLabel, idx) => {
+                      const rowMap = pivotData.matrix.get(rowLabel);
+                      return (
+                        <tr key={rowLabel}
+                          className={`border-t border-border/50 hover:bg-muted/10 transition-colors ${idx % 2 === 0 ? "" : "bg-muted/[0.02]"}`}>
+                          <td className="px-3 py-2 font-semibold text-foreground whitespace-nowrap sticky left-0 bg-card">
+                            {rowLabel}
+                          </td>
+                          {pivotData.secondaryVals.map((col) => {
+                            const cell = rowMap?.get(col);
+                            const v = getCellValue(cell, crossMetric);
+                            return (
+                              <td key={col}
+                                className={`px-2 py-2 text-center tabular-nums font-medium text-sm ${pivotHeat(v, pivotAllVals)}`}>
+                                {formatCellVal(v, crossMetric)}
+                              </td>
+                            );
+                          })}
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+                <div className="px-3 py-2 border-t border-border/50 text-[10px] text-muted-foreground/60 flex items-center justify-between">
+                  <span>
+                    {SEGMENT_DIMS.find((d) => d.key === segmentDim)?.label} × {SEGMENT_DIMS.find((d) => d.key === crossDim)?.label}
+                    {" · "}métrica: <span className="font-medium">{CROSS_METRICS.find((m) => m.key === crossMetric)?.label}</span>
+                  </span>
+                  {pivotData.secondaryVals.length === 10 && (
+                    <span>mostrando top 10 {SEGMENT_DIMS.find((d) => d.key === crossDim)?.label?.toLowerCase()}</span>
+                  )}
+                </div>
+              </div>
+            )}
           </div>
         </div>
 
@@ -886,22 +1028,14 @@ export function StrategyPage() {
                     </td>
                     <td className="px-3 py-2">
                       <span className={`inline-flex rounded-full px-2 py-0.5 text-[10px] font-semibold ring-1 ring-inset ${
-                        r._isActive
-                          ? "bg-emerald-50 text-emerald-700 ring-emerald-200"
-                          : "bg-slate-50 text-slate-500 ring-slate-200"
-                      }`}>
-                        {r._isActive ? "Activo" : "Lead"}
-                      </span>
+                        r._isActive ? "bg-emerald-50 text-emerald-700 ring-emerald-200" : "bg-slate-50 text-slate-500 ring-slate-200"
+                      }`}>{r._isActive ? "Activo" : "Lead"}</span>
                     </td>
                     <td className="px-3 py-2 text-center">
-                      {r._hasDemo
-                        ? <span className="inline-block w-2 h-2 rounded-full bg-violet-400" />
-                        : <span className="text-border/40 text-[10px]">·</span>}
+                      {r._hasDemo ? <span className="inline-block w-2 h-2 rounded-full bg-violet-400" /> : <span className="text-border/40 text-[10px]">·</span>}
                     </td>
                     <td className="px-3 py-2 text-center">
-                      {r._isWon
-                        ? <span className="inline-block w-2 h-2 rounded-full bg-amber-400" />
-                        : <span className="text-border/40 text-[10px]">·</span>}
+                      {r._isWon ? <span className="inline-block w-2 h-2 rounded-full bg-amber-400" /> : <span className="text-border/40 text-[10px]">·</span>}
                     </td>
                     <td className="px-3 py-2 tabular-nums text-right font-semibold">
                       {r.cmrr ? <span className={r.cmrr > 100000 ? "text-emerald-600" : ""}>{fmtNum(r.cmrr)}</span> : <span className="text-muted-foreground/40">—</span>}
