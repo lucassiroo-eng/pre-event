@@ -4,12 +4,14 @@ import { useAuth } from "@/lib/auth";
 import {
   fetchStrategyCompanies,
   fetchSasorTotal,
+  fetchSasorBreakdown,
   importStrategyCsv,
   importSasorCsv,
   clearStrategyData,
   crossEnrichCcaa,
   STRATEGY_EMAILS,
   type StrategyCompany,
+  type SasorBreakdown,
 } from "@/lib/strategyStore";
 import { standardIndustry, normProvenance, STANDARD_INDUSTRIES } from "@/lib/strategyNormalize";
 import { resolveCCAA, CCAA_LIST } from "@/lib/strategyCCAA";
@@ -319,6 +321,7 @@ export function StrategyPage() {
 
   const [raw, setRaw] = useState<StrategyCompany[]>([]);
   const [sasorTotal, setSasorTotal] = useState(0);
+  const [sasorBreakdown, setSasorBreakdown] = useState<SasorBreakdown | null>(null);
   const [loading, setLoading] = useState(true);
   const [importing, setImporting] = useState<"strategy" | "sasor" | "cross" | null>(null);
   const [importProgress, setImportProgress] = useState("");
@@ -338,9 +341,14 @@ export function StrategyPage() {
 
   const load = useCallback(async () => {
     setLoading(true);
-    const [data, total] = await Promise.all([fetchStrategyCompanies(), fetchSasorTotal()]);
+    const [data, total, breakdown] = await Promise.all([
+      fetchStrategyCompanies(),
+      fetchSasorTotal(),
+      fetchSasorBreakdown(),
+    ]);
     setRaw(data);
     setSasorTotal(total);
+    setSasorBreakdown(breakdown);
     setLoading(false);
   }, []);
 
@@ -845,7 +853,7 @@ export function StrategyPage() {
                   <tr className="bg-muted/30 border-b border-border">
                     {([
                       ["label",   SEGMENT_DIMS.find((d) => d.key === segmentDim)?.label ?? "", "text-left",  "min-w-[160px]"],
-                      ["hubspot", "Leads",        "text-right", ""],
+                      ["hubspot", "HubSpot",      "text-right", ""],
                       ["demos",   "Con demo",     "text-right", ""],
                       ["won",     "Ganados",      "text-right", ""],
                       ["activos", "Activos",      "text-right", ""],
@@ -859,6 +867,10 @@ export function StrategyPage() {
                         {lbl}<SegSortIcon col={col} />
                       </th>
                     ))}
+                    {(segmentDim === "ccaa" || segmentDim === "size_segment") && sasorBreakdown && (<>
+                      <th className="px-3 py-2.5 text-right text-[10px] uppercase tracking-wider font-bold text-violet-500/70 whitespace-nowrap border-l border-border/60 min-w-[80px]">TAM</th>
+                      <th className="px-3 py-2.5 text-right text-[10px] uppercase tracking-wider font-bold text-violet-500/70 whitespace-nowrap min-w-[90px]">Penetración</th>
+                    </>)}
                   </tr>
                 </thead>
                 <tbody>
@@ -866,6 +878,12 @@ export function StrategyPage() {
                     const isOthers = row.label === "Others";
                     const cmrrBar = Math.round((row.cmrr / Math.max(...segmentRows.map((r) => r.cmrr), 1)) * 100);
                     const volBar = Math.round((row.hubspot / maxHubspot) * 100);
+                    const tamVal = segmentDim === "ccaa"
+                      ? (sasorBreakdown?.byCcaa[row.label] ?? null)
+                      : segmentDim === "size_segment"
+                      ? (sasorBreakdown?.bySize[row.label] ?? null)
+                      : null;
+                    const penetracion = tamVal ? pct(row.hubspot, tamVal) : null;
                     return (
                       <tr key={row.label}
                         className={`border-t border-border/50 transition-colors hover:bg-muted/20 ${isOthers ? "opacity-50" : ""} ${idx % 2 === 0 ? "" : "bg-muted/[0.025]"}`}>
@@ -899,6 +917,19 @@ export function StrategyPage() {
                             <span className="font-semibold">{fmtNum(row.cmrr)}</span>
                           </div>
                         </td>
+                        {(segmentDim === "ccaa" || segmentDim === "size_segment") && sasorBreakdown && (<>
+                          <td className="px-3 py-2.5 tabular-nums text-right text-violet-700/60 border-l border-border/40">
+                            {tamVal != null ? fmtNum(tamVal) : <span className="text-muted-foreground/30">—</span>}
+                          </td>
+                          <td className={`px-3 py-2.5 tabular-nums text-right font-semibold text-sm ${
+                            penetracion == null ? "text-muted-foreground/30"
+                            : penetracion >= 70 ? "text-emerald-700"
+                            : penetracion >= 40 ? "text-amber-600"
+                            : "text-muted-foreground"
+                          }`}>
+                            {penetracion != null ? `${penetracion}%` : "—"}
+                          </td>
+                        </>)}
                       </tr>
                     );
                   })}
@@ -912,6 +943,10 @@ export function StrategyPage() {
                     <td className="px-3 py-2.5 tabular-nums text-right">{funnel.d2w}%</td>
                     <td className="px-3 py-2.5 tabular-nums text-right">{pct(funnel.won, funnel.hubspot)}%</td>
                     <td className="px-3 py-2.5 tabular-nums text-right">{fmtNum(funnel.cmrr)}</td>
+                    {(segmentDim === "ccaa" || segmentDim === "size_segment") && sasorBreakdown && (<>
+                      <td className="px-3 py-2.5 tabular-nums text-right text-violet-700/70 border-l border-border/40">{fmtNum(sasorTotal)}</td>
+                      <td className="px-3 py-2.5 tabular-nums text-right">{sasorTotal > 0 ? `${pct(funnel.hubspot, sasorTotal)}%` : "—"}</td>
+                    </>)}
                   </tr>
                 </tbody>
               </table>

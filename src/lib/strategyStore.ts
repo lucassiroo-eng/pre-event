@@ -80,6 +80,59 @@ export async function fetchSasorTotal(): Promise<number> {
   return data ? parseInt(data.value, 10) || 0 : 0;
 }
 
+// Breakdown: { byCcaa: { "Cataluña": 12000 }, bySize: { "S (1-50)": 60000 } }
+export interface SasorBreakdown {
+  byCcaa: Record<string, number>;
+  bySize: Record<string, number>;
+}
+
+// Try reading precomputed breakdown from meta first; fall back to fetching all rows.
+export async function fetchSasorBreakdown(): Promise<SasorBreakdown | null> {
+  if (!supa) return null;
+
+  // Try cached
+  const { data: cached } = await supa
+    .from("strategy_meta")
+    .select("value")
+    .eq("key", "sasor_breakdown")
+    .single();
+  if (cached?.value) {
+    try { return JSON.parse(cached.value) as SasorBreakdown; } catch { /* fall through */ }
+  }
+
+  // Fetch all rows (only 2 columns — manageable for 95k rows)
+  const PAGE = 1000;
+  const byCcaa: Record<string, number> = {};
+  const bySize: Record<string, number> = {};
+  let from = 0;
+  while (true) {
+    const { data, error } = await supa
+      .from("strategy_sasor")
+      .select("ccaa, size_segment")
+      .range(from, from + PAGE - 1);
+    if (error || !data || data.length === 0) break;
+    for (const r of data) {
+      const c = r.ccaa || "Others";
+      const s = r.size_segment || "Unknown";
+      byCcaa[c] = (byCcaa[c] ?? 0) + 1;
+      bySize[s] = (bySize[s] ?? 0) + 1;
+    }
+    if (data.length < PAGE) break;
+    from += PAGE;
+  }
+
+  const breakdown: SasorBreakdown = { byCcaa, bySize };
+
+  // Cache it in meta for future loads
+  await supa.from("strategy_meta").upsert({
+    key: "sasor_breakdown",
+    value: JSON.stringify(breakdown),
+    updated_at: new Date().toISOString(),
+  });
+
+  return breakdown;
+}
+
 function safeTs(v: string): string | null {
   if (!v) return null;
   if (/^\d{4}-\d{2}-\d{2}/.test(v)) return v;
@@ -249,12 +302,28 @@ export async function importSasorCsv(
     onProgress?.(i + batch.length, deduped.length);
   }
 
-  // Store total unique companies in meta
-  await supa.from("strategy_meta").upsert({
-    key: "sasor_total",
-    value: String(deduped.length),
-    updated_at: new Date().toISOString(),
-  });
+  // Store total + precomputed breakdown in meta (avoids full re-fetch later)
+  const byCcaa: Record<string, number> = {};
+  const bySize: Record<string, number> = {};
+  for (const r of deduped) {
+    const city = r.property_city ?? r.ciudad ?? r.city ?? "";
+    const rawEmp = r.property_numberofemployees ?? r.employees ?? r.empleados ?? "0";
+    const emp = parseInt(rawEmp, 10) || 0;
+    const { resolveCCAA: rc } = await import("./strategyCCAA");
+    const ccaa = rc(city).ccaa === "Unknown" ? "Others" : rc(city).ccaa;
+    let seg = "Unknown";
+    if (emp >= 1   && emp <= 50)  seg = "S (1-50)";
+    else if (emp >= 51  && emp <= 200) seg = "M (51-200)";
+    else if (emp >= 201 && emp <= 500) seg = "L (201-500)";
+    else if (emp > 500)                seg = "XL (500+)";
+    byCcaa[ccaa] = (byCcaa[ccaa] ?? 0) + 1;
+    bySize[seg]  = (bySize[seg]  ?? 0) + 1;
+  }
+
+  await Promise.all([
+    supa.from("strategy_meta").upsert({ key: "sasor_total", value: String(deduped.length), updated_at: new Date().toISOString() }),
+    supa.from("strategy_meta").upsert({ key: "sasor_breakdown", value: JSON.stringify({ byCcaa, bySize }), updated_at: new Date().toISOString() }),
+  ]);
 
   return { inserted, errors };
 }
