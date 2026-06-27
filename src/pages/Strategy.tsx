@@ -24,6 +24,7 @@ import {
 type ViewMode = "segment" | "table";
 type SegmentDim = "ccaa" | "size_segment" | "industry" | "provenance";
 type PivotMetric = "l2d" | "d2w" | "l2w" | "activos" | "cmrr";
+type HeatDir = "global" | "row" | "col";
 
 interface NormRow extends StrategyCompany {
   _industry: string;
@@ -331,6 +332,7 @@ export function StrategyPage() {
   const [segmentAsc, setSegmentAsc] = useState(false);
   const [crossDim, setCrossDim] = useState<SegmentDim | null>(null);
   const [crossMetric, setCrossMetric] = useState<PivotMetric>("l2d");
+  const [heatDir, setHeatDir] = useState<HeatDir>("col");
   const [page, setPage] = useState(0);
   const PAGE_SIZE = 50;
 
@@ -493,18 +495,47 @@ export function StrategyPage() {
       cell.cmrr += r.cmrr || 0;
     }
 
-    return { primaryVals, secondaryVals, matrix };
+    // Compute row totals, column totals, grand total (aggregate raw cells for correct rate math)
+    const rowTotals = new Map<string, PivotCell>();
+    const colTotals = new Map<string, PivotCell>();
+    const grandTotal: PivotCell = { hubspot: 0, demos: 0, won: 0, activos: 0, cmrr: 0 };
+
+    for (const p of primaryVals) {
+      const rt: PivotCell = { hubspot: 0, demos: 0, won: 0, activos: 0, cmrr: 0 };
+      for (const s of secondaryVals) {
+        const c = matrix.get(p)?.get(s);
+        if (c) { rt.hubspot += c.hubspot; rt.demos += c.demos; rt.won += c.won; rt.activos += c.activos; rt.cmrr += c.cmrr; }
+      }
+      rowTotals.set(p, rt);
+    }
+    for (const s of secondaryVals) {
+      const ct: PivotCell = { hubspot: 0, demos: 0, won: 0, activos: 0, cmrr: 0 };
+      for (const p of primaryVals) {
+        const c = matrix.get(p)?.get(s);
+        if (c) { ct.hubspot += c.hubspot; ct.demos += c.demos; ct.won += c.won; ct.activos += c.activos; ct.cmrr += c.cmrr; }
+      }
+      colTotals.set(s, ct);
+      grandTotal.hubspot += ct.hubspot; grandTotal.demos += ct.demos; grandTotal.won += ct.won; grandTotal.activos += ct.activos; grandTotal.cmrr += ct.cmrr;
+    }
+
+    return { primaryVals, secondaryVals, matrix, rowTotals, colTotals, grandTotal };
   }, [filtered, segmentDim, crossDim, segmentRows]);
 
-  // Pre-compute all pivot cell values for heat mapping
-  const pivotAllVals = useMemo(() => {
-    if (!pivotData) return [];
-    return pivotData.primaryVals.flatMap((p) =>
-      pivotData.secondaryVals.map((s) =>
-        getCellValue(pivotData.matrix.get(p)?.get(s), crossMetric)
-      )
-    );
-  }, [pivotData, crossMetric]);
+  // Direction-aware heat: compare within row, within column, or globally
+  const getCellHeat = useCallback((v: number, rowLabel: string, colLabel: string): string => {
+    if (!pivotData || v === 0) return "text-muted-foreground/30";
+    let pool: number[];
+    if (heatDir === "row") {
+      pool = pivotData.secondaryVals.map((s) => getCellValue(pivotData.matrix.get(rowLabel)?.get(s), crossMetric));
+    } else if (heatDir === "col") {
+      pool = pivotData.primaryVals.map((p) => getCellValue(pivotData.matrix.get(p)?.get(colLabel), crossMetric));
+    } else {
+      pool = pivotData.primaryVals.flatMap((p) =>
+        pivotData.secondaryVals.map((s) => getCellValue(pivotData.matrix.get(p)?.get(s), crossMetric))
+      );
+    }
+    return pivotHeat(v, pool);
+  }, [pivotData, crossMetric, heatDir]);
 
   // ── Rate quantiles ──────────────────────────────────────────────────────────
 
@@ -887,23 +918,33 @@ export function StrategyPage() {
             </div>
           </div>
 
-          {/* ── Cross-dimensional pivot ── */}
-          <div className="space-y-3">
-            <div className="flex items-center gap-3 flex-wrap">
-              <div className="flex items-center gap-1.5">
-                <LayoutGrid className="h-3.5 w-3.5 text-muted-foreground" />
-                <span className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground/70">
-                  Cruzar con
-                </span>
+          {/* ── Análisis cruzado ── */}
+          <div className="rounded-2xl border border-border bg-card shadow-sm overflow-hidden">
+
+            {/* Card header */}
+            <div className="px-5 py-3.5 border-b border-border bg-muted/20 flex flex-wrap items-center gap-x-5 gap-y-2">
+              <div className="flex items-center gap-2 shrink-0">
+                <LayoutGrid className="h-4 w-4 text-muted-foreground/60" />
+                <span className="text-xs font-bold text-foreground">Análisis cruzado</span>
+                {crossDim && (
+                  <span className="text-xs text-muted-foreground">
+                    {SEGMENT_DIMS.find((d) => d.key === segmentDim)?.label}
+                    <span className="mx-1 text-muted-foreground/40">×</span>
+                    {SEGMENT_DIMS.find((d) => d.key === crossDim)?.label}
+                  </span>
+                )}
               </div>
-              <div className="flex items-center gap-1">
+
+              {/* Dim selector */}
+              <div className="flex items-center gap-1.5">
+                <span className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground/50 pr-1">Cruzar</span>
                 {crossDimOptions.map((d) => (
                   <button key={d.key}
                     onClick={() => setCrossDim(crossDim === d.key ? null : d.key)}
-                    className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
+                    className={`px-2.5 py-1 rounded-md text-xs font-medium transition-all ${
                       crossDim === d.key
                         ? "bg-primary text-primary-foreground shadow-sm"
-                        : "border border-border text-muted-foreground hover:text-foreground hover:border-border/80"
+                        : "border border-border/70 text-muted-foreground hover:text-foreground hover:border-border"
                     }`}>
                     {d.label}
                   </button>
@@ -913,74 +954,139 @@ export function StrategyPage() {
               {crossDim && (
                 <>
                   <div className="h-4 w-px bg-border" />
-                  <span className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground/70">Métrica</span>
-                  <div className="flex items-center gap-1">
+                  {/* Metric selector */}
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground/50 pr-1">Métrica</span>
                     {CROSS_METRICS.map((m) => (
                       <button key={m.key}
                         onClick={() => setCrossMetric(m.key)}
-                        className={`px-2.5 py-1 rounded-lg text-xs transition-all ${
+                        className={`px-2.5 py-1 rounded-md text-xs font-medium transition-all ${
                           crossMetric === m.key
-                            ? "bg-foreground text-background font-semibold"
+                            ? "bg-foreground text-background"
                             : "text-muted-foreground hover:text-foreground"
                         }`}>
                         {m.label}
                       </button>
                     ))}
                   </div>
+
+                  <div className="h-4 w-px bg-border" />
+                  {/* Heat direction */}
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground/50 pr-1">Color</span>
+                    {([
+                      ["col",    "Por columna"],
+                      ["row",    "Por fila"],
+                      ["global", "Global"],
+                    ] as [HeatDir, string][]).map(([dir, lbl]) => (
+                      <button key={dir} onClick={() => setHeatDir(dir)}
+                        className={`px-2.5 py-1 rounded-md text-xs font-medium transition-all ${
+                          heatDir === dir
+                            ? "bg-emerald-600 text-white"
+                            : "text-muted-foreground hover:text-foreground border border-border/70 hover:border-border"
+                        }`}>
+                        {lbl}
+                      </button>
+                    ))}
+                  </div>
                 </>
+              )}
+
+              {!crossDim && (
+                <span className="text-xs text-muted-foreground/50 italic">Selecciona una dimensión para cruzar</span>
               )}
             </div>
 
-            {crossDim && pivotData && (
-              <div className="overflow-x-auto rounded-xl border border-border bg-card shadow-sm">
-                <table className="text-xs w-full">
-                  <thead>
-                    <tr className="bg-muted/30 border-b border-border">
-                      <th className="px-3 py-2.5 text-left text-[10px] uppercase tracking-wider font-bold text-muted-foreground whitespace-nowrap min-w-[140px] sticky left-0 bg-muted/30">
-                        {SEGMENT_DIMS.find((d) => d.key === segmentDim)?.label}
-                        <span className="text-muted-foreground/40 font-normal"> × </span>
-                        {SEGMENT_DIMS.find((d) => d.key === crossDim)?.label}
-                      </th>
-                      {pivotData.secondaryVals.map((col) => (
-                        <th key={col} className="px-2 py-2.5 text-center text-[10px] uppercase tracking-wider font-bold text-muted-foreground min-w-[70px] whitespace-nowrap">
-                          {shortLabel(col)}
+            {/* Pivot table */}
+            {crossDim && pivotData && (() => {
+              const primaryLabel = SEGMENT_DIMS.find((d) => d.key === segmentDim)?.label ?? "";
+              const secondaryLabel = SEGMENT_DIMS.find((d) => d.key === crossDim)?.label ?? "";
+              const isRate = crossMetric === "l2d" || crossMetric === "d2w" || crossMetric === "l2w";
+
+              return (
+                <div className="overflow-x-auto">
+                  <table className="text-xs w-full">
+                    <thead>
+                      <tr className="border-b border-border bg-muted/10">
+                        <th className="px-4 py-3 text-left text-[10px] uppercase tracking-wider font-bold text-muted-foreground whitespace-nowrap min-w-[160px] sticky left-0 bg-muted/10">
+                          {primaryLabel} <span className="text-muted-foreground/30">/ {secondaryLabel}</span>
                         </th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {pivotData.primaryVals.map((rowLabel, idx) => {
-                      const rowMap = pivotData.matrix.get(rowLabel);
-                      return (
-                        <tr key={rowLabel}
-                          className={`border-t border-border/50 hover:bg-muted/10 transition-colors ${idx % 2 === 0 ? "" : "bg-muted/[0.02]"}`}>
-                          <td className="px-3 py-2 font-semibold text-foreground whitespace-nowrap sticky left-0 bg-card">
-                            {rowLabel}
-                          </td>
-                          {pivotData.secondaryVals.map((col) => {
-                            const cell = rowMap?.get(col);
-                            const v = getCellValue(cell, crossMetric);
-                            return (
-                              <td key={col}
-                                className={`px-2 py-2 text-center tabular-nums font-medium text-sm ${pivotHeat(v, pivotAllVals)}`}>
-                                {formatCellVal(v, crossMetric)}
-                              </td>
-                            );
-                          })}
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-                <div className="px-3 py-2 border-t border-border/50 text-[10px] text-muted-foreground/60 flex items-center justify-between">
-                  <span>
-                    {SEGMENT_DIMS.find((d) => d.key === segmentDim)?.label} × {SEGMENT_DIMS.find((d) => d.key === crossDim)?.label}
-                    {" · "}métrica: <span className="font-medium">{CROSS_METRICS.find((m) => m.key === crossMetric)?.label}</span>
-                  </span>
-                  {pivotData.secondaryVals.length === 10 && (
-                    <span>mostrando top 10 {SEGMENT_DIMS.find((d) => d.key === crossDim)?.label?.toLowerCase()}</span>
-                  )}
+                        {pivotData.secondaryVals.map((col) => (
+                          <th key={col} className="px-3 py-3 text-center text-[10px] uppercase tracking-wider font-bold text-muted-foreground min-w-[80px] whitespace-nowrap">
+                            {shortLabel(col)}
+                          </th>
+                        ))}
+                        <th className="px-3 py-3 text-center text-[10px] uppercase tracking-wider font-bold text-foreground/70 min-w-[80px] whitespace-nowrap border-l border-border/60">
+                          Total
+                        </th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {pivotData.primaryVals.map((rowLabel, idx) => {
+                        const rowMap = pivotData.matrix.get(rowLabel);
+                        const rowTotal = pivotData.rowTotals.get(rowLabel);
+                        const rowTotalVal = getCellValue(rowTotal, crossMetric);
+                        return (
+                          <tr key={rowLabel}
+                            className={`border-t border-border/40 hover:bg-muted/10 transition-colors ${idx % 2 === 0 ? "" : "bg-muted/[0.025]"}`}>
+                            <td className="px-4 py-3 font-semibold text-sm text-foreground whitespace-nowrap sticky left-0 bg-card">
+                              {rowLabel}
+                            </td>
+                            {pivotData.secondaryVals.map((col) => {
+                              const cell = rowMap?.get(col);
+                              const v = getCellValue(cell, crossMetric);
+                              return (
+                                <td key={col}
+                                  className={`px-3 py-3 text-center tabular-nums font-semibold text-sm rounded-sm ${getCellHeat(v, rowLabel, col)}`}>
+                                  {formatCellVal(v, crossMetric)}
+                                </td>
+                              );
+                            })}
+                            <td className="px-3 py-3 text-center tabular-nums font-bold text-sm text-foreground border-l border-border/60">
+                              {formatCellVal(rowTotalVal, crossMetric)}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                    <tfoot>
+                      {/* Column totals row */}
+                      <tr className="border-t-2 border-border bg-muted/20 font-bold">
+                        <td className="px-4 py-3 text-xs font-bold text-foreground/70 sticky left-0 bg-muted/20 uppercase tracking-wide">
+                          Total
+                        </td>
+                        {pivotData.secondaryVals.map((col) => {
+                          const ct = pivotData.colTotals.get(col);
+                          const v = getCellValue(ct, crossMetric);
+                          return (
+                            <td key={col} className="px-3 py-3 text-center tabular-nums text-sm text-foreground">
+                              {formatCellVal(v, crossMetric)}
+                            </td>
+                          );
+                        })}
+                        <td className="px-3 py-3 text-center tabular-nums text-sm font-bold text-foreground border-l border-border/60">
+                          {formatCellVal(getCellValue(pivotData.grandTotal, crossMetric), crossMetric)}
+                        </td>
+                      </tr>
+                    </tfoot>
+                  </table>
+                  <div className="px-4 py-2 border-t border-border/30 text-[10px] text-muted-foreground/50 flex items-center justify-between">
+                    <span>
+                      Color: <span className="font-medium">{heatDir === "col" ? "por columna" : heatDir === "row" ? "por fila" : "global"}</span>
+                      {" · "}
+                      {isRate ? "tasas calculadas sobre totales agregados, no promedio de %%" : ""}
+                    </span>
+                    {pivotData.secondaryVals.length === 10 && (
+                      <span>top 10 {secondaryLabel.toLowerCase()}</span>
+                    )}
+                  </div>
                 </div>
+              );
+            })()}
+
+            {!crossDim && (
+              <div className="flex items-center justify-center h-24 text-sm text-muted-foreground/40">
+                Selecciona una dimensión arriba para ver el análisis cruzado
               </div>
             )}
           </div>
