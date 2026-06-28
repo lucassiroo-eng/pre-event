@@ -527,66 +527,177 @@ function RegionDetail({ region }: { region: RegionPlaybook }) {
 
 // ── Summary table ────────────────────────────────────────────────────────────
 
+type SummaryGroupBy = "ccaa" | "industry" | "size";
+
 function SummaryView() {
-  const sorted = useMemo(() => [...REGIONS].sort((a, b) => b.mrr - a.mrr), []);
+  const [groupBy, setGroupBy] = useState<SummaryGroupBy>("ccaa");
+
+  const sortedCcaa = useMemo(() => [...REGIONS].sort((a, b) => b.mrr - a.mrr), []);
+
+  const byIndustry = useMemo(() => {
+    const map = new Map<string, { active: number; mrr: number }>();
+    for (const r of REGIONS) {
+      for (const ind of r.industries) {
+        const e = map.get(ind.label) ?? { active: 0, mrr: 0 };
+        map.set(ind.label, { active: e.active + ind.active, mrr: e.mrr + ind.mrr });
+      }
+    }
+    return [...map.entries()]
+      .map(([label, d]) => ({ label, active: d.active, mrr: d.mrr, arpu: d.active > 0 ? Math.round(d.mrr / d.active) : 0 }))
+      .sort((a, b) => b.mrr - a.mrr);
+  }, []);
+
+  const bySize = useMemo(() => {
+    const SIZE_ORDER = ["S (1-50)", "M (51-200)", "L (201-500)", "XL (500+)", "Unknown"];
+    const map = new Map<string, { pipeline: number; active: number; mrr: number; d2wNum: number; d2wDen: number }>();
+    for (const r of REGIONS) {
+      for (const s of r.sizes) {
+        const e = map.get(s.label) ?? { pipeline: 0, active: 0, mrr: 0, d2wNum: 0, d2wDen: 0 };
+        map.set(s.label, {
+          pipeline: e.pipeline + s.pipeline,
+          active: e.active + s.active,
+          mrr: e.mrr + s.mrr,
+          d2wNum: e.d2wNum + (s.d2w ?? 0) * s.active,
+          d2wDen: e.d2wDen + (s.d2w !== null ? s.active : 0),
+        });
+      }
+    }
+    return [...map.entries()]
+      .map(([label, d]) => ({
+        label, pipeline: d.pipeline, active: d.active, mrr: d.mrr,
+        arpu: d.active > 0 ? Math.round(d.mrr / d.active) : 0,
+        d2w: d.d2wDen > 0 ? Math.round((d.d2wNum / d.d2wDen) * 10) / 10 : null,
+      }))
+      .sort((a, b) => SIZE_ORDER.indexOf(a.label) - SIZE_ORDER.indexOf(b.label));
+  }, []);
+
+  const GROUP_LABELS: Record<SummaryGroupBy, string> = { ccaa: "CCAA", industry: "Industria", size: "Tamaño" };
+
   return (
     <div className="space-y-4">
       <div className="rounded-xl border border-border bg-card shadow-sm p-5">
-        <h3 className="text-sm font-semibold text-foreground mb-1">Resumen nacional</h3>
+        <div className="flex items-center justify-between mb-1">
+          <h3 className="text-sm font-semibold text-foreground">Resumen nacional</h3>
+          <div className="flex items-center gap-1 rounded-lg border border-border bg-muted/40 p-0.5">
+            {(["ccaa", "industry", "size"] as const).map((g) => (
+              <button
+                key={g}
+                type="button"
+                onClick={() => setGroupBy(g)}
+                className={cn(
+                  "px-3 py-1 rounded-md text-xs font-medium transition-colors",
+                  groupBy === g ? "bg-background shadow-sm text-foreground" : "text-muted-foreground hover:text-foreground",
+                )}
+              >
+                {GROUP_LABELS[g]}
+              </button>
+            ))}
+          </div>
+        </div>
         <p className="text-xs text-muted-foreground mb-4">
           {NATIONAL.active.toLocaleString()} clientes activos, {fmtEur(NATIONAL.mrr)} MRR, {NATIONAL.penetration}% penetración sobre {NATIONAL.tam.toLocaleString()} TAM
         </p>
         <div className="overflow-x-auto">
-          <table className="w-full text-xs">
-            <thead>
-              <tr className="border-b border-border text-left">
-                <th className="py-2 pr-2 font-semibold text-muted-foreground">CCAA</th>
-                <th className="py-2 px-2 font-semibold text-muted-foreground">Arquetipo</th>
-                <th className="py-2 px-2 font-semibold text-muted-foreground text-right">Activos</th>
-                <th className="py-2 px-2 font-semibold text-muted-foreground text-right">MRR</th>
-                <th className="py-2 px-2 font-semibold text-muted-foreground text-right">ARPU</th>
-                <th className="py-2 px-2 font-semibold text-muted-foreground text-right">D2W</th>
-                <th className="py-2 px-2 font-semibold text-muted-foreground text-right">TAM</th>
-                <th className="py-2 px-2 font-semibold text-muted-foreground text-right">Pen.</th>
-                <th className="py-2 pl-2 font-semibold text-muted-foreground text-right">€/TAM</th>
-              </tr>
-            </thead>
-            <tbody>
-              {sorted.map((r) => (
-                <tr key={r.code} className="border-b border-border/50 hover:bg-muted/30">
-                  <td className="py-2 pr-2 font-medium">{r.ccaa}</td>
-                  <td className="py-2 px-2">
-                    <span className={cn("text-[10px] px-1.5 py-0.5 rounded border font-medium whitespace-nowrap", archetypeColor(r.archetype))}>
-                      {archetypeLabel(r.archetype)}
-                    </span>
-                  </td>
-                  <td className="py-2 px-2 text-right tabular-nums">{r.active.toLocaleString()}</td>
-                  <td className="py-2 px-2 text-right tabular-nums font-medium">{fmtEur(r.mrr)}</td>
-                  <td className={cn("py-2 px-2 text-right tabular-nums font-medium",
-                    r.arpu >= NATIONAL.arpu * 1.1 ? "text-emerald-700" : r.arpu <= NATIONAL.arpu * 0.85 ? "text-red-600" : ""
-                  )}>
-                    {fmtEur(r.arpu)}
-                  </td>
-                  <td className={cn("py-2 px-2 text-right tabular-nums font-medium",
-                    r.d2w >= NATIONAL.d2w ? "text-emerald-700" : r.d2w <= NATIONAL.d2w - 5 ? "text-red-600" : ""
-                  )}>
-                    {r.d2w}%
-                  </td>
-                  <td className="py-2 px-2 text-right tabular-nums">{r.tam.toLocaleString()}</td>
-                  <td className={cn("py-2 px-2 text-right tabular-nums",
-                    r.penetration >= NATIONAL.penetration ? "text-emerald-700" : "text-muted-foreground"
-                  )}>
-                    {r.penetration}%
-                  </td>
-                  <td className={cn("py-2 pl-2 text-right tabular-nums font-medium",
-                    r.mrrPerTam >= 50 ? "text-emerald-700" : r.mrrPerTam <= 30 ? "text-red-600" : ""
-                  )}>
-                    {r.mrrPerTam.toFixed(1)}€
-                  </td>
+          {groupBy === "ccaa" && (
+            <table className="w-full text-xs">
+              <thead>
+                <tr className="border-b border-border text-left">
+                  <th className="py-2 pr-2 font-semibold text-muted-foreground">CCAA</th>
+                  <th className="py-2 px-2 font-semibold text-muted-foreground">Arquetipo</th>
+                  <th className="py-2 px-2 font-semibold text-muted-foreground text-right">Activos</th>
+                  <th className="py-2 px-2 font-semibold text-muted-foreground text-right">MRR</th>
+                  <th className="py-2 px-2 font-semibold text-muted-foreground text-right">ARPU</th>
+                  <th className="py-2 px-2 font-semibold text-muted-foreground text-right">D2W</th>
+                  <th className="py-2 px-2 font-semibold text-muted-foreground text-right">TAM</th>
+                  <th className="py-2 px-2 font-semibold text-muted-foreground text-right">Pen.</th>
+                  <th className="py-2 pl-2 font-semibold text-muted-foreground text-right">€/TAM</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {sortedCcaa.map((r) => (
+                  <tr key={r.code} className="border-b border-border/50 hover:bg-muted/30">
+                    <td className="py-2 pr-2 font-medium">{r.ccaa}</td>
+                    <td className="py-2 px-2">
+                      <span className={cn("text-[10px] px-1.5 py-0.5 rounded border font-medium whitespace-nowrap", archetypeColor(r.archetype))}>
+                        {archetypeLabel(r.archetype)}
+                      </span>
+                    </td>
+                    <td className="py-2 px-2 text-right tabular-nums">{r.active.toLocaleString()}</td>
+                    <td className="py-2 px-2 text-right tabular-nums font-medium">{fmtEur(r.mrr)}</td>
+                    <td className={cn("py-2 px-2 text-right tabular-nums font-medium",
+                      r.arpu >= NATIONAL.arpu * 1.1 ? "text-emerald-700" : r.arpu <= NATIONAL.arpu * 0.85 ? "text-red-600" : ""
+                    )}>{fmtEur(r.arpu)}</td>
+                    <td className={cn("py-2 px-2 text-right tabular-nums font-medium",
+                      r.d2w >= NATIONAL.d2w ? "text-emerald-700" : r.d2w <= NATIONAL.d2w - 5 ? "text-red-600" : ""
+                    )}>{r.d2w}%</td>
+                    <td className="py-2 px-2 text-right tabular-nums">{r.tam.toLocaleString()}</td>
+                    <td className={cn("py-2 px-2 text-right tabular-nums",
+                      r.penetration >= NATIONAL.penetration ? "text-emerald-700" : "text-muted-foreground"
+                    )}>{r.penetration}%</td>
+                    <td className={cn("py-2 pl-2 text-right tabular-nums font-medium",
+                      r.mrrPerTam >= 50 ? "text-emerald-700" : r.mrrPerTam <= 30 ? "text-red-600" : ""
+                    )}>{r.mrrPerTam.toFixed(1)}€</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+
+          {groupBy === "industry" && (
+            <table className="w-full text-xs">
+              <thead>
+                <tr className="border-b border-border text-left">
+                  <th className="py-2 pr-2 font-semibold text-muted-foreground">Industria</th>
+                  <th className="py-2 px-2 font-semibold text-muted-foreground text-right">Activos</th>
+                  <th className="py-2 px-2 font-semibold text-muted-foreground text-right">MRR</th>
+                  <th className="py-2 pl-2 font-semibold text-muted-foreground text-right">ARPU</th>
+                </tr>
+              </thead>
+              <tbody>
+                {byIndustry.map((row) => (
+                  <tr key={row.label} className="border-b border-border/50 hover:bg-muted/30">
+                    <td className="py-2 pr-2 font-medium">{row.label}</td>
+                    <td className="py-2 px-2 text-right tabular-nums">{row.active.toLocaleString()}</td>
+                    <td className="py-2 px-2 text-right tabular-nums font-medium">{fmtEur(row.mrr)}</td>
+                    <td className={cn("py-2 pl-2 text-right tabular-nums font-medium",
+                      row.arpu >= NATIONAL.arpu * 1.1 ? "text-emerald-700" : row.arpu <= NATIONAL.arpu * 0.85 ? "text-red-600" : ""
+                    )}>{fmtEur(row.arpu)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+
+          {groupBy === "size" && (
+            <table className="w-full text-xs">
+              <thead>
+                <tr className="border-b border-border text-left">
+                  <th className="py-2 pr-2 font-semibold text-muted-foreground">Tamaño</th>
+                  <th className="py-2 px-2 font-semibold text-muted-foreground text-right">Pipeline</th>
+                  <th className="py-2 px-2 font-semibold text-muted-foreground text-right">Activos</th>
+                  <th className="py-2 px-2 font-semibold text-muted-foreground text-right">MRR</th>
+                  <th className="py-2 px-2 font-semibold text-muted-foreground text-right">ARPU</th>
+                  <th className="py-2 pl-2 font-semibold text-muted-foreground text-right">D2W</th>
+                </tr>
+              </thead>
+              <tbody>
+                {bySize.map((row) => (
+                  <tr key={row.label} className="border-b border-border/50 hover:bg-muted/30">
+                    <td className="py-2 pr-2 font-medium">{row.label}</td>
+                    <td className="py-2 px-2 text-right tabular-nums text-muted-foreground">{row.pipeline.toLocaleString()}</td>
+                    <td className="py-2 px-2 text-right tabular-nums">{row.active.toLocaleString()}</td>
+                    <td className="py-2 px-2 text-right tabular-nums font-medium">{fmtEur(row.mrr)}</td>
+                    <td className={cn("py-2 px-2 text-right tabular-nums font-medium",
+                      row.arpu >= NATIONAL.arpu * 1.1 ? "text-emerald-700" : row.arpu <= NATIONAL.arpu * 0.85 ? "text-red-600" : ""
+                    )}>{fmtEur(row.arpu)}</td>
+                    <td className={cn("py-2 pl-2 text-right tabular-nums font-medium",
+                      row.d2w !== null && row.d2w >= NATIONAL.d2w ? "text-emerald-700" : row.d2w !== null && row.d2w <= NATIONAL.d2w - 5 ? "text-red-600" : ""
+                    )}>{row.d2w !== null ? `${row.d2w}%` : "—"}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
         </div>
       </div>
 
@@ -678,14 +789,15 @@ export function PlaybookPage() {
               type="button"
               onClick={() => setSelectedCode(null)}
               className={cn(
-                "w-full text-left px-4 py-3 flex items-center gap-3 transition-colors border-l-[3px] text-sm font-medium",
+                "w-full text-left px-4 py-3.5 flex items-center gap-2.5 transition-colors border-l-[3px] font-semibold",
                 selectedCode === null
-                  ? "bg-primary/5 border-l-primary text-primary"
-                  : "border-l-transparent text-muted-foreground hover:bg-muted/50 hover:text-foreground",
+                  ? "bg-primary/10 border-l-primary text-primary text-sm"
+                  : "border-l-transparent text-muted-foreground hover:bg-muted/50 hover:text-foreground text-sm",
               )}
             >
-              <Users className="h-4 w-4" />
+              <BarChart3 className={cn("h-4 w-4 shrink-0", selectedCode === null ? "text-primary" : "text-muted-foreground")} />
               Vista resumen
+              {selectedCode === null && <span className="ml-auto text-[10px] bg-primary/15 text-primary px-1.5 py-0.5 rounded font-medium">Nacional</span>}
             </button>
             <div className="border-t border-border" />
             {sortedRegions.map((r) => (
