@@ -1581,6 +1581,51 @@ function SlidesView({ data }: { data: PlaybookLiveData }) {
     );
   }
 
+  // ── Derived values for InsightBox texts ──────────────────────────────────────
+
+  // Slide 1
+  const uncoveredPct = Math.round(100 - NATIONAL.penetration);
+
+  // Slide 2: partner channels combined vs inbound ARPU
+  const _partnerChs = nationalChannels.filter((c) => ["Channel Partners", "Santander", "Telefónica"].includes(c.label));
+  const _partnerActive = _partnerChs.reduce((s, c) => s + c.active, 0);
+  const _partnerMrr = _partnerChs.reduce((s, c) => s + c.mrr, 0);
+  const slide2PartnerArpu = _partnerActive > 0 ? Math.round(_partnerMrr / _partnerActive) : 0;
+  const slide2PartnerMrrPct = _partnerChs.reduce((s, c) => s + c.mrrShare, 0);
+  const slide2InboundArpu = nationalChannels.find((c) => c.label === "Inbound")?.arpu ?? 0;
+  const slide2PartnerVsInbound = slide2InboundArpu > 0 ? Math.round((slide2PartnerArpu / slide2InboundArpu) * 10) / 10 : 0;
+
+  // Slide 3: classify untapped top-10 by problem type
+  const slide3VolProblems = untappedTop10.filter((r) => r.penetration < 6).map((r) => r.ccaa);
+  const slide3ConvProblems = untappedTop10.filter((r) => r.penetration >= 6 && r.d2w < 75).map((r) => r.ccaa);
+
+  // Slide 4: top 2 regions by absolute TAM
+  const slide4Top2 = [...REGIONS].sort((a, b) => b.tam - a.tam).slice(0, 2);
+
+  // Slide 6: partner ARPU vs direct ARPU within partner-led archetype
+  const _plPartnerChs = partnerLedData.channels.filter((c) => ["Channel Partners", "Santander", "Telefónica"].includes(c.label));
+  const _plPartnerActive = _plPartnerChs.reduce((s, c) => s + c.active, 0);
+  const _plPartnerMrr   = _plPartnerChs.reduce((s, c) => s + c.mrr, 0);
+  const _plDirectChs = partnerLedData.channels.filter((c) => ["Inbound", "Outbound"].includes(c.label));
+  const _plDirectActive = _plDirectChs.reduce((s, c) => s + c.active, 0);
+  const _plDirectMrr   = _plDirectChs.reduce((s, c) => s + c.mrr, 0);
+  const slide6PartnerArpu = _plPartnerActive > 0 ? Math.round(_plPartnerMrr / _plPartnerActive) : 0;
+  const slide6DirectArpu  = _plDirectActive  > 0 ? Math.round(_plDirectMrr  / _plDirectActive)  : 0;
+  const slide6Ratio = slide6DirectArpu > 0 ? Math.round((slide6PartnerArpu / slide6DirectArpu) * 10) / 10 : 0;
+  const slide6LowPen = [...partnerLedData.regions].sort((a, b) => a.penetration - b.penetration).slice(0, 2);
+
+  // Slide 7: outbound archetype D2W and top regions
+  const slide7ObD2w = outboundData.weightedD2w ?? NATIONAL.d2w;
+  const slide7TopRegions = outboundData.regions.slice(0, 2);
+
+  // Slide 8: multi-channel MRR share of national
+  const slide8McShare = NATIONAL.mrr > 0 ? Math.round((multiChannelData.totalMrr / NATIONAL.mrr) * 100) : 0;
+
+  // Last slide: top-5 opp untapped share of total untapped TAM
+  const _totalUntapped = REGIONS.reduce((s, r) => s + Math.round(r.tam * (1 - r.penetration / 100)), 0);
+  const _top5Untapped  = top5Opp.reduce((s, r) => s + r.untapped, 0);
+  const slideLastTop5Share = _totalUntapped > 0 ? Math.round((_top5Untapped / _totalUntapped) * 100) : 0;
+
   // ── Slides ────────────────────────────────────────────────────────────────────
   const slides: React.ReactNode[] = [
 
@@ -1599,7 +1644,7 @@ function SlidesView({ data }: { data: PlaybookLiveData }) {
         </div>
         <p className="text-sm text-gray-600">Solo 1 de cada 14 empresas del TAM es cliente Factorial hoy.</p>
       </div>
-      <InsightBox text="Con el 93% del mercado sin cubrir, la pregunta no es si hay oportunidad — es en qué orden atacarla." />
+      <InsightBox text={`Con el ${uncoveredPct}% del mercado sin cubrir, la pregunta no es si hay oportunidad — es en qué orden atacarla.`} />
     </div>,
 
     // ── Slide 2 — Radiografía del Pipeline ────────────────────────────────────
@@ -1744,7 +1789,7 @@ function SlidesView({ data }: { data: PlaybookLiveData }) {
           </table>
         </div>
       </div>
-      <InsightBox text="Partners generan el mayor ARPU (>1,100€) con solo el ~34% del pipeline. Inbound aporta volumen pero con ARPU 40% inferior. La palanca es redirigir M/L deals hacia canal partner." />
+      <InsightBox text={`Los canales partner (Santander, Telefónica, Canal Indirecto) generan el mayor ARPU (${fmtEur(slide2PartnerArpu)}) con solo el ${slide2PartnerMrrPct}% del MRR total${slide2PartnerVsInbound > 1 ? ` — ${slide2PartnerVsInbound}x el ARPU de Inbound` : ""}. La palanca es redirigir deals M/L hacia canal partner.`} />
     </div>,
 
     // ── Slide 3 — El Dilema de la Oportunidad ─────────────────────────────────
@@ -1794,7 +1839,11 @@ function SlidesView({ data }: { data: PlaybookLiveData }) {
           </tbody>
         </table>
       </div>
-      <InsightBox text="Madrid y Cataluña son problemas de escala (TAM enorme, penetración <9%). Valencia y Aragón, problemas de conversión (D2W bajo). Estrategia diferente para cada grupo." />
+      <InsightBox text={[
+        slide3VolProblems.length > 0 && `${slide3VolProblems.slice(0, 2).join(" y ")} ${slide3VolProblems.length > 1 ? "son" : "es"} problema${slide3VolProblems.length > 1 ? "s" : ""} de escala: TAM enorme, penetración por debajo del 6%.`,
+        slide3ConvProblems.length > 0 && `${slide3ConvProblems[0]}${slide3ConvProblems[1] ? ` y ${slide3ConvProblems[1]}` : ""} ${slide3ConvProblems.length > 1 ? "enfrentan" : "enfrenta"} el problema opuesto: el pipeline llega, pero la conversión es baja.`,
+        "Estrategia diferente para cada grupo.",
+      ].filter(Boolean).join(" ")} />
     </div>,
 
     // ── Slide 4 — Concentración Regional ──────────────────────────────────────
@@ -1865,7 +1914,7 @@ function SlidesView({ data }: { data: PlaybookLiveData }) {
             <span className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-emerald-500 inline-block" /> Multi-Channel</span>
             <span className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-gray-200 inline-block" /> Sin cubrir</span>
           </div>
-          <InsightBox text="Las regiones con barra larga y poco color son la mayor oportunidad: mercado enorme, apenas tocado. Madrid (17K TAM, 8.5% pen.) y Andalucía (11.7K, 5.5%) lideran la lista de trabajo pendiente." />
+          <InsightBox text={`Las regiones con barra larga y poco color son la mayor oportunidad: mercado enorme, apenas tocado. ${slide4Top2[0]?.ccaa ?? ""} (${(slide4Top2[0]?.tam ?? 0).toLocaleString()} TAM, ${slide4Top2[0]?.penetration ?? 0}% pen.) y ${slide4Top2[1]?.ccaa ?? ""} (${(slide4Top2[1]?.tam ?? 0).toLocaleString()}, ${slide4Top2[1]?.penetration ?? 0}%) lideran la lista de trabajo pendiente.`} />
         </div>
       );
     })(),
@@ -1975,7 +2024,7 @@ function SlidesView({ data }: { data: PlaybookLiveData }) {
           </div>
         </div>
       </div>
-      <InsightBox actionable text="El canal partner genera 2.3x el ARPU del canal directo en estas regiones. Prioridad inmediata: activar 1-2 partners locales en Galicia (penetración 4.1%) y Castilla y León (4.4%). KPI de seguimiento: % MRR partner por región — target >40% en 6 meses." />
+      <InsightBox actionable text={`El canal partner genera ${slide6Ratio > 1 ? `${slide6Ratio}x el ARPU del canal directo` : `un ARPU de ${fmtEur(slide6PartnerArpu)}`} en estas regiones.${slide6LowPen.length >= 2 ? ` Prioridad inmediata: activar 1-2 partners locales en ${slide6LowPen[0].ccaa} (penetración ${slide6LowPen[0].penetration}%) y ${slide6LowPen[1].ccaa} (${slide6LowPen[1].penetration}%).` : ""} KPI de seguimiento: % MRR partner por región — target >40% en 6 meses.`} />
     </div>,
 
     // ── Slide 7 — Deep Dive: Outbound-Responsive ──────────────────────────────
@@ -2029,14 +2078,14 @@ function SlidesView({ data }: { data: PlaybookLiveData }) {
           </div>
         </div>
       </div>
-      <InsightBox actionable text="Los AEs cierran a un ritmo D2W de ~78%+ en estas regiones — significativamente por encima de la media nacional (79.2% pero con pipeline más corto). Concentrar la capacidad SDR/AE en C. Valenciana y País Vasco antes de diversificar. Expandir outbound aquí da más retorno por euro que abrir nuevas regiones." />
+      <InsightBox actionable text={`Los AEs cierran a un ritmo D2W del ${slide7ObD2w}% en estas regiones${slide7ObD2w >= NATIONAL.d2w ? " — por encima de la media nacional" : ""}. Concentrar la capacidad SDR/AE en ${slide7TopRegions[0]?.ccaa ?? "las regiones principales"}${slide7TopRegions[1] ? ` y ${slide7TopRegions[1].ccaa}` : ""} antes de diversificar. Expandir outbound aquí da más retorno por euro que abrir nuevas regiones.`} />
     </div>,
 
     // ── Slide 8 — Multi-Channel Core: Introducción ────────────────────────────
     <div key="s8" className="flex flex-col h-full p-8 gap-4 bg-white">
       <div>
         <h2 className="text-xl font-bold text-emerald-900 mb-0.5">Arquetipo 3: Multi-Channel Core · El Núcleo del Crecimiento</h2>
-        <p className="text-xs text-emerald-600/70">{multiChannelData.regions.length} regiones · {fmtEur(multiChannelData.totalMrr)} MRR · 65% del negocio total</p>
+        <p className="text-xs text-emerald-600/70">{multiChannelData.regions.length} regiones · {fmtEur(multiChannelData.totalMrr)} MRR · {slide8McShare}% del negocio total</p>
       </div>
       <div className="grid grid-cols-3 gap-3">
         <SlideKpiCard label="MRR Total" value={fmtEur(multiChannelData.totalMrr)} />
@@ -2233,7 +2282,7 @@ function SlidesView({ data }: { data: PlaybookLiveData }) {
           </div>
         ))}
       </div>
-      <InsightBox text="Estas 5 regiones representan más del 70% del TAM nacional sin penetrar. La acción es asimétrica: 80% de los recursos aquí generan 80% del crecimiento potencial. Cualquier otra región es optimización marginal." />
+      <InsightBox text={`Estas 5 regiones concentran el ${slideLastTop5Share}% del TAM nacional sin penetrar. La acción es asimétrica: concentrar recursos aquí genera el máximo crecimiento potencial. Cualquier otra región es optimización marginal.`} />
     </div>,
   ];
 
