@@ -37,6 +37,12 @@ function archetypeLabel(a: RegionPlaybook["archetype"]): string {
   return "Multi-Channel Core";
 }
 
+function archetypeTagline(a: RegionPlaybook["archetype"]): string {
+  if (a === "partner-led") return "Activa y escala partners locales — el canal directo es secundario aquí.";
+  if (a === "outbound-responsive") return "SDR outbound primero; estas regiones convierten bien cuando se las busca.";
+  return "Ningún canal domina: orquesta secuencias inbound + outbound + partner para maximizar cobertura.";
+}
+
 function archetypeColor(a: RegionPlaybook["archetype"]): string {
   if (a === "partner-led") return "bg-violet-100 text-violet-800 border-violet-200";
   if (a === "outbound-responsive") return "bg-sky-100 text-sky-800 border-sky-200";
@@ -597,7 +603,10 @@ function SummaryView() {
               <div className="text-xs mt-1">
                 {regions.length} regiones · {totalActive.toLocaleString()} clientes
               </div>
-              <div className="text-[10px] mt-2 leading-relaxed opacity-80">
+              <div className="text-[11px] mt-2.5 leading-relaxed font-medium opacity-90 italic">
+                {archetypeTagline(arch)}
+              </div>
+              <div className="text-[10px] mt-2 leading-relaxed opacity-60">
                 {regions.map((r) => r.ccaa).join(", ")}
               </div>
             </div>
