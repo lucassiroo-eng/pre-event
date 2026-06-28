@@ -4,11 +4,12 @@ import { useAuth } from "@/lib/auth";
 import { type RegionPlaybook } from "@/lib/playbookData";
 import { SECTORS } from "@/lib/sectorMap";
 import { usePlaybookLiveData } from "@/hooks/usePlaybookLiveData";
-import { type PlaybookLiveData } from "@/lib/playbookCompute";
+import { computePlaybook, type PlaybookLiveData, type BestPractice } from "@/lib/playbookCompute";
 import {
   ChevronRight, TrendingUp, TrendingDown, Users, Building2, Handshake,
   Target, AlertCircle, HelpCircle, BarChart3, Zap, ArrowUpRight, Presentation,
   ChevronLeft, Maximize2, Minimize2, Upload, RefreshCw, CheckCircle2, AlertTriangle,
+  Star,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -373,6 +374,8 @@ function OpenQuestion({ text }: { text: string }) {
 
 // ── Channel cross-table ──────────────────────────────────────────────────────
 
+type CrossMetric = "l2w" | "arpu" | "penetracion";
+
 function ChannelCrossTable({
   cross,
   dimLabels,
@@ -382,103 +385,298 @@ function ChannelCrossTable({
   dimLabels: string[];
   dimName: string;
 }) {
+  const [metric, setMetric] = useState<CrossMetric>("l2w");
+
   // Columns = channels sorted by total MRR desc
   const channels = Object.keys(cross).sort((a, b) => {
     const mrrA = Object.values(cross[a]).reduce((s, v) => s + v.mrr, 0);
     const mrrB = Object.values(cross[b]).reduce((s, v) => s + v.mrr, 0);
     return mrrB - mrrA;
   });
-  // Rows = dims (tamaño / industria) filtered to those with any data
+  // Rows = dims filtered to those with any data
   const activeDims = dimLabels.filter((d) => channels.some((ch) => cross[ch]?.[d]?.pipeline > 0));
   if (!channels.length || !activeDims.length) return null;
 
-  // Color scaling per row (comparing channels within the same dim)
+  // Per-row stats for color scaling
   const dimStats = Object.fromEntries(activeDims.map((d) => {
     const cells = channels.map((ch) => cross[ch]?.[d]).filter(Boolean) as { active: number; pipeline: number; mrr: number }[];
     const l2ws  = cells.map((c) => c.pipeline > 0 ? c.active / c.pipeline : 0);
     const arpus = cells.filter((c) => c.active > 0).map((c) => c.mrr / c.active);
+    const pipelines = cells.map((c) => c.pipeline);
     return [d, {
       minL2w: Math.min(...l2ws), maxL2w: Math.max(...l2ws),
-      minArpu: Math.min(...arpus, Infinity), maxArpu: Math.max(...arpus, 0),
+      minArpu: Math.min(...arpus.length ? arpus : [0]), maxArpu: Math.max(...arpus.length ? arpus : [0]),
+      minPipeline: Math.min(...pipelines), maxPipeline: Math.max(...pipelines),
     }];
   }));
 
-  function scaleColor(val: number, min: number, max: number, higher: boolean): string {
-    if (max === min) return "";
+  function scaleColor(val: number, min: number, max: number): string {
+    if (max === min) return "bg-muted/30 text-foreground/60";
     const t = (val - min) / (max - min);
-    const score = higher ? t : 1 - t;
-    if (score >= 0.7) return "bg-emerald-50 text-emerald-800";
-    if (score >= 0.4) return "bg-amber-50 text-amber-800";
+    if (t >= 0.7) return "bg-emerald-50 text-emerald-800";
+    if (t >= 0.35) return "bg-amber-50 text-amber-800";
     return "bg-red-50 text-red-700";
   }
 
+  const METRIC_LABELS: Record<CrossMetric, string> = { l2w: "L2W", arpu: "ARPU", penetracion: "Penetración" };
+
   return (
-    <div className="overflow-x-auto">
-      <table className="w-full text-[11px]">
-        <thead>
-          <tr className="border-b border-border">
-            <th className="py-1.5 pr-3 text-left font-semibold text-muted-foreground w-40"></th>
-            {channels.map((ch) => (
-              <th key={ch} className="py-1.5 px-2 text-center font-semibold text-muted-foreground whitespace-nowrap">
-                {ch}
-              </th>
-            ))}
-          </tr>
-          <tr className="border-b border-border/40 text-[10px] text-muted-foreground/60">
-            <td className="py-1 pr-3">pen · l2w · arpu</td>
-            {channels.map((ch) => <td key={ch} className="py-1 px-2 text-center">{ch.slice(0, 3)}</td>)}
-          </tr>
-        </thead>
-        <tbody>
-          {activeDims.map((d) => {
-            const stats = dimStats[d];
-            return (
-              <tr key={d} className="border-b border-border/30 hover:bg-muted/20">
-                <td className="py-1.5 pr-3 font-medium text-foreground truncate max-w-[160px]" title={d}>
-                  {d}
-                </td>
-                {channels.map((ch) => {
-                  const cell = cross[ch]?.[d];
-                  if (!cell || cell.pipeline === 0) {
-                    return <td key={ch} className="py-1.5 px-2 text-center text-muted-foreground/30">—</td>;
-                  }
-                  const l2w  = Math.round(cell.active / cell.pipeline * 1000) / 10;
-                  const arpu = cell.active > 0 ? Math.round(cell.mrr / cell.active) : 0;
-                  const pen  = cell.pipeline;
-                  return (
-                    <td key={ch} className="py-1.5 px-1">
-                      <div className="flex flex-col gap-0.5 items-center">
-                        <span className="text-[10px] text-muted-foreground tabular-nums">{pen}</span>
-                        <span className={cn("px-1.5 py-0.5 rounded text-[10px] tabular-nums font-medium w-full text-center",
-                          scaleColor(l2w, stats.minL2w * 100, stats.maxL2w * 100, true)
+    <div className="space-y-2">
+      {/* Toggle */}
+      <div className="flex items-center gap-1 rounded-full border border-border bg-muted/40 p-0.5 w-fit">
+        {(["l2w", "arpu", "penetracion"] as CrossMetric[]).map((m) => (
+          <button
+            key={m}
+            type="button"
+            onClick={() => setMetric(m)}
+            className={cn(
+              "px-3 py-1 rounded-full text-xs font-medium transition-colors",
+              metric === m ? "bg-card shadow-sm text-foreground" : "text-muted-foreground hover:text-foreground",
+            )}
+          >
+            {METRIC_LABELS[m]}
+          </button>
+        ))}
+      </div>
+
+      <div className="overflow-x-auto">
+        <table className="w-full text-[11px]">
+          <thead>
+            <tr className="border-b border-border">
+              <th className="py-1.5 pr-3 text-left font-semibold text-muted-foreground w-40"></th>
+              {channels.map((ch) => (
+                <th key={ch} className="py-1.5 px-2 text-center font-semibold text-muted-foreground whitespace-nowrap">
+                  {ch}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {activeDims.map((d) => {
+              const stats = dimStats[d];
+              return (
+                <tr key={d} className="border-b border-border/30 hover:bg-muted/20">
+                  <td className="py-1.5 pr-3 font-medium text-foreground truncate max-w-[160px]" title={d}>
+                    {d}
+                  </td>
+                  {channels.map((ch) => {
+                    const cell = cross[ch]?.[d];
+                    if (!cell || cell.pipeline === 0) {
+                      return <td key={ch} className="py-1.5 px-2 text-center text-muted-foreground/30">—</td>;
+                    }
+                    const l2w  = Math.round(cell.active / cell.pipeline * 1000) / 10;
+                    const arpu = cell.active > 0 ? Math.round(cell.mrr / cell.active) : 0;
+
+                    if (metric === "l2w") {
+                      return (
+                        <td key={ch} className="py-1.5 px-1">
+                          <span className={cn("px-1.5 py-0.5 rounded text-[10px] tabular-nums font-medium block text-center",
+                            scaleColor(l2w, stats.minL2w * 100, stats.maxL2w * 100)
+                          )}>
+                            {l2w}%
+                          </span>
+                        </td>
+                      );
+                    }
+                    if (metric === "arpu") {
+                      return (
+                        <td key={ch} className="py-1.5 px-1">
+                          <span className={cn("px-1.5 py-0.5 rounded text-[10px] tabular-nums block text-center",
+                            cell.active > 0 ? scaleColor(arpu, stats.minArpu, stats.maxArpu) : "text-muted-foreground/30"
+                          )}>
+                            {cell.active > 0 ? fmtEur(arpu) : "—"}
+                          </span>
+                        </td>
+                      );
+                    }
+                    // penetracion → show pipeline (leads) as proxy
+                    return (
+                      <td key={ch} className="py-1.5 px-1">
+                        <span className={cn("px-1.5 py-0.5 rounded text-[10px] tabular-nums block text-center",
+                          scaleColor(cell.pipeline, stats.minPipeline, stats.maxPipeline)
                         )}>
-                          {l2w}%
+                          {cell.pipeline.toLocaleString()}
                         </span>
-                        <span className={cn("px-1.5 py-0.5 rounded text-[10px] tabular-nums w-full text-center",
-                          cell.active > 0 ? scaleColor(arpu, stats.minArpu, stats.maxArpu, true) : "text-muted-foreground/30"
-                        )}>
-                          {cell.active > 0 ? fmtEur(arpu) : "—"}
-                        </span>
-                      </div>
-                    </td>
-                  );
-                })}
-              </tr>
-            );
-          })}
-        </tbody>
-      </table>
+                      </td>
+                    );
+                  })}
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+// ── Best Practices View ──────────────────────────────────────────────────────
+
+function BestPracticesView({
+  bestPractices,
+  setSelectedCode,
+  setView,
+}: {
+  bestPractices: BestPractice[];
+  setSelectedCode: (code: string) => void;
+  setView: (v: "region") => void;
+}) {
+  const [filterChannel, setFilterChannel] = useState<string | null>(null);
+  const [filterDimension, setFilterDimension] = useState<"all" | "size" | "industry">("all");
+  const [filterCrossOnly, setFilterCrossOnly] = useState(false);
+
+  const allChannels = useMemo(
+    () => [...new Set(bestPractices.map((bp) => bp.channel))].sort(),
+    [bestPractices],
+  );
+
+  const filtered = useMemo(() => {
+    return bestPractices.filter((bp) => {
+      if (filterChannel && bp.channel !== filterChannel) return false;
+      if (filterDimension !== "all" && bp.dimension !== filterDimension) return false;
+      if (filterCrossOnly && !bp.isCrossRegion) return false;
+      return true;
+    });
+  }, [bestPractices, filterChannel, filterDimension, filterCrossOnly]);
+
+  const crossCount = bestPractices.filter((bp) => bp.isCrossRegion).length;
+  const involvedRegions = new Set(bestPractices.flatMap((bp) => bp.codes)).size;
+
+  return (
+    <div className="space-y-4">
+      {/* Summary */}
+      <div className="rounded-xl border border-border bg-card shadow-sm p-4">
+        <div className="flex items-center gap-2 mb-1">
+          <Star className="h-4 w-4 text-amber-500" />
+          <h2 className="text-sm font-semibold text-foreground">Mejores Prácticas</h2>
+        </div>
+        <p className="text-xs text-muted-foreground">
+          {bestPractices.length} mejores prácticas encontradas · {crossCount} cross-región · {involvedRegions} regiones involucradas
+        </p>
+      </div>
+
+      {/* Filter bar */}
+      <div className="flex flex-wrap items-center gap-2">
+        <div className="flex items-center gap-1 rounded-full border border-border bg-muted/40 p-0.5">
+          {(["all", "size", "industry"] as const).map((d) => (
+            <button
+              key={d}
+              type="button"
+              onClick={() => setFilterDimension(d)}
+              className={cn(
+                "px-3 py-1 rounded-full text-xs font-medium transition-colors",
+                filterDimension === d ? "bg-card shadow-sm text-foreground" : "text-muted-foreground hover:text-foreground",
+              )}
+            >
+              {d === "all" ? "Todos" : d === "size" ? "Tamaño" : "Industria"}
+            </button>
+          ))}
+        </div>
+        <div className="flex flex-wrap gap-1">
+          <button
+            type="button"
+            onClick={() => setFilterChannel(null)}
+            className={cn(
+              "px-2.5 py-1 rounded-full text-xs border transition-colors",
+              filterChannel === null ? "bg-primary text-primary-foreground border-primary" : "border-border text-muted-foreground hover:text-foreground",
+            )}
+          >
+            Todos los canales
+          </button>
+          {allChannels.map((ch) => (
+            <button
+              key={ch}
+              type="button"
+              onClick={() => setFilterChannel(filterChannel === ch ? null : ch)}
+              className={cn(
+                "px-2.5 py-1 rounded-full text-xs border transition-colors",
+                filterChannel === ch ? "bg-primary text-primary-foreground border-primary" : "border-border text-muted-foreground hover:text-foreground",
+              )}
+            >
+              {ch}
+            </button>
+          ))}
+        </div>
+        <label className="flex items-center gap-1.5 text-xs text-muted-foreground cursor-pointer select-none">
+          <input
+            type="checkbox"
+            checked={filterCrossOnly}
+            onChange={(e) => setFilterCrossOnly(e.target.checked)}
+            className="rounded"
+          />
+          Solo cross-región
+        </label>
+      </div>
+
+      {/* Cards grid */}
+      {filtered.length === 0 ? (
+        <div className="text-center py-12 text-muted-foreground text-sm">
+          No se encontraron mejores prácticas con estos filtros.
+        </div>
+      ) : (
+        <div className="space-y-3">
+          {filtered.map((bp) => (
+            <div key={bp.id} className="rounded-xl border border-border bg-card shadow-sm p-4 space-y-2">
+              <div className="flex items-start justify-between gap-2">
+                <div className="font-semibold text-sm text-foreground leading-snug">{bp.headline}</div>
+                {bp.isCrossRegion && (
+                  <span className="shrink-0 text-[10px] px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 border border-amber-200 font-semibold">
+                    Cross-región
+                  </span>
+                )}
+              </div>
+              {/* Region badges */}
+              <div className="flex flex-wrap gap-1">
+                {bp.regions.map((name, i) => (
+                  <button
+                    key={bp.codes[i] ?? name}
+                    type="button"
+                    onClick={() => { setSelectedCode(bp.codes[i] ?? ""); setView("region"); }}
+                    className="text-[10px] px-2 py-0.5 rounded-md bg-primary/10 text-primary hover:bg-primary/20 transition-colors font-medium"
+                  >
+                    {name}
+                  </button>
+                ))}
+              </div>
+              {/* Metrics */}
+              <div className="flex flex-wrap gap-2">
+                <span className="text-[10px] px-2 py-0.5 rounded bg-muted text-foreground/70">
+                  L2W <span className="font-semibold text-foreground">{bp.l2w}%</span>
+                  <span className="text-muted-foreground/50"> (media {bp.regionL2wAvg}%)</span>
+                </span>
+                <span className="text-[10px] px-2 py-0.5 rounded bg-muted text-foreground/70">
+                  ARPU <span className="font-semibold text-foreground">{fmtEur(bp.arpu)}</span>
+                </span>
+                <span className="text-[10px] px-2 py-0.5 rounded bg-muted text-foreground/70">
+                  Pipeline <span className="font-semibold text-foreground">{bp.pipeline}</span>
+                </span>
+                {bp.tamAvailable > 0 && (
+                  <span className="text-[10px] px-2 py-0.5 rounded bg-muted text-foreground/70">
+                    TAM disp. <span className="font-semibold text-foreground">{bp.tamAvailable.toLocaleString()}</span>
+                  </span>
+                )}
+              </div>
+              <p className="text-xs text-muted-foreground leading-relaxed">{bp.insight}</p>
+              <div className="flex items-start gap-1.5">
+                <ArrowUpRight className="h-3 w-3 text-primary mt-0.5 shrink-0" />
+                <p className="text-xs text-foreground/80 leading-relaxed">{bp.recommendation}</p>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
 
 // ── Region detail panel ──────────────────────────────────────────────────────
 
-function RegionDetail({ region, national }: {
+function RegionDetail({ region, national, bestPractices }: {
   region: RegionPlaybook;
-  national: { arpu: number; penetration: number; mrr: number; tam: number; hubspot: number; active: number }
+  national: { arpu: number; penetration: number; mrr: number; tam: number; hubspot: number; active: number };
+  bestPractices: BestPractice[];
 }) {
-  const [activeTab, setActiveTab] = useState<"overview" | "channels" | "segments" | "industries" | "partners">("overview");
+  const [activeTab, setActiveTab] = useState<"overview" | "channels" | "segments" | "industries" | "partners" | "estrategia">("overview");
   const whitespace = region.tam - region.active;
   const whitespaceRatio = 100 - region.penetration;
 
@@ -590,6 +788,45 @@ function RegionDetail({ region, national }: {
               ))}
             </div>
           </div>
+
+          {/* Best practices for this region */}
+          {bestPractices.filter((bp) => bp.codes.includes(region.code)).length > 0 && (
+            <div>
+              <h3 className="text-sm font-semibold text-foreground mb-2 flex items-center gap-2">
+                <Star className="h-4 w-4 text-amber-500" />
+                Mejores Prácticas
+              </h3>
+              <div className="space-y-2">
+                {bestPractices.filter((bp) => bp.codes.includes(region.code)).map((bp) => (
+                  <div key={bp.id} className="rounded-lg border border-border bg-card p-3 space-y-1.5">
+                    <div className="flex items-start justify-between gap-2">
+                      <span className="text-xs font-semibold text-foreground leading-snug">{bp.headline}</span>
+                      {bp.isCrossRegion && (
+                        <span className="shrink-0 text-[9px] px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-800 border border-amber-200 font-semibold">
+                          Cross-región
+                        </span>
+                      )}
+                    </div>
+                    <div className="flex flex-wrap gap-1.5">
+                      <span className="text-[10px] px-1.5 py-0.5 rounded bg-muted text-foreground/70">
+                        L2W <span className="font-semibold text-foreground">{bp.l2w}%</span>
+                      </span>
+                      <span className="text-[10px] px-1.5 py-0.5 rounded bg-muted text-foreground/70">
+                        ARPU <span className="font-semibold text-foreground">{fmtEur(bp.arpu)}</span>
+                      </span>
+                      {bp.tamAvailable > 0 && (
+                        <span className="text-[10px] px-1.5 py-0.5 rounded bg-muted text-foreground/70">
+                          TAM disp. <span className="font-semibold text-foreground">{bp.tamAvailable.toLocaleString()}</span>
+                        </span>
+                      )}
+                    </div>
+                    <p className="text-[11px] text-muted-foreground leading-relaxed">{bp.insight}</p>
+                    <p className="text-[11px] text-foreground/80 leading-relaxed">{bp.recommendation}</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
       )}
 
@@ -645,6 +882,21 @@ function RegionDetail({ region, national }: {
             <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-3">Top industrias por MRR</h3>
             <IndustryTable industries={region.industries} nationalArpu={national.arpu} tamBySector={region.tamBySectorForRegion} />
           </div>
+          {region.industryInsights && region.industryInsights.length > 0 && (
+            <div>
+              <h3 className="text-sm font-semibold text-foreground mb-2 flex items-center gap-2">
+                <Zap className="h-4 w-4 text-amber-500" />
+                Insights por industria
+              </h3>
+              <div className="space-y-2">
+                {region.industryInsights.map((ins, i) => (
+                  <div key={i} className="rounded-lg border bg-muted/30 px-3 py-2 text-xs text-foreground/80">
+                    {ins}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
       )}
 
@@ -1991,6 +2243,9 @@ function SlidesView({ data }: { data: PlaybookLiveData }) {
   );
 }
 
+type PeriodFilter = "all" | "12m" | "6m" | "3m";
+type NavView = "summary" | "slides" | "bestpractices";
+
 // ── Main page ────────────────────────────────────────────────────────────────
 
 export function PlaybookPage() {
@@ -2000,15 +2255,35 @@ export function PlaybookPage() {
   const hasAccess = !!email && email.endsWith("@factorial.co");
 
   const [selectedCode, setSelectedCode] = useState<string | null>(null);
+  const [navView, setNavView] = useState<NavView>("summary");
   const [searchTerm, setSearchTerm] = useState("");
-  const [showSlides, setShowSlides] = useState(false);
+  const [periodFilter, setPeriodFilter] = useState<PeriodFilter>("all");
   const [importProgress, setImportProgress] = useState<string | null>(null);
   const [importResult, setImportResult] = useState<{ ok: boolean; msg: string } | null>(null);
   const hubspotFileRef = useRef<HTMLInputElement>(null);
   const tamFileRef = useRef<HTMLInputElement>(null);
 
-  const { data, source, status, rowCount, error, refresh, importHubspotCsv, importTamCsv } =
+  const { data: rawData, source, status, rowCount, error, refresh, importHubspotCsv, importTamCsv, rawCompanies, sasorBreakdown } =
     usePlaybookLiveData();
+
+  // Compute sinceDate from periodFilter
+  const sinceDate = useMemo(() => {
+    if (periodFilter === "all") return null;
+    const months = periodFilter === "12m" ? 12 : periodFilter === "6m" ? 6 : 3;
+    const d = new Date();
+    d.setMonth(d.getMonth() - months);
+    return d.toISOString().slice(0, 10); // YYYY-MM-DD
+  }, [periodFilter]);
+
+  // Apply period filter on top of raw companies to produce filtered data
+  const data = useMemo(() => {
+    if (!sinceDate || !rawCompanies.length) return rawData;
+    const filtered = rawCompanies.filter(
+      (c) => c.close_date != null && c.close_date >= sinceDate,
+    );
+    if (!filtered.length) return rawData;
+    return computePlaybook(filtered, sasorBreakdown);
+  }, [rawData, rawCompanies, sasorBreakdown, sinceDate]);
 
   if (country !== "es") {
     navigate("/");
@@ -2033,6 +2308,15 @@ export function PlaybookPage() {
     ? REGIONS.filter((r) => r.ccaa.toLowerCase().includes(searchTerm.toLowerCase()))
     : REGIONS;
   const sortedRegions = [...filteredRegions].sort((a, b) => b.mrr - a.mrr);
+
+  const periodLabels: Record<PeriodFilter, string> = {
+    all: "Todo", "12m": "12M", "6m": "6M", "3m": "3M",
+  };
+
+  function handleSetSelectedCode(code: string) {
+    setSelectedCode(code);
+    setNavView("summary");
+  }
 
   async function handleHubspotImport(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
@@ -2085,6 +2369,9 @@ export function PlaybookPage() {
               {source === "static" && status === "ready" && (
                 <span className="ml-2 text-white/50 text-xs">· datos estáticos</span>
               )}
+              {periodFilter !== "all" && (
+                <span className="ml-2 text-amber-300 text-xs font-medium">· Período: últimos {periodFilter.toUpperCase()}</span>
+              )}
             </p>
             {(importProgress || importResult) && (
               <div className="mt-1.5 flex items-center gap-1.5">
@@ -2103,13 +2390,31 @@ export function PlaybookPage() {
               </div>
             )}
           </div>
-          <div className="flex items-center gap-2 shrink-0">
+          <div className="flex items-center gap-2 shrink-0 flex-wrap justify-end">
             {error && (
               <span className="text-xs text-red-300 flex items-center gap-1">
                 <AlertTriangle className="h-3 w-3" />
                 {error}
               </span>
             )}
+            {/* Period filter */}
+            <div className="flex items-center gap-0.5 rounded-lg bg-white/10 p-0.5">
+              {(["all", "12m", "6m", "3m"] as PeriodFilter[]).map((p) => (
+                <button
+                  key={p}
+                  type="button"
+                  onClick={() => setPeriodFilter(p)}
+                  className={cn(
+                    "px-2.5 py-1 rounded-md text-xs font-medium transition-colors",
+                    periodFilter === p
+                      ? "bg-white text-gray-900"
+                      : "text-white/70 hover:text-white",
+                  )}
+                >
+                  {periodLabels[p]}
+                </button>
+              ))}
+            </div>
             <input ref={hubspotFileRef} type="file" accept=".csv" className="hidden" onChange={handleHubspotImport} />
             <input ref={tamFileRef} type="file" accept=".csv" className="hidden" onChange={handleTamImport} />
             <button
@@ -2158,10 +2463,10 @@ export function PlaybookPage() {
           <div className="flex-1 overflow-y-auto">
             <button
               type="button"
-              onClick={() => { setShowSlides(true); setSelectedCode(null); }}
+              onClick={() => { setNavView("slides"); setSelectedCode(null); }}
               className={cn(
                 "w-full text-left px-4 py-3 flex items-center gap-3 transition-colors border-l-[3px] text-sm font-medium",
-                showSlides
+                navView === "slides"
                   ? "bg-primary/5 border-l-primary text-primary"
                   : "border-l-transparent text-muted-foreground hover:bg-muted/50 hover:text-foreground",
               )}
@@ -2171,10 +2476,10 @@ export function PlaybookPage() {
             </button>
             <button
               type="button"
-              onClick={() => { setShowSlides(false); setSelectedCode(null); }}
+              onClick={() => { setNavView("summary"); setSelectedCode(null); }}
               className={cn(
                 "w-full text-left px-4 py-3 flex items-center gap-3 transition-colors border-l-[3px] text-sm font-medium",
-                !showSlides && selectedCode === null
+                navView === "summary" && selectedCode === null
                   ? "bg-primary/5 border-l-primary text-primary"
                   : "border-l-transparent text-muted-foreground hover:bg-muted/50 hover:text-foreground",
               )}
@@ -2182,29 +2487,53 @@ export function PlaybookPage() {
               <Users className="h-4 w-4" />
               Vista resumen
             </button>
+            <button
+              type="button"
+              onClick={() => { setNavView("bestpractices"); setSelectedCode(null); }}
+              className={cn(
+                "w-full text-left px-4 py-3 flex items-center gap-3 transition-colors border-l-[3px] text-sm font-medium",
+                navView === "bestpractices" && selectedCode === null
+                  ? "bg-primary/5 border-l-primary text-primary"
+                  : "border-l-transparent text-muted-foreground hover:bg-muted/50 hover:text-foreground",
+              )}
+            >
+              <Star className="h-4 w-4" />
+              Mejores Prácticas
+              {data.bestPractices.length > 0 && (
+                <span className="ml-auto text-[10px] bg-amber-100 text-amber-800 px-1.5 py-0.5 rounded-full font-medium">
+                  {data.bestPractices.length}
+                </span>
+              )}
+            </button>
             <div className="border-t border-border" />
             {sortedRegions.map((r) => (
               <RegionListItem
                 key={r.code}
                 region={r}
-                active={!showSlides && selectedCode === r.code}
-                onClick={() => { setShowSlides(false); setSelectedCode(r.code); }}
+                active={navView === "summary" && selectedCode === r.code}
+                onClick={() => { setNavView("summary"); setSelectedCode(r.code); }}
               />
             ))}
           </div>
         </div>
 
         {/* Right panel — detail */}
-        <div className={cn("flex-1 min-w-0", showSlides ? "p-4 flex flex-col h-[calc(100vh-8rem)]" : "p-6")}>
+        <div className={cn("flex-1 min-w-0", navView === "slides" ? "p-4 flex flex-col h-[calc(100vh-8rem)]" : "p-6")}>
           {status === "loading" && !data.regions.length ? (
             <div className="flex items-center justify-center h-64 text-muted-foreground text-sm">
               <RefreshCw className="h-4 w-4 animate-spin mr-2" />
               Cargando datos…
             </div>
-          ) : showSlides ? (
+          ) : navView === "slides" ? (
             <SlidesView data={data} />
+          ) : navView === "bestpractices" && selectedCode === null ? (
+            <BestPracticesView
+              bestPractices={data.bestPractices}
+              setSelectedCode={handleSetSelectedCode}
+              setView={() => { setNavView("summary"); }}
+            />
           ) : selectedRegion ? (
-            <RegionDetail region={selectedRegion} national={NATIONAL} />
+            <RegionDetail region={selectedRegion} national={NATIONAL} bestPractices={data.bestPractices} />
           ) : (
             <SummaryView data={data} />
           )}

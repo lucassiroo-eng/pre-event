@@ -57,6 +57,7 @@ export interface RegionPlaybook {
   };
   keyInsights: string[];
   openQuestions: string[];
+  industryInsights?: string[];
   tamBySizeForRegion?: Record<string, number>;
   tamBySectorForRegion?: Record<string, number>;
   channelSizeCross?: Record<string, Record<string, { active: number; pipeline: number; mrr: number }>>;

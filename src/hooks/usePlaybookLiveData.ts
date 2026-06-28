@@ -6,13 +6,15 @@
  * Static fallback: REGIONS / NATIONAL from playbookData.ts (when Supabase has no rows)
  */
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { REGIONS as STATIC_REGIONS, NATIONAL as STATIC_NATIONAL } from "@/lib/playbookData";
 import {
   fetchStrategyCompanies,
   fetchSasorBreakdown,
   importStrategyCsv,
   importSasorCsv,
+  type StrategyCompany,
+  type SasorBreakdown,
 } from "@/lib/strategyStore";
 import { computePlaybook, type PlaybookLiveData } from "@/lib/playbookCompute";
 
@@ -27,6 +29,8 @@ export interface UsePlaybookLiveDataResult {
   refresh: () => Promise<void>;
   importHubspotCsv: (file: File, onProgress?: (done: number, total: number) => void) => Promise<{ inserted: number; errors: number }>;
   importTamCsv: (file: File, onProgress?: (done: number, total: number) => void) => Promise<{ inserted: number; errors: number }>;
+  rawCompanies: StrategyCompany[];
+  sasorBreakdown: SasorBreakdown | null;
 }
 
 const STATIC_DATA: PlaybookLiveData = {
@@ -34,6 +38,7 @@ const STATIC_DATA: PlaybookLiveData = {
   national: STATIC_NATIONAL,
   tamBySector: {},
   tamBySize: {},
+  bestPractices: [],
 };
 
 function parseCsvText(text: string): Record<string, string>[] {
@@ -87,6 +92,11 @@ export function usePlaybookLiveData(): UsePlaybookLiveDataResult {
   const [status, setStatus]     = useState<"idle" | "loading" | "error" | "ready">("idle");
   const [error, setError]       = useState<string | null>(null);
   const [rowCount, setRowCount] = useState(0);
+  const rawCompaniesRef         = useRef<StrategyCompany[]>([]);
+  const sasorBreakdownRef       = useRef<SasorBreakdown | null>(null);
+  // expose as state so consumers can react to changes
+  const [rawCompanies, setRawCompanies]       = useState<StrategyCompany[]>([]);
+  const [sasorBreakdown, setSasorBreakdown]   = useState<SasorBreakdown | null>(null);
 
   const load = useCallback(async () => {
     setStatus("loading");
@@ -96,6 +106,11 @@ export function usePlaybookLiveData(): UsePlaybookLiveDataResult {
         fetchStrategyCompanies(),
         fetchSasorBreakdown(),
       ]);
+
+      rawCompaniesRef.current = companies;
+      sasorBreakdownRef.current = sasorData;
+      setRawCompanies(companies);
+      setSasorBreakdown(sasorData);
 
       if (!companies.length) {
         setData(STATIC_DATA);
@@ -143,5 +158,5 @@ export function usePlaybookLiveData(): UsePlaybookLiveDataResult {
     [load],
   );
 
-  return { data, source, status, error, rowCount, refresh: load, importHubspotCsv, importTamCsv };
+  return { data, source, status, error, rowCount, refresh: load, importHubspotCsv, importTamCsv, rawCompanies, sasorBreakdown };
 }

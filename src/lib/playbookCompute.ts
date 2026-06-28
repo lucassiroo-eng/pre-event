@@ -20,11 +20,33 @@ import { resolveCCAA } from "./strategyCCAA";
 
 export type NationalStats = typeof STATIC_NATIONAL;
 
+export interface BestPractice {
+  id: string;
+  regions: string[];
+  codes: string[];
+  channel: string;
+  dimension: "size" | "industry";
+  segment: string;
+  l2w: number;
+  regionL2wAvg: number;
+  arpu: number;
+  regionArpuAvg: number;
+  pipeline: number;
+  active: number;
+  mrr: number;
+  tamAvailable: number;
+  isCrossRegion: boolean;
+  headline: string;
+  insight: string;
+  recommendation: string;
+}
+
 export interface PlaybookLiveData {
   regions: RegionPlaybook[];
   national: NationalStats;
   tamBySector: Record<string, number>;
   tamBySize: Record<string, number>;
+  bestPractices: BestPractice[];
 }
 
 // ── CCAA normalisation ───────────────────────────────────────────────────────
@@ -222,6 +244,253 @@ function generateOpenQuestions(
   if (archetype === "partner-led" && partners.length <= 1) qs.push(`¿Cómo diversificar la dependencia de partner único?`);
   if (archetype !== "partner-led" && partnerSharePct < 15) qs.push(`¿Hay oportunidad de activar un play de canal partner en ${ccaa}?`);
   return qs.slice(0, 3);
+}
+
+// ── Industry insights ────────────────────────────────────────────────────────
+
+function generateIndustryInsights(
+  industries: RegionPlaybook["industries"],
+  arpu: number,
+  tamBySectorForRegion: Record<string, number>,
+): string[] {
+  const insights: string[] = [];
+  if (!industries.length) return insights;
+
+  const totalMrr = industries.reduce((s, i) => s + i.mrr, 0);
+
+  // 1. Top sector by MRR
+  const topMrr = [...industries].sort((a, b) => b.mrr - a.mrr)[0];
+  if (topMrr && totalMrr > 0) {
+    const pct = Math.round((topMrr.mrr / totalMrr) * 100);
+    insights.push(
+      `${topMrr.label} lidera con ${fmtN(topMrr.mrr)} MRR (${pct}% del total) — ARPU de ${fmtN(topMrr.arpu)} vs ${fmtN(arpu)} regional.`,
+    );
+  }
+
+  // 2. Highest L2W sector
+  const withPipeline = industries.filter((i) => (i.pipeline ?? 0) > 0);
+  if (withPipeline.length >= 2) {
+    const sorted = [...withPipeline].sort((a, b) => {
+      const la = a.active / (a.pipeline ?? 1);
+      const lb = b.active / (b.pipeline ?? 1);
+      return lb - la;
+    });
+    const topL2w = sorted[0];
+    const avgL2w = withPipeline.reduce((s, i) => s + i.active / (i.pipeline ?? 1), 0) / withPipeline.length;
+    const topL2wVal = Math.round((topL2w.active / (topL2w.pipeline ?? 1)) * 1000) / 10;
+    const diff = Math.round((topL2wVal - avgL2w * 100) * 10) / 10;
+    if (diff >= 5) {
+      insights.push(
+        `Mejor conversión en ${topL2w.label}: L2W del ${topL2wVal}% (${diff > 0 ? "+" : ""}${diff}pp sobre la media regional).`,
+      );
+    }
+  }
+
+  // 3. TAM opportunity — highest untapped
+  if (Object.keys(tamBySectorForRegion).length > 0) {
+    const byUntapped = industries
+      .map((i) => {
+        const tam = tamBySectorForRegion[i.label] ?? 0;
+        return { label: i.label, active: i.active, untapped: tam > 0 ? tam - i.active : -1, tam };
+      })
+      .filter((x) => x.untapped > 0)
+      .sort((a, b) => b.untapped - a.untapped);
+    const best = byUntapped[0];
+    if (best && best.tam > 0) {
+      const pen = Math.round((best.active / best.tam) * 100);
+      insights.push(
+        `Mayor TAM sin cubrir: ${best.label} con ${best.untapped.toLocaleString()} empresas disponibles (solo ${pen}% penetrado).`,
+      );
+    }
+  }
+
+  // 4. ARPU outlier
+  const withActive = industries.filter((i) => i.active >= 3);
+  if (withActive.length >= 2) {
+    const high = withActive.filter((i) => i.arpu >= arpu * 1.4);
+    const low = withActive.filter((i) => i.arpu <= arpu * 0.6);
+    if (high.length > 0) {
+      const h = high.sort((a, b) => b.arpu - a.arpu)[0];
+      insights.push(`ARPU anómalo en ${h.label}: ${fmtN(h.arpu)} — segmento premium, revisar mix y pricing.`);
+    } else if (low.length > 0) {
+      const l = low.sort((a, b) => a.arpu - b.arpu)[0];
+      insights.push(`ARPU anómalo en ${l.label}: ${fmtN(l.arpu)} — ticket bajo, revisar mix de producto.`);
+    }
+  }
+
+  return insights.slice(0, 4);
+}
+
+// ── Best practices computation ───────────────────────────────────────────────
+
+function computeBestPractices(regions: RegionPlaybook[]): BestPractice[] {
+  type RawBp = {
+    key: string; // channel+dim+segment
+    regionName: string;
+    regionCode: string;
+    channel: string;
+    dimension: "size" | "industry";
+    segment: string;
+    l2w: number;
+    regionL2wAvg: number;
+    arpu: number;
+    regionArpuAvg: number;
+    pipeline: number;
+    active: number;
+    mrr: number;
+    tamAvailable: number;
+  };
+
+  const raw: RawBp[] = [];
+
+  for (const region of regions) {
+    // ── Canal × Tamaño ──────────────────────────────────────────────────────
+    if (region.channelSizeCross) {
+      const cross = region.channelSizeCross;
+      // Compute per-channel L2W average (across all sizes)
+      const channelL2wAvg: Record<string, number> = {};
+      const channelArpuAvg: Record<string, number> = {};
+      for (const ch of Object.keys(cross)) {
+        const cells = Object.values(cross[ch]);
+        const totalPipeline = cells.reduce((s, c) => s + c.pipeline, 0);
+        const totalActive = cells.reduce((s, c) => s + c.active, 0);
+        const totalMrr = cells.reduce((s, c) => s + c.mrr, 0);
+        channelL2wAvg[ch] = totalPipeline > 0 ? totalActive / totalPipeline : 0;
+        channelArpuAvg[ch] = totalActive > 0 ? totalMrr / totalActive : 0;
+      }
+      for (const ch of Object.keys(cross)) {
+        for (const seg of Object.keys(cross[ch])) {
+          const cell = cross[ch][seg];
+          if (!cell || cell.pipeline < 10) continue;
+          const l2w = cell.pipeline > 0 ? cell.active / cell.pipeline : 0;
+          const arpu = cell.active > 0 ? cell.mrr / cell.active : 0;
+          const chL2wAvg = channelL2wAvg[ch] ?? 0;
+          const chArpuAvg = channelArpuAvg[ch] ?? 0;
+          const isGood = (chL2wAvg > 0 && l2w >= chL2wAvg * 1.25) ||
+                         (chArpuAvg > 0 && arpu >= chArpuAvg * 1.35);
+          if (!isGood) continue;
+          const tam = region.tamBySizeForRegion?.[seg] ?? 0;
+          const tamAvailable = tam > 0 ? Math.max(0, tam - cell.active) : 0;
+          raw.push({
+            key: `${ch}|size|${seg}`,
+            regionName: region.ccaa,
+            regionCode: region.code,
+            channel: ch,
+            dimension: "size",
+            segment: seg,
+            l2w: Math.round(l2w * 1000) / 10,
+            regionL2wAvg: Math.round(chL2wAvg * 1000) / 10,
+            arpu: Math.round(arpu),
+            regionArpuAvg: Math.round(chArpuAvg),
+            pipeline: cell.pipeline,
+            active: cell.active,
+            mrr: cell.mrr,
+            tamAvailable,
+          });
+        }
+      }
+    }
+
+    // ── Canal × Industria ───────────────────────────────────────────────────
+    if (region.channelIndustryCross) {
+      const cross = region.channelIndustryCross;
+      const channelL2wAvg: Record<string, number> = {};
+      const channelArpuAvg: Record<string, number> = {};
+      for (const ch of Object.keys(cross)) {
+        const cells = Object.values(cross[ch]);
+        const totalPipeline = cells.reduce((s, c) => s + c.pipeline, 0);
+        const totalActive = cells.reduce((s, c) => s + c.active, 0);
+        const totalMrr = cells.reduce((s, c) => s + c.mrr, 0);
+        channelL2wAvg[ch] = totalPipeline > 0 ? totalActive / totalPipeline : 0;
+        channelArpuAvg[ch] = totalActive > 0 ? totalMrr / totalActive : 0;
+      }
+      for (const ch of Object.keys(cross)) {
+        for (const seg of Object.keys(cross[ch])) {
+          const cell = cross[ch][seg];
+          if (!cell || cell.pipeline < 10) continue;
+          const l2w = cell.pipeline > 0 ? cell.active / cell.pipeline : 0;
+          const arpu = cell.active > 0 ? cell.mrr / cell.active : 0;
+          const chL2wAvg = channelL2wAvg[ch] ?? 0;
+          const chArpuAvg = channelArpuAvg[ch] ?? 0;
+          const isGood = (chL2wAvg > 0 && l2w >= chL2wAvg * 1.25) ||
+                         (chArpuAvg > 0 && arpu >= chArpuAvg * 1.35);
+          if (!isGood) continue;
+          const tam = region.tamBySectorForRegion?.[seg] ?? 0;
+          const tamAvailable = tam > 0 ? Math.max(0, tam - cell.active) : 0;
+          raw.push({
+            key: `${ch}|industry|${seg}`,
+            regionName: region.ccaa,
+            regionCode: region.code,
+            channel: ch,
+            dimension: "industry",
+            segment: seg,
+            l2w: Math.round(l2w * 1000) / 10,
+            regionL2wAvg: Math.round(chL2wAvg * 1000) / 10,
+            arpu: Math.round(arpu),
+            regionArpuAvg: Math.round(chArpuAvg),
+            pipeline: cell.pipeline,
+            active: cell.active,
+            mrr: cell.mrr,
+            tamAvailable,
+          });
+        }
+      }
+    }
+  }
+
+  // Group by key to detect cross-region patterns
+  const byKey = new Map<string, RawBp[]>();
+  for (const r of raw) {
+    const arr = byKey.get(r.key) ?? [];
+    arr.push(r);
+    byKey.set(r.key, arr);
+  }
+
+  const result: BestPractice[] = [];
+  for (const [key, entries] of byKey) {
+    const isCrossRegion = entries.length >= 3;
+    for (const e of entries) {
+      const tamStr = e.tamAvailable > 0 ? ` TAM disponible: ${e.tamAvailable.toLocaleString()} empresas sin tocar.` : "";
+      const l2wStr = `${e.l2w}%`;
+      const avgStr = `${e.regionL2wAvg}%`;
+      const dimLabel = e.dimension === "size" ? "tamaño" : "sector";
+      const crossLabel = isCrossRegion ? " (patrón cross-región)" : "";
+
+      const headline = `${e.channel} × ${e.segment} — conversión excepcional${crossLabel}`;
+      const insight =
+        `L2W del ${l2wStr} (vs ${avgStr} media canal) con ${e.pipeline} leads. MRR ${fmtN(e.mrr)}, ARPU ${fmtN(e.arpu)}.`;
+      const recommendation = e.tamAvailable > 0
+        ? `Doblar volumen en este ${dimLabel}.${tamStr}`
+        : `Reforzar presencia en este ${dimLabel} — buen retorno demostrado.`;
+
+      result.push({
+        id: `${e.regionCode}-${key.replace(/[|]/g, "-")}`,
+        regions: [e.regionName],
+        codes: [e.regionCode],
+        channel: e.channel,
+        dimension: e.dimension,
+        segment: e.segment,
+        l2w: e.l2w,
+        regionL2wAvg: e.regionL2wAvg,
+        arpu: e.arpu,
+        regionArpuAvg: e.regionArpuAvg,
+        pipeline: e.pipeline,
+        active: e.active,
+        mrr: e.mrr,
+        tamAvailable: e.tamAvailable,
+        isCrossRegion,
+        headline,
+        insight,
+        recommendation,
+      });
+    }
+  }
+
+  // Sort: cross-region first, then by l2w desc
+  return result.sort((a, b) => {
+    if (a.isCrossRegion !== b.isCrossRegion) return a.isCrossRegion ? -1 : 1;
+    return b.l2w - a.l2w;
+  });
 }
 
 // ── Main computation ─────────────────────────────────────────────────────────
@@ -457,6 +726,8 @@ export function computePlaybook(
     const openQuestions = generateOpenQuestions(
       ccaa, penetration, d2w, natD2w, archetype, partners, partnerShare,
     );
+    const tamBySectorForRegion = breakdown?.byCcaaBySector?.[ccaa] ?? {};
+    const industryInsights = generateIndustryInsights(industries, arpu, tamBySectorForRegion);
 
     regions.push({
       ccaa,
@@ -488,17 +759,22 @@ export function computePlaybook(
       },
       keyInsights,
       openQuestions,
+      industryInsights,
       tamBySizeForRegion:    breakdown?.byCcaaBySize?.[ccaa] ?? {},
-      tamBySectorForRegion:  breakdown?.byCcaaBySector?.[ccaa] ?? {},
+      tamBySectorForRegion,
       channelSizeCross:      chSizeCross,
       channelIndustryCross:  chIndCross,
     });
   }
 
+  const sortedRegions = regions.sort((a, b) => b.mrr - a.mrr);
+  const bestPractices = computeBestPractices(sortedRegions);
+
   return {
-    regions: regions.sort((a, b) => b.mrr - a.mrr),
+    regions: sortedRegions,
     tamBySector: breakdown?.bySector ?? {},
     tamBySize:   breakdown?.bySize ?? {},
+    bestPractices,
     national: {
       tam:             natTamTotal,
       hubspot:         allResolved.length,
