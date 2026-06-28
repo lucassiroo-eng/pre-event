@@ -1053,18 +1053,18 @@ function SlidesView() {
 
   // ── Why each top-5 wins ───────────────────────────────────────────────────────
   const oppWhy: Record<string, string> = {
-    "CM": "Mayor TAM de España con penetración <10%. Cada punto de penetración = 2K+ clientes potenciales.",
-    "CT": "D2W outbound 87% — el canal más eficiente. TAM 19K con múltiples canales activos.",
-    "AN": "TAM 14.4K, penetración 5.5%. Problema de volumen puro — D2W sólido ya validado.",
-    "PV": "D2W partner ~80%+, ARPU elevado. Mercado corporativo con alto potencial de upmarket.",
-    "VC": "Outbound-responsive con D2W consistente. Base instalada pequeña vs TAM disponible.",
+    "CM": "17.3K empresas en TAM, pero solo 1.5K activas (8.5% penetración) — 9 de cada 10 empresas elegibles nunca han hablado con Factorial. El modelo multi-canal ya funciona: D2W del 80.4% confirma que cuando llegamos, cerramos. El problema es llegar.",
+    "CT": "Mayor base activa de España (1.95K clientes, €1.3M MRR) pero con un 10% de penetración sobre 19K de TAM. Outbound tiene D2W del 87% — el canal más eficiente del país. Partners aportan ARPU 55% superior al outbound directo. Escala de los dos a la vez.",
+    "AN": "TAM de 11.7K con solo 5.5% penetrado — la segunda región por mercado sin tocar. D2W sólido (75.8%) demuestra que el equipo sabe cerrar. El cuello de botella está arriba del funnel: pocas empresas entran en pipeline, no pocas convierten.",
+    "PV": "Mercado corporativo denso: ARPU medio de €967 vs €729 nacional (+33%). Partners locales generan el 38% del MRR con muy poca penetración (4.4%). Cada punto de penetración aquí vale más en euros que en casi cualquier otra región.",
+    "VC": "8.8K TAM con solo 5.4% penetrado. Outbound D2W del 70.4% — por debajo de media nacional, pero el volumen sin cubrir (8.3K empresas) compensa. Segunda economía del Mediterráneo con base industrial diversificada y crecimiento demográfico.",
   };
   const oppAction: Record<string, string> = {
-    "CM": "Escalar outbound + activar 2 partners enterprise en Madrid ciudad.",
-    "CT": "Aumentar capacidad SDR outbound y consolidar deals M/L via partners.",
-    "AN": "Doblar top-of-funnel: más volumen SDR, no mejor conversión.",
-    "PV": "Activar partnerships locales; priorizar segmento M/L.",
-    "VC": "Asignar SDR dedicado; medir CAC vs LTV en primeros 60 días.",
+    "CM": "Doblar frecuencia de outbound en Madrid ciudad (centro financiero + tech hub). Activar 2 partners enterprise nuevos en Q3 — foco en Wolters Kluwer y Cobee. Objetivo: +300 demos en 90 días.",
+    "CT": "Añadir 2 SDRs dedicados al segmento M/L (51-500 emp.) donde el ARPU partner es €1,128. Consolidar pipeline via Canal Partners para deals >200 empleados. No tocar el inbound — aporta 20% del MRR con coste mínimo.",
+    "AN": "Lanzar campaña outbound focalizada en Sevilla y Málaga (60% del TAM andaluz). Doblar volumen de secuencias en Q3. El D2W no es el problema — no invertir en mejora de conversión, solo en volumen.",
+    "PV": "Formalizar acuerdo con 1-2 partners locales clave en Bilbao (sector industrial + finanzas). Priorizar deals M/L desde inicio — el ARPU de segmento L en PV es el más alto del cluster outbound-responsive. ROI del partner = €967/cliente vs €729 outbound directo.",
+    "VC": "Asignar SDR dedicado Valencia + Alicante. Arrancar con outbound a sectores cerámico, agroalimentario y logística — los 3 mayores del TAM valenciano. Medir CAC vs LTV en primeros 90 días antes de escalar.",
   };
 
   // ── Multi-channel deep-dive regions ──────────────────────────────────────────
@@ -1291,7 +1291,7 @@ function SlidesView() {
     <div key="s3" className="flex flex-col h-full p-8 gap-4 bg-white">
       <div>
         <h2 className="text-xl font-bold text-gray-900 mb-0.5">El Dilema de la Oportunidad: Volumen vs. Conversión</h2>
-        <p className="text-xs text-gray-400">Cada región enfrenta un problema distinto — volumen = empresas en pipeline / TAM</p>
+        <p className="text-xs text-gray-400">Cada región enfrenta un problema distinto — penetración = clientes activos / TAM total</p>
       </div>
       <div className="flex-1 min-h-0">
         <table className="w-full text-xs">
@@ -1301,21 +1301,13 @@ function SlidesView() {
               <th className="py-2 px-2 font-semibold text-gray-500 text-right">TAM total</th>
               <th className="py-2 px-2 font-semibold text-gray-500 text-right">Penetración</th>
               <th className="py-2 px-2 font-semibold text-gray-500 text-right">Sin cubrir</th>
-              <th className="py-2 px-2 font-semibold text-gray-500 text-right">Pipeline/TAM</th>
               <th className="py-2 px-2 font-semibold text-gray-500 text-right">D2W</th>
               <th className="py-2 px-2 font-semibold text-gray-500">Diagnóstico</th>
             </tr>
           </thead>
           <tbody>
             {untappedTop10.map((r) => {
-              const pipelineTamRatio = r.tam > 0 ? r.hubspot / r.tam : 0;
-              const pipelineTamPct = (pipelineTamRatio * 100).toFixed(1) + "%";
-              const pipelineTamColor = pipelineTamRatio < 0.15
-                ? "text-red-600 font-semibold"
-                : pipelineTamRatio < 0.25
-                ? "text-amber-600 font-semibold"
-                : "text-emerald-700 font-semibold";
-              const diag = pipelineTamRatio < 0.20
+              const diag = r.penetration < 6
                 ? { label: "Problema de volumen", cls: "bg-red-100 text-red-700" }
                 : r.d2w < 75
                 ? { label: "Problema de conversión", cls: "bg-amber-100 text-amber-700" }
@@ -1328,9 +1320,6 @@ function SlidesView() {
                     {r.penetration}%
                   </td>
                   <td className="py-1.5 px-2 text-right tabular-nums font-semibold">{r.untapped.toLocaleString()}</td>
-                  <td className={cn("py-1.5 px-2 text-right tabular-nums", pipelineTamColor)}>
-                    {pipelineTamPct}
-                  </td>
                   <td className={cn("py-1.5 px-2 text-right tabular-nums font-semibold",
                     r.d2w >= 80 ? "text-emerald-700" : r.d2w >= 70 ? "text-amber-700" : "text-red-600",
                   )}>
@@ -1345,61 +1334,73 @@ function SlidesView() {
           </tbody>
         </table>
       </div>
-      <InsightBox text="Madrid y Cataluña son problemas de escala (TAM enorme, penetración baja). Valencia y Extremadura son problemas de conversión. Estrategia diferente para cada grupo." />
+      <InsightBox text="Madrid y Cataluña son problemas de escala (TAM enorme, penetración <9%). Valencia y Aragón, problemas de conversión (D2W bajo). Estrategia diferente para cada grupo." />
     </div>,
 
     // ── Slide 4 — Concentración Regional ──────────────────────────────────────
-    <div key="s4" className="flex flex-col h-full p-8 gap-4 bg-white">
-      <div>
-        <h2 className="text-xl font-bold text-gray-900 mb-0.5">Concentración del MRR: El Principio de Pareto Regional</h2>
-        <p className="text-xs text-gray-400">Las 5 primeras CCAAs concentran el 55% del MRR total</p>
-      </div>
-      <div className="flex-1 min-h-0 flex flex-col gap-1.5 justify-center">
-        {regionsByMrr.slice(0, 10).map((r, i) => {
-          const pct = Math.round((r.mrr / NATIONAL.mrr) * 100 * 10) / 10;
-          const barPct = Math.min(100, Math.round((r.mrr / regionsByMrr[0].mrr) * 100));
-          const barColor = r.archetype === "partner-led"
-            ? "bg-violet-500" : r.archetype === "outbound-responsive"
-            ? "bg-sky-500" : "bg-emerald-500";
-          const isLong = barPct > 25;
-          return (
-            <div key={r.code}>
-              {i === 5 && (
-                <div className="border-t border-dashed border-gray-300 my-1.5" />
-              )}
-              <div className="flex items-center gap-3">
-                <div className="w-40 text-xs text-gray-700 font-medium truncate shrink-0">{r.ccaa}</div>
-                <div className="flex-1 h-7 rounded bg-gray-100 overflow-hidden relative">
-                  <div
-                    className={cn("h-full rounded relative", barColor)}
-                    style={{ width: `${barPct}%` }}
-                  >
-                    {isLong && (
-                      <span className="absolute right-2 top-1/2 -translate-y-1/2 text-white text-xs font-semibold whitespace-nowrap">
-                        {fmtEur(r.mrr)}
+    (() => {
+      const byTam = [...REGIONS].sort((a, b) => b.tam - a.tam).slice(0, 12);
+      const maxTam = byTam[0].tam;
+      const top5TamShare = byTam.slice(0, 5).reduce((s, r) => s + r.tam, 0);
+      const top5TamPct = Math.round((top5TamShare / NATIONAL.tam) * 100);
+      return (
+        <div key="s4" className="flex flex-col h-full p-8 gap-4 bg-white">
+          <div>
+            <h2 className="text-xl font-bold text-gray-900 mb-0.5">Dónde Está el Mercado: TAM por Región y Penetración</h2>
+            <p className="text-xs text-gray-400">Cada barra = empresas del TAM regional. Parte coloreada = clientes activos nuestros. Las 5 primeras CCAA concentran el {top5TamPct}% del TAM total.</p>
+          </div>
+          <div className="flex-1 min-h-0 flex flex-col gap-1.5 justify-center">
+            {byTam.map((r, i) => {
+              const tamBarPct = Math.round((r.tam / maxTam) * 100);
+              const penetrationPct = Math.round((r.active / r.tam) * 100 * 10) / 10;
+              const fillPct = Math.round((r.active / r.tam) * 100);
+              const barColor = r.archetype === "partner-led"
+                ? "bg-violet-500" : r.archetype === "outbound-responsive"
+                ? "bg-sky-400" : "bg-emerald-500";
+              return (
+                <div key={r.code}>
+                  {i === 5 && (
+                    <div className="border-t border-dashed border-gray-300 my-1.5" />
+                  )}
+                  <div className="flex items-center gap-3">
+                    <div className="w-40 text-xs text-gray-700 font-medium truncate shrink-0">{r.ccaa}</div>
+                    {/* Outer container sized to TAM share */}
+                    <div className="flex-1 relative h-6">
+                      <div
+                        className="h-full rounded bg-gray-100 overflow-hidden relative"
+                        style={{ width: `${tamBarPct}%` }}
+                      >
+                        {/* Colored fill = active / tam */}
+                        <div
+                          className={cn("h-full rounded-l", barColor)}
+                          style={{ width: `${fillPct}%` }}
+                        />
+                      </div>
+                    </div>
+                    <div className="w-44 text-xs tabular-nums shrink-0 flex items-center gap-2">
+                      <span className="text-gray-500">{r.tam.toLocaleString()} emp.</span>
+                      <span className={cn("font-semibold", penColorClass(penetrationPct))}>
+                        {penetrationPct}%
                       </span>
+                    </div>
+                    {i === 4 && (
+                      <div className="text-[10px] font-bold text-red-600 bg-red-50 px-2 py-0.5 rounded shrink-0">← {top5TamPct}% TAM</div>
                     )}
                   </div>
                 </div>
-                <div className="w-32 text-xs tabular-nums shrink-0 flex items-center gap-1">
-                  {!isLong && <span className="text-gray-700 font-medium">{fmtEur(r.mrr)}</span>}
-                  <span className="text-gray-400">({pct}%)</span>
-                </div>
-                {i === 4 && (
-                  <div className="text-[10px] font-bold text-red-600 bg-red-50 px-2 py-0.5 rounded shrink-0">← 55%</div>
-                )}
-              </div>
-            </div>
-          );
-        })}
-      </div>
-      <div className="flex gap-4 text-[10px] text-gray-400">
-        <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded bg-violet-500 inline-block" /> Partner-Led</span>
-        <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded bg-sky-500 inline-block" /> Outbound-Responsive</span>
-        <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded bg-emerald-500 inline-block" /> Multi-Channel</span>
-      </div>
-      <InsightBox text="Cataluña + Madrid + Andalucía + Baleares + Asturias = 55% del MRR. Priorizar estas regiones no es opcional — es matemática." />
-    </div>,
+              );
+            })}
+          </div>
+          <div className="flex gap-4 text-[10px] text-gray-400">
+            <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded bg-violet-500 inline-block" /> Partner-Led</span>
+            <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded bg-sky-400 inline-block" /> Outbound-Responsive</span>
+            <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded bg-emerald-500 inline-block" /> Multi-Channel</span>
+            <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded bg-gray-200 inline-block" /> Sin cubrir</span>
+          </div>
+          <InsightBox text="Las regiones con barra larga y poco color son la mayor oportunidad: mercado enorme, apenas tocado. Madrid (17K TAM, 8.5% pen.) y Andalucía (11.7K, 5.5%) lideran la lista de trabajo pendiente." />
+        </div>
+      );
+    })(),
 
     // ── Slide 5 — Los 3 Arquetipos ─────────────────────────────────────────────
     <div key="s5" className="flex flex-col h-full p-8 gap-4 bg-white">
@@ -1699,7 +1700,8 @@ function SlidesView() {
                         <td className="border border-gray-100 bg-gray-50 p-2 text-xs font-medium text-gray-700">{s.label}</td>
                         {top4Provs.map((p) => {
                           const prov = r.provenances.find((pv) => pv.label === p.label);
-                          const provArpu = prov ? fmtEur(prov.arpu) : "—";
+                          // ARPU comes from size segment; D2W comes from the channel
+                          const sizeArpu = fmtEur(s.arpu);
                           const provD2w = prov?.d2w ?? null;
                           const d2wColor = provD2w === null
                             ? "text-gray-400"
@@ -1710,7 +1712,7 @@ function SlidesView() {
                             : "text-red-600";
                           return (
                             <td key={p.label} className="border border-gray-100 p-2 text-center">
-                              <div className="text-xs font-semibold text-gray-800 tabular-nums">{provArpu}</div>
+                              <div className="text-xs font-semibold text-gray-800 tabular-nums">{sizeArpu}</div>
                               <div className={cn("text-[10px] tabular-nums font-medium", d2wColor)}>
                                 {provD2w !== null ? `${provD2w}%` : "—"}
                               </div>
@@ -1722,7 +1724,7 @@ function SlidesView() {
                   </tbody>
                 </table>
               </div>
-              <p className="text-[9px] text-gray-400 italic">ARPU y D2W por canal (datos por segmento de tamaño disponibles en columna izquierda)</p>
+              <p className="text-[9px] text-gray-400 italic">ARPU = valor del segmento de tamaño · D2W = tasa de conversión del canal</p>
             </div>
           </div>
           <InsightBox actionable={!!actionable} text={actionable || `Analizar oportunidades de crecimiento en ${r.ccaa}.`} />
@@ -1766,7 +1768,7 @@ function SlidesView() {
           </div>
         ))}
       </div>
-      <InsightBox text="Las mejores oportunidades no son las regiones más grandes — son las que combinan mercado sin tocar con capacidad de conversión probada. Madrid y Cataluña lideran por volumen; País Vasco y Baleares por eficiencia." />
+      <InsightBox text="Estas 5 regiones representan más del 70% del TAM nacional sin penetrar. La acción es asimétrica: 80% de los recursos aquí generan 80% del crecimiento potencial. Cualquier otra región es optimización marginal." />
     </div>,
   ];
 
