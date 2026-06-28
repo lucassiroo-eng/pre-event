@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/lib/auth";
 import { STRATEGY_EMAILS } from "@/lib/strategyStore";
 import { REGIONS, NATIONAL, type RegionPlaybook } from "@/lib/playbookData";
+import { SECTORS } from "@/lib/sectorMap";
 import {
   ChevronRight, TrendingUp, TrendingDown, Users, Building2, Handshake,
   Target, AlertCircle, HelpCircle, BarChart3, Zap, ArrowUpRight, Presentation,
@@ -533,7 +534,9 @@ function SummaryView() {
   const sorted = useMemo(() => [...REGIONS].sort((a, b) => b.mrr - a.mrr), []);
 
   const nationalIndustries = useMemo(() => {
-    const map = new Map<string, { active: number; mrr: number }>();
+    const map = new Map<string, { active: number; mrr: number }>(
+      SECTORS.map((s) => [s, { active: 0, mrr: 0 }]),
+    );
     for (const r of REGIONS) {
       for (const ind of r.industries) {
         const g = map.get(ind.label) ?? { active: 0, mrr: 0 };
@@ -544,7 +547,6 @@ function SummaryView() {
     }
     return [...map.entries()]
       .map(([label, g]) => ({ label, active: g.active, mrr: g.mrr, arpu: g.active > 0 ? Math.round(g.mrr / g.active) : 0 }))
-      .filter((r) => r.active > 0)
       .sort((a, b) => b.mrr - a.mrr);
   }, []);
 
@@ -885,7 +887,9 @@ function SlidesView() {
 
   // ── Aggregated industry data ─────────────────────────────────────────────────
   const nationalIndustries = useMemo(() => {
-    const map = new Map<string, { active: number; mrr: number }>();
+    const map = new Map<string, { active: number; mrr: number }>(
+      SECTORS.map((s) => [s, { active: 0, mrr: 0 }]),
+    );
     for (const r of REGIONS) {
       for (const ind of r.industries) {
         const g = map.get(ind.label) ?? { active: 0, mrr: 0 };
