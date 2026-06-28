@@ -571,7 +571,7 @@ export function StrategyPage() {
       const set = new Set<string>();
       companies.forEach((r) => { const v = String(r[key]); if (v && v !== "—") set.add(v); });
       const arr = Array.from(set).sort();
-      if (key === "_industry") arr.sort((a, b) => (STANDARD_INDUSTRIES.indexOf(a) + 1 || 99) - (STANDARD_INDUSTRIES.indexOf(b) + 1 || 99));
+      if (key === "_industry") arr.sort((a, b) => (STANDARD_INDUSTRIES.indexOf(a as never) + 1 || 99) - (STANDARD_INDUSTRIES.indexOf(b as never) + 1 || 99));
       if (key === "_ccaa") arr.sort((a, b) => (CCAA_LIST.indexOf(a) + 1 || 99) - (CCAA_LIST.indexOf(b) + 1 || 99));
       if (key === "_segment") arr.sort((a, b) => (SEGMENT_ORDER.indexOf(a) + 1 || 99) - (SEGMENT_ORDER.indexOf(b) + 1 || 99));
       opts[key] = arr;
