@@ -353,6 +353,11 @@ function computeBestPractices(regions: RegionPlaybook[]): BestPractice[] {
   const raw: RawBp[] = [];
 
   for (const region of regions) {
+    // Adaptive minimum: 1/15th of region total, clamped 8–30.
+    // Lets smaller regions (Murcia ~131, Galicia ~331) and narrower partner
+    // channels surface BPs that would otherwise be filtered by the hard 30 floor.
+    const minActive = Math.max(8, Math.min(30, Math.floor(region.active / 15)));
+
     // Shared helper: qualify one cross-cell as a best practice candidate
     function qualifyCell(
       cross: Record<string, Record<string, { active: number; pipeline: number; mrr: number }>>,
@@ -377,8 +382,7 @@ function computeBestPractices(regions: RegionPlaybook[]): BestPractice[] {
       for (const ch of Object.keys(cross)) {
         for (const seg of Object.keys(cross[ch])) {
           const cell = cross[ch][seg];
-          // Require ≥30 active clients for statistical significance
-          if (!cell || cell.active < 30) continue;
+          if (!cell || cell.active < minActive) continue;
           const l2w      = cell.pipeline > 0 ? cell.active / cell.pipeline : 0;
           const arpu     = cell.active   > 0 ? cell.mrr    / cell.active   : 0;
           const chL2wAvg = channelL2wAvg[ch]  ?? 0;
@@ -712,39 +716,111 @@ export function computePlaybook(
     const partnerMrr = partnerProvs.reduce((s, p) => s + p.mrr, 0);
     const partnerShare = totalMrr > 0 ? Math.round((partnerMrr / totalMrr) * 100) : 0;
 
-    // Canal principal — lead with the decisive number
+    // Canal principal
     const leadChannel = topProv?.label ?? "—";
     const topL2w = topProv && topProv.pipeline > 0
       ? Math.round(topProv.active / topProv.pipeline * 1000) / 10 : null;
     const secondProv = provenances[1];
-    const leadChannelDetail = topProv
-      ? `${topProv.label}: ${topProv.mrrShare}% MRR · ${fmtN(topProv.arpu)} ARPU · L2W ${topL2w ?? "—"}% · ${topProv.active} clientes.` +
-        (secondProv ? ` 2º: ${secondProv.label} (${secondProv.mrrShare}% MRR, ${fmtN(secondProv.arpu)} ARPU).` : "")
-      : "Sin canal dominante identificado.";
+    const leadChannelDetail = (() => {
+      if (!topProv) return "Sin canal dominante identificado.";
+      const parts: string[] = [];
+      // How dominant is the top channel?
+      if (topProv.mrrShare >= 40) {
+        parts.push(`${topProv.label} concentra casi la mitad de los ingresos regionales y es el canal con mayor peso.`);
+      } else if (topProv.mrrShare >= 25) {
+        parts.push(`${topProv.label} lidera el mix de canales, aportando más de un cuarto del MRR regional.`);
+      } else {
+        parts.push(`El mix está bastante equilibrado; ${topProv.label} encabeza con ligera ventaja.`);
+      }
+      // ARPU vs regional average
+      if (topProv.arpu > arpu * 1.25) {
+        parts.push(`Es además el canal con mayor ticket unitario, lo que indica que capta empresas más grandes o con más módulos contratados.`);
+      } else if (topProv.arpu < arpu * 0.8) {
+        parts.push(`Su ticket es inferior a la media regional — atrae muchos clientes pequeños. El volumen compensa el tamaño.`);
+      }
+      // Second channel comparison
+      if (secondProv) {
+        const arpuRatio = topProv.arpu > 0 && secondProv.arpu > 0 ? secondProv.arpu / topProv.arpu : 1;
+        if (arpuRatio > 1.3) {
+          parts.push(`${secondProv.label} genera menos volumen pero cierra deals más caros — canal a desarrollar activamente.`);
+        } else if (arpuRatio < 0.7) {
+          parts.push(`${secondProv.label} complementa con mayor volumen de leads, aunque con un perfil de empresa más pequeño.`);
+        } else {
+          parts.push(`${secondProv.label} ocupa el segundo lugar con un perfil similar.`);
+        }
+      }
+      return parts.join(" ");
+    })();
 
-    // Partners — actionable
+    // Partners
     const partnerPlay = partnerShare >= 30
       ? `Motor clave — ${partnerShare}% del MRR regional`
       : partnerShare >= 15
       ? `Creciendo — ${partnerShare}% MRR, escalar`
       : "Sin activar — oportunidad de captación";
-    const partnerDetail = partnerProvs.length > 0
-      ? partnerProvs.map((p) => `${p.label}: ${p.active} clientes · ${fmtN(p.mrr)} MRR · ARPU ${fmtN(p.arpu)}`).join(". ") + "."
-      : partners.length > 0
-      ? "Presencia baja. Partners registrados: " + partners.slice(0, 3).map((p) => `${p.name} (${p.clients} cl.)`).join(", ") + "."
-      : "Sin partners activos en esta región.";
+    const partnerDetail = (() => {
+      if (partnerProvs.length === 0) {
+        if (partners.length > 0) {
+          return `El canal partner tiene presencia incipiente. Partners identificados: ${partners.slice(0, 3).map((p) => p.name).join(", ")}. Hay margen de desarrollo.`;
+        }
+        return "No hay partners activos en esta región. Es una oportunidad de canal sin explotar.";
+      }
+      const parts: string[] = [];
+      // Overall partner weight
+      if (partnerShare >= 40) {
+        parts.push(`Los partners son el pilar de esta región — generan más de ${partnerShare}% del MRR y no se puede crecer sin ellos.`);
+      } else if (partnerShare >= 25) {
+        parts.push(`El canal partner es relevante, aportando más de un cuarto de los ingresos regionales.`);
+      } else {
+        parts.push(`Los partners aportan alrededor de ${partnerShare}% del MRR — un complemento que merece más inversión.`);
+      }
+      // Characterize each partner channel
+      for (const p of partnerProvs) {
+        const ratio = arpu > 0 ? p.arpu / arpu : 1;
+        if (p.label === "Santander") {
+          if (ratio > 1.1) parts.push(`Santander atrae un perfil de empresa por encima de la media, con buen ticket.`);
+          else parts.push(`Santander genera volumen de clientes aunque con ticket contenido.`);
+        } else if (p.label === "Telefónica") {
+          if (p.active < 20) parts.push(`Telefónica tiene pocos clientes activos pero cada deal vale más — señal de empresas medianas o grandes.`);
+          else parts.push(`Telefónica aporta un bloque relevante de clientes.`);
+        } else if (ratio > 1.3) {
+          parts.push(`Channel Partners cierra deals más grandes que la media regional — son los que traen las cuentas de mayor valor.`);
+        } else {
+          parts.push(`Channel Partners complementa con un perfil variado de empresas.`);
+        }
+      }
+      return parts.join(" ");
+    })();
 
-    // Tamaño — highlight sweet spot (best ARPU × volume balance)
+    // Tamaño
     const sizesWithData = sizes.filter((s) => s.active >= 5);
     const topArpuSize  = [...sizesWithData].sort((a, b) => b.arpu - a.arpu)[0];
     const topVolSize   = [...sizesWithData].sort((a, b) => b.active - a.active)[0];
     const topMrrSize   = [...sizesWithData].sort((a, b) => b.mrrShare - a.mrrShare)[0];
     const sizeFocus    = topMrrSize?.label ?? topArpuSize?.label ?? "—";
-    const sizeDetail   = sizesWithData.length > 0
-      ? `Mayor MRR: ${topMrrSize?.label ?? "—"} (${topMrrSize?.mrrShare ?? 0}% · ${fmtN(topMrrSize?.arpu ?? 0)} ARPU). ` +
-        `Mayor ARPU: ${topArpuSize?.label ?? "—"} (${fmtN(topArpuSize?.arpu ?? 0)} · ${topArpuSize?.active ?? 0} clientes). ` +
-        `Mayor volumen: ${topVolSize?.label ?? "—"} (${topVolSize?.active ?? 0} clientes).`
-      : "Sin datos de segmentación.";
+    const sizeDetail = (() => {
+      if (!sizesWithData.length) return "Sin datos de segmentación suficientes.";
+      const parts: string[] = [];
+      // Primary MRR driver
+      if (topMrrSize) {
+        const isAlsoTopArpu = topArpuSize?.label === topMrrSize.label;
+        if (isAlsoTopArpu) {
+          parts.push(`El segmento ${topMrrSize.label} concentra la mayor parte de los ingresos y además tiene el ticket más alto — es el punto óptimo de esta región.`);
+        } else {
+          parts.push(`El segmento ${topMrrSize.label} es el mayor generador de ingresos.`);
+        }
+      }
+      // ARPU opportunity: biggest gap between top ARPU and top volume
+      if (topArpuSize && topVolSize && topArpuSize.label !== topVolSize.label) {
+        const arpuGap = topVolSize.arpu > 0 ? Math.round(topArpuSize.arpu / topVolSize.arpu) : 1;
+        if (arpuGap >= 2) {
+          parts.push(`Mover deals del segmento ${topVolSize.label} al ${topArpuSize.label} multiplicaría el ticket por ${arpuGap} — sin cambiar el número de clientes.`);
+        } else {
+          parts.push(`${topArpuSize.label} tiene el mayor ticket, aunque el volumen principal está en ${topVolSize.label}.`);
+        }
+      }
+      return parts.join(" ");
+    })();
 
     // ARPU
     const arpuVsNat = natArpu > 0 ? arpu / natArpu : 1;
@@ -754,21 +830,47 @@ export function computePlaybook(
       : arpuVsNat <= 0.9
       ? `${fmtN(arpu)} (${arpuPct}% vs nacional)`
       : `${fmtN(arpu)} (en línea con nacional)`;
-    const arpuDetail = `Nacional: ${fmtN(natArpu)}. ` +
-      (topArpuSize ? `Segmento premium: ${topArpuSize.label} (${fmtN(topArpuSize.arpu)}). ` : "") +
-      (topVolSize && topVolSize.label !== topArpuSize?.label ? `Segmento volumen: ${topVolSize.label} (${fmtN(topVolSize.arpu)}).` : "");
+    const arpuDetail = (() => {
+      const parts: string[] = [];
+      if (arpuVsNat >= 1.15) {
+        parts.push(`El ticket medio regional es superior a la media nacional — esta región cierra contratos más grandes o con más módulos activados.`);
+      } else if (arpuVsNat <= 0.85) {
+        parts.push(`El ticket medio está por debajo de la media nacional. Hay margen de mejora con upsell en clientes existentes o cambiando el mix hacia segmentos más grandes.`);
+      } else {
+        parts.push(`El ticket medio está en línea con el resto de España.`);
+      }
+      if (topArpuSize && topVolSize && topArpuSize.label !== topVolSize.label) {
+        parts.push(`La palanca de ARPU más directa es empujar más pipeline hacia ${topArpuSize.label}, que genera el mayor valor por cliente.`);
+      }
+      return parts.join(" ");
+    })();
 
-    // Conversión — L2W (structural) + D2W (funnel)
+    // Conversión
     const hubspotCount = rows.length;
     const l2wRegion  = hubspotCount > 0 ? Math.round(activeCount / hubspotCount * 1000) / 10 : 0;
-    const natL2w     = 18.6; // national baseline
+    const natL2w     = 18.6;
     const l2wDiff    = Math.round((l2wRegion - natL2w) * 10) / 10;
     const d2wDiff    = Math.round((d2w - natD2w) * 10) / 10;
-    const conversionAssessment =
-      `L2W ${l2wRegion}% (${l2wDiff >= 0 ? "+" : ""}${l2wDiff}pp vs nac.) · D2W ${d2w}% (${d2wDiff >= 0 ? "+" : ""}${d2wDiff}pp vs nac.)` +
-      (l2wRegion < natL2w - 2 ? " — revisar conversión estructural." : d2w < natD2w - 4 ? " — revisar cierre." : ".");
+    const conversionAssessment = (() => {
+      const parts: string[] = [];
+      // L2W — structural conversion
+      if (l2wRegion > natL2w + 2) {
+        parts.push(`De cada 100 empresas que entran al funnel, ${l2wRegion} son hoy clientes activos — por encima de la media nacional.`);
+      } else if (l2wRegion < natL2w - 3) {
+        parts.push(`Solo ${l2wRegion} de cada 100 empresas del pipeline son clientes activos — por debajo de la media. Hay pérdida estructural en algún punto del funnel.`);
+      } else {
+        parts.push(`La ratio de conversión de leads a clientes activos está en línea con la media nacional.`);
+      }
+      // D2W — demo-to-win
+      if (d2w > natD2w + 4) {
+        parts.push(`El equipo de ventas cierra bien: de cada 10 demos, más de ${Math.round(d2w / 10)} se convierten en venta.`);
+      } else if (d2w < natD2w - 5) {
+        parts.push(`El cierre post-demo es débil — hay oportunidad de mejora en la fase final del ciclo de venta.`);
+      }
+      return parts.join(" ");
+    })();
 
-    // Industria (nuevo) — top 2 por MRR + mejor L2W con muestra suficiente
+    // Industria
     const sortedByMrr   = [...industries].filter((i) => i.active > 0).sort((a, b) => b.mrr - a.mrr);
     const sortedByL2w   = [...industries]
       .filter((i) => (i.pipeline ?? 0) >= 20)
@@ -778,13 +880,23 @@ export function computePlaybook(
     const topIndMrr2 = sortedByMrr[1];
     const topIndL2w  = sortedByL2w[0];
     const industryFocus = topIndMrr1?.label ?? "—";
-    const industryDetail = [
-      topIndMrr1 ? `Top MRR: ${topIndMrr1.label} (${fmtN(topIndMrr1.mrr)} · ${topIndMrr1.active} clientes · ${fmtN(topIndMrr1.arpu)} ARPU)` : null,
-      topIndMrr2 ? `2º: ${topIndMrr2.label} (${fmtN(topIndMrr2.mrr)} · ${fmtN(topIndMrr2.arpu)} ARPU)` : null,
-      topIndL2w && topIndL2w.label !== topIndMrr1?.label
-        ? `Mejor L2W: ${topIndL2w.label} (${Math.round(topIndL2w.l2w * 1000) / 10}% · ${topIndL2w.active} clientes)`
-        : null,
-    ].filter(Boolean).join(". ") + ".";
+    const industryDetail = (() => {
+      if (!topIndMrr1) return "Sin datos de industria suficientes.";
+      const parts: string[] = [];
+      parts.push(`${topIndMrr1.label} es el sector que más ingresos genera en esta región, con ${topIndMrr1.active} clientes activos.`);
+      if (topIndMrr2) {
+        const arpuComp = topIndMrr1.arpu > 0 && topIndMrr2.arpu > 0 ? topIndMrr2.arpu / topIndMrr1.arpu : 1;
+        if (arpuComp > 1.3) {
+          parts.push(`${topIndMrr2.label} factura menos en total pero con un ticket por cliente claramente superior.`);
+        } else {
+          parts.push(`${topIndMrr2.label} sigue en segunda posición con un perfil similar.`);
+        }
+      }
+      if (topIndL2w && topIndL2w.label !== topIndMrr1.label) {
+        parts.push(`Donde mejor convierte el funnel es en ${topIndL2w.label} — señal de buen encaje de producto en ese sector.`);
+      }
+      return parts.join(" ");
+    })();
 
     const keyInsights = generateKeyInsights(
       ccaa, activeCount, totalMrr, arpu, d2w, penetration, tam, provenances, sizes, natArpu, natD2w,
