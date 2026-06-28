@@ -11,6 +11,7 @@ import { TablePage } from "@/pages/Table";
 import { EnrichmentPage } from "@/pages/Enrichment";
 import { AdminPage } from "@/pages/Admin";
 import { StrategyPage } from "@/pages/Strategy";
+import { PlaybookPage } from "@/pages/Playbook";
 
 export function App() {
   return (
@@ -60,6 +61,7 @@ function AuthGate() {
             <Route path="/enrichment" element={<EnrichmentPage />} />
             <Route path="/admin" element={<AdminPage />} />
             <Route path="/strategy" element={<StrategyPage />} />
+            <Route path="/playbook" element={<PlaybookPage />} />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
         </main>

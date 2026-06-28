@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import {
-  LayoutDashboard, Table2, Sparkles, Shield, LogOut, Globe, ChevronDown, FlaskConical, Target,
+  LayoutDashboard, Table2, Sparkles, Shield, LogOut, Globe, ChevronDown, FlaskConical, Target, BookOpen,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/lib/auth";
@@ -68,9 +68,10 @@ export function Sidebar() {
 
       <nav className="flex-1 space-y-0.5 px-3 py-4">
         {MAIN_NAV.map(renderItem)}
-        {selectedCountry === "es" && !!email && STRATEGY_EMAILS.includes(email) && (
-          renderItem({ to: "/strategy", labelKey: "Strategy", icon: Target })
-        )}
+        {selectedCountry === "es" && !!email && STRATEGY_EMAILS.includes(email) && (<>
+          {renderItem({ to: "/strategy", labelKey: "Strategy", icon: Target })}
+          {renderItem({ to: "/playbook", labelKey: "Playbook", icon: BookOpen })}
+        </>)}
       </nav>
 
       {isAdmin && (
