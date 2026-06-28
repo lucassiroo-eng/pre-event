@@ -727,8 +727,8 @@ function SummaryView() {
         </div>
       </div>
 
-      {/* Archetype summary */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-3">
+      {/* Archetype summary — only shown in CCAA view */}
+      {summaryTab === "ccaa" && <div className="grid grid-cols-1 lg:grid-cols-3 gap-3">
         {(["partner-led", "outbound-responsive", "multi-channel"] as const).map((arch) => {
           const regions = REGIONS.filter((r) => r.archetype === arch);
           const totalMrr = regions.reduce((s, r) => s + r.mrr, 0);
@@ -749,7 +749,7 @@ function SummaryView() {
             </div>
           );
         })}
-      </div>
+      </div>}
     </div>
   );
 }
