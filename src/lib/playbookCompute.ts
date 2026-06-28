@@ -344,39 +344,51 @@ function computeBestPractices(regions: RegionPlaybook[]): BestPractice[] {
   const raw: RawBp[] = [];
 
   for (const region of regions) {
-    // ── Canal × Tamaño ──────────────────────────────────────────────────────
-    if (region.channelSizeCross) {
-      const cross = region.channelSizeCross;
-      // Compute per-channel L2W average (across all sizes)
+    // Shared helper: qualify one cross-cell as a best practice candidate
+    function qualifyCell(
+      cross: Record<string, Record<string, { active: number; pipeline: number; mrr: number }>>,
+      dimension: "size" | "industry",
+      getTam: (seg: string) => number,
+    ) {
+      // Per-channel averages (weighted across all segments)
       const channelL2wAvg: Record<string, number> = {};
       const channelArpuAvg: Record<string, number> = {};
       for (const ch of Object.keys(cross)) {
         const cells = Object.values(cross[ch]);
         const totalPipeline = cells.reduce((s, c) => s + c.pipeline, 0);
-        const totalActive = cells.reduce((s, c) => s + c.active, 0);
-        const totalMrr = cells.reduce((s, c) => s + c.mrr, 0);
-        channelL2wAvg[ch] = totalPipeline > 0 ? totalActive / totalPipeline : 0;
-        channelArpuAvg[ch] = totalActive > 0 ? totalMrr / totalActive : 0;
+        const totalActive   = cells.reduce((s, c) => s + c.active, 0);
+        const totalMrr      = cells.reduce((s, c) => s + c.mrr, 0);
+        channelL2wAvg[ch]  = totalPipeline > 0 ? totalActive / totalPipeline : 0;
+        channelArpuAvg[ch] = totalActive   > 0 ? totalMrr   / totalActive   : 0;
       }
+
+      type Candidate = RawBp & { score: number };
+      const candidates: Candidate[] = [];
+
       for (const ch of Object.keys(cross)) {
         for (const seg of Object.keys(cross[ch])) {
           const cell = cross[ch][seg];
-          if (!cell || cell.pipeline < 10) continue;
-          const l2w = cell.pipeline > 0 ? cell.active / cell.pipeline : 0;
-          const arpu = cell.active > 0 ? cell.mrr / cell.active : 0;
-          const chL2wAvg = channelL2wAvg[ch] ?? 0;
+          // Require ≥30 active clients for statistical significance
+          if (!cell || cell.active < 30) continue;
+          const l2w      = cell.pipeline > 0 ? cell.active / cell.pipeline : 0;
+          const arpu     = cell.active   > 0 ? cell.mrr    / cell.active   : 0;
+          const chL2wAvg = channelL2wAvg[ch]  ?? 0;
           const chArpuAvg = channelArpuAvg[ch] ?? 0;
-          const isGood = (chL2wAvg > 0 && l2w >= chL2wAvg * 1.25) ||
-                         (chArpuAvg > 0 && arpu >= chArpuAvg * 1.35);
-          if (!isGood) continue;
-          const tam = region.tamBySizeForRegion?.[seg] ?? 0;
+          // "Above normal" = 30%+ uplift on L2W or ARPU vs channel average
+          const l2wUplift  = chL2wAvg  > 0 ? l2w  / chL2wAvg  : 0;
+          const arpuUplift = chArpuAvg > 0 ? arpu / chArpuAvg : 0;
+          if (l2wUplift < 1.3 && arpuUplift < 1.3) continue;
+          const tam = getTam(seg);
           const tamAvailable = tam > 0 ? Math.max(0, tam - cell.active) : 0;
-          raw.push({
-            key: `${ch}|size|${seg}`,
+          // Score: primary uplift × log(active) — rewards significance + magnitude
+          const uplift = Math.max(l2wUplift, arpuUplift);
+          const score  = uplift * Math.log(cell.active + 1);
+          candidates.push({
+            key: `${ch}|${dimension}|${seg}`,
             regionName: region.ccaa,
             regionCode: region.code,
             channel: ch,
-            dimension: "size",
+            dimension,
             segment: seg,
             l2w: Math.round(l2w * 1000) / 10,
             regionL2wAvg: Math.round(chL2wAvg * 1000) / 10,
@@ -386,56 +398,38 @@ function computeBestPractices(regions: RegionPlaybook[]): BestPractice[] {
             active: cell.active,
             mrr: cell.mrr,
             tamAvailable,
+            score,
           });
         }
       }
+      return candidates;
     }
 
-    // ── Canal × Industria ───────────────────────────────────────────────────
-    if (region.channelIndustryCross) {
-      const cross = region.channelIndustryCross;
-      const channelL2wAvg: Record<string, number> = {};
-      const channelArpuAvg: Record<string, number> = {};
-      for (const ch of Object.keys(cross)) {
-        const cells = Object.values(cross[ch]);
-        const totalPipeline = cells.reduce((s, c) => s + c.pipeline, 0);
-        const totalActive = cells.reduce((s, c) => s + c.active, 0);
-        const totalMrr = cells.reduce((s, c) => s + c.mrr, 0);
-        channelL2wAvg[ch] = totalPipeline > 0 ? totalActive / totalPipeline : 0;
-        channelArpuAvg[ch] = totalActive > 0 ? totalMrr / totalActive : 0;
-      }
-      for (const ch of Object.keys(cross)) {
-        for (const seg of Object.keys(cross[ch])) {
-          const cell = cross[ch][seg];
-          if (!cell || cell.pipeline < 10) continue;
-          const l2w = cell.pipeline > 0 ? cell.active / cell.pipeline : 0;
-          const arpu = cell.active > 0 ? cell.mrr / cell.active : 0;
-          const chL2wAvg = channelL2wAvg[ch] ?? 0;
-          const chArpuAvg = channelArpuAvg[ch] ?? 0;
-          const isGood = (chL2wAvg > 0 && l2w >= chL2wAvg * 1.25) ||
-                         (chArpuAvg > 0 && arpu >= chArpuAvg * 1.35);
-          if (!isGood) continue;
-          const tam = region.tamBySectorForRegion?.[seg] ?? 0;
-          const tamAvailable = tam > 0 ? Math.max(0, tam - cell.active) : 0;
-          raw.push({
-            key: `${ch}|industry|${seg}`,
-            regionName: region.ccaa,
-            regionCode: region.code,
-            channel: ch,
-            dimension: "industry",
-            segment: seg,
-            l2w: Math.round(l2w * 1000) / 10,
-            regionL2wAvg: Math.round(chL2wAvg * 1000) / 10,
-            arpu: Math.round(arpu),
-            regionArpuAvg: Math.round(chArpuAvg),
-            pipeline: cell.pipeline,
-            active: cell.active,
-            mrr: cell.mrr,
-            tamAvailable,
-          });
-        }
-      }
+    // ── Collect all candidates per region, cap at top 3 ────────────────────
+    type ScoredBp = RawBp & { score: number };
+    const regionCandidates: ScoredBp[] = [];
+
+    if (region.channelSizeCross) {
+      regionCandidates.push(...qualifyCell(
+        region.channelSizeCross,
+        "size",
+        (seg) => region.tamBySizeForRegion?.[seg] ?? 0,
+      ));
     }
+    if (region.channelIndustryCross) {
+      regionCandidates.push(...qualifyCell(
+        region.channelIndustryCross,
+        "industry",
+        (seg) => region.tamBySectorForRegion?.[seg] ?? 0,
+      ));
+    }
+
+    // Top 3 per region by score
+    const top3 = regionCandidates
+      .sort((a, b) => b.score - a.score)
+      .slice(0, 3);
+
+    raw.push(...top3);
   }
 
   // Group by key to detect cross-region patterns
