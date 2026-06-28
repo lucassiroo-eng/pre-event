@@ -134,7 +134,7 @@ function SizeTable({ sizes, tamBySize }: { sizes: RegionPlaybook["sizes"]; tamBy
           <tr className="border-b border-border text-left">
             <th className="py-2 pr-3 font-semibold text-muted-foreground">Segmento</th>
             <th className="py-2 px-3 font-semibold text-muted-foreground text-right">TAM</th>
-            <th className="py-2 px-3 font-semibold text-muted-foreground text-right">Pipeline</th>
+            <th className="py-2 px-3 font-semibold text-muted-foreground text-right">Leads</th>
             <th className="py-2 px-3 font-semibold text-muted-foreground text-right">Pen.</th>
             <th className="py-2 px-3 font-semibold text-muted-foreground text-right">Clientes</th>
             <th className="py-2 px-3 font-semibold text-muted-foreground text-right">MRR</th>
@@ -144,8 +144,9 @@ function SizeTable({ sizes, tamBySize }: { sizes: RegionPlaybook["sizes"]; tamBy
         </thead>
         <tbody>
           {sizes.map((s) => {
-            const tam = tamBySize?.[s.label] ?? 0;
-            const pen = tam > 0 ? Math.round(s.active / tam * 1000) / 10 : null;
+            const isXs = s.label === "XS (1-19)";
+            const tam = !isXs ? (tamBySize?.[s.label] ?? 0) : 0;
+            const pen = !isXs && tam > 0 ? Math.round(s.active / tam * 1000) / 10 : null;
             const l2w = s.pipeline > 0 ? Math.round(s.active / s.pipeline * 1000) / 10 : null;
             return (
               <tr key={s.label} className="border-b border-border/50 hover:bg-muted/30">
@@ -154,7 +155,7 @@ function SizeTable({ sizes, tamBySize }: { sizes: RegionPlaybook["sizes"]; tamBy
                     {s.label}
                   </span>
                 </td>
-                <td className="py-2 px-3 text-right tabular-nums text-muted-foreground">{tam > 0 ? tam.toLocaleString() : "—"}</td>
+                <td className="py-2 px-3 text-right tabular-nums text-muted-foreground">{!isXs && tam > 0 ? tam.toLocaleString() : "—"}</td>
                 <td className="py-2 px-3 text-right tabular-nums">{s.pipeline.toLocaleString()}</td>
                 <td className="py-2 px-3 text-right tabular-nums text-muted-foreground">{pen !== null ? `${pen}%` : "—"}</td>
                 <td className="py-2 px-3 text-right tabular-nums font-medium">{s.active.toLocaleString()}</td>
@@ -192,7 +193,7 @@ function ProvenanceTable({ provenances }: { provenances: RegionPlaybook["provena
         <thead>
           <tr className="border-b border-border text-left">
             <th className="py-2 pr-3 font-semibold text-muted-foreground">Canal</th>
-            <th className="py-2 px-3 font-semibold text-muted-foreground text-right">Pipeline</th>
+            <th className="py-2 px-3 font-semibold text-muted-foreground text-right">Leads</th>
             <th className="py-2 px-3 font-semibold text-muted-foreground text-right">Clientes</th>
             <th className="py-2 px-3 font-semibold text-muted-foreground text-right">MRR</th>
             <th className="py-2 px-3 font-semibold text-muted-foreground text-right">ARPU</th>
@@ -246,7 +247,7 @@ function IndustryTable({ industries, nationalArpu, tamBySector }: {
           <tr className="border-b border-border text-left">
             <th className="py-2 pr-3 font-semibold text-muted-foreground">Industria</th>
             <th className="py-2 px-3 font-semibold text-muted-foreground text-right">TAM</th>
-            <th className="py-2 px-3 font-semibold text-muted-foreground text-right">Pipeline</th>
+            <th className="py-2 px-3 font-semibold text-muted-foreground text-right">Leads</th>
             <th className="py-2 px-3 font-semibold text-muted-foreground text-right">Pen.</th>
             <th className="py-2 px-3 font-semibold text-muted-foreground text-right">Clientes</th>
             <th className="py-2 px-3 font-semibold text-muted-foreground text-right">MRR</th>
@@ -809,7 +810,7 @@ function SummaryView({ data }: { data: PlaybookLiveData }) {
                 <tr className="border-b border-border text-left">
                   <th className="py-2 pr-3 font-semibold text-muted-foreground">Industria</th>
                   <th className="py-2 px-3 font-semibold text-muted-foreground text-right">TAM</th>
-                  <th className="py-2 px-3 font-semibold text-muted-foreground text-right">Pipeline</th>
+                  <th className="py-2 px-3 font-semibold text-muted-foreground text-right">Leads</th>
                   <th className="py-2 px-3 font-semibold text-muted-foreground text-right">Pen.</th>
                   <th className="py-2 px-3 font-semibold text-muted-foreground text-right">Clientes</th>
                   <th className="py-2 px-3 font-semibold text-muted-foreground text-right">MRR</th>
@@ -852,7 +853,7 @@ function SummaryView({ data }: { data: PlaybookLiveData }) {
                 <tr className="border-b border-border text-left">
                   <th className="py-2 pr-3 font-semibold text-muted-foreground">Tamaño</th>
                   <th className="py-2 px-3 font-semibold text-muted-foreground text-right">TAM</th>
-                  <th className="py-2 px-3 font-semibold text-muted-foreground text-right">Pipeline</th>
+                  <th className="py-2 px-3 font-semibold text-muted-foreground text-right">Leads</th>
                   <th className="py-2 px-3 font-semibold text-muted-foreground text-right">Pen.</th>
                   <th className="py-2 px-3 font-semibold text-muted-foreground text-right">Clientes</th>
                   <th className="py-2 px-3 font-semibold text-muted-foreground text-right">MRR</th>
@@ -862,12 +863,13 @@ function SummaryView({ data }: { data: PlaybookLiveData }) {
               </thead>
               <tbody>
                 {nationalSizes.map((s) => {
-                  const tam = data.tamBySize[s.label] ?? 0;
-                  const pen = tam > 0 ? Math.round(s.active / tam * 1000) / 10 : null;
+                  const isXs = s.label === "XS (1-19)";
+                  const tam = !isXs ? (data.tamBySize[s.label] ?? 0) : 0;
+                  const pen = !isXs && tam > 0 ? Math.round(s.active / tam * 1000) / 10 : null;
                   return (
                     <tr key={s.label} className="border-b border-border/50 hover:bg-muted/30">
                       <td className="py-2 pr-3 font-medium">{s.label}</td>
-                      <td className="py-2 px-3 text-right tabular-nums text-muted-foreground">{tam > 0 ? tam.toLocaleString() : "—"}</td>
+                      <td className="py-2 px-3 text-right tabular-nums text-muted-foreground">{!isXs && tam > 0 ? tam.toLocaleString() : "—"}</td>
                       <td className="py-2 px-3 text-right tabular-nums">{s.pipeline.toLocaleString()}</td>
                       <td className="py-2 px-3 text-right tabular-nums text-muted-foreground">{pen !== null ? `${pen}%` : "—"}</td>
                       <td className="py-2 px-3 text-right tabular-nums">{s.active.toLocaleString()}</td>
