@@ -99,10 +99,13 @@ export async function fetchSasorTotal(): Promise<number> {
   return data ? parseInt(data.value, 10) || 0 : 0;
 }
 
-// Breakdown: { byCcaa: { "Cataluña": 12000 }, bySize: { "S (1-50)": 60000 } }
+// Breakdown: { byCcaa: { "Cataluña": 12000 }, bySize: { "S (1-50)": 60000 }, bySector, byCcaaBySize, byCcaaBySector }
 export interface SasorBreakdown {
   byCcaa: Record<string, number>;
   bySize: Record<string, number>;
+  bySector: Record<string, number>;
+  byCcaaBySize: Record<string, Record<string, number>>;
+  byCcaaBySector: Record<string, Record<string, number>>;
 }
 
 // Try reading precomputed breakdown from meta first; fall back to fetching all rows.
@@ -140,7 +143,7 @@ export async function fetchSasorBreakdown(): Promise<SasorBreakdown | null> {
     from += PAGE;
   }
 
-  const breakdown: SasorBreakdown = { byCcaa, bySize };
+  const breakdown: SasorBreakdown = { byCcaa, bySize, bySector: {}, byCcaaBySize: {}, byCcaaBySector: {} };
 
   // Cache it in meta for future loads
   await supa.from("strategy_meta").upsert({
@@ -247,6 +250,49 @@ export async function importStrategyCsv(
   return { inserted, errors };
 }
 
+// English CCAA names as used in Eduard's TAM CSV → Spanish canonical names
+const TAM_CCAA_EN_TO_ES: Record<string, string> = {
+  "COMMUNITY OF MADRID":   "Comunidad de Madrid",
+  "CATALONIA":             "Cataluña",
+  "ANDALUSIA":             "Andalucía",
+  "VALENCIAN COMMUNITY":   "Comunidad Valenciana",
+  "BASQUE COUNTRY":        "País Vasco",
+  "GALICIA":               "Galicia",
+  "CANARY ISLANDS":        "Canarias",
+  "CASTILE AND LEON":      "Castilla y León",
+  "REGION OF MURCIA":      "Región de Murcia",
+  "CASTILE-LA MANCHA":     "Castilla-La Mancha",
+  "ARAGON":                "Aragón",
+  "BALEARIC ISLANDS":      "Islas Baleares",
+  "ASTURIAS":              "Principado de Asturias",
+  "NAVARRE":               "Comunidad Foral de Navarra",
+  "EXTREMADURA":           "Extremadura",
+  "CANTABRIA":             "Cantabria",
+  "LA RIOJA":              "La Rioja",
+  "CEUTA":                 "Ceuta",
+  "MELILLA":               "Melilla",
+};
+
+function normTamCcaa(raw: string, city: string, resolveFn: (c: string) => { ccaa: string }): string {
+  const upper = (raw ?? "").trim().toUpperCase();
+  // Direct English→Spanish match (Eduard's TAM format)
+  if (upper && TAM_CCAA_EN_TO_ES[upper]) return TAM_CCAA_EN_TO_ES[upper];
+  // Already in Spanish (old format or manual entry)
+  if (raw && raw.trim()) return raw.trim();
+  // Last resort: resolve from city
+  const resolved = resolveFn(city);
+  return resolved.ccaa === "Unknown" ? "Others" : resolved.ccaa;
+}
+
+function tamSizeSegment(employees: number): string {
+  if (employees >= 1   && employees <= 19)  return "XS (1-19)";
+  if (employees >= 20  && employees <= 50)  return "S (20-50)";
+  if (employees >= 51  && employees <= 200) return "M (51-200)";
+  if (employees >= 201 && employees <= 500) return "L (201-500)";
+  if (employees > 500)                      return "XL (500+)";
+  return "Unknown";
+}
+
 export async function importSasorCsv(
   rows: Record<string, string>[],
   onProgress?: (done: number, total: number) => void,
@@ -254,12 +300,12 @@ export async function importSasorCsv(
   if (!supa) return { inserted: 0, errors: 0 };
 
   const { resolveCCAA } = await import("./strategyCCAA");
-  const { standardIndustry } = await import("./strategyNormalize");
+  const { cnaeToSector, hubspotToSector } = await import("./sectorMap");
 
   const { error: delErr } = await supa.from("strategy_sasor").delete().neq("id", 0);
   if (delErr) throw new Error(`No se pudo limpiar la tabla TAM: ${delErr.message}`);
 
-  // Deduplicate by company_id (SASOR has one row per company already, but just in case)
+  // Deduplicate by company_id
   const seen = new Set<string>();
   const deduped = rows.filter((r) => {
     const id = r.company_id ?? r.hubspot_company_id ?? "";
@@ -268,49 +314,48 @@ export async function importSasorCsv(
     return true;
   });
 
+  // Pre-compute breakdown (same pass as insert to avoid double iteration)
+  const byCcaa: Record<string, number> = {};
+  const bySize: Record<string, number> = {};
+  const bySector: Record<string, number> = {};
+  const byCcaaBySize: Record<string, Record<string, number>> = {};
+  const byCcaaBySector: Record<string, Record<string, number>> = {};
+
   let inserted = 0;
   let errors = 0;
   const BATCH = 500;
 
   for (let i = 0; i < deduped.length; i += BATCH) {
     const batch = deduped.slice(i, i + BATCH).map((r) => {
-      // Support both SASOR column names and generic names
-      const name =
-        r.property_name ?? r.property_company_legal_name ?? r.company_name ?? r.nombre ?? "";
-      const city =
-        r.property_city ?? r.ciudad ?? r.city ?? "";
-      const rawIndustry =
-        r.property_industry ?? r.industria ?? r.sector ?? "";
-      const rawEmployees =
-        r.property_numberofemployees ?? r.employees ?? r.empleados ?? "0";
-      const employees = parseInt(rawEmployees, 10) || 0;
-      const hubspotId =
-        r.company_id ?? r.hubspot_company_id ?? "";
+      const name      = r.property_name ?? r.property_company_legal_name ?? r.company_name ?? r.nombre ?? "";
+      const city      = r.MUNICIPIO ?? r.property_city ?? r.ciudad ?? r.city ?? "";
+      const hubspotId = r.company_id ?? r.hubspot_company_id ?? "";
 
-      // Resolve CCAA from city
-      const ccaaResult = resolveCCAA(city);
-      const ccaa = ccaaResult.ccaa === "Unknown" ? "Others" : ccaaResult.ccaa;
+      // CCAA: prefer direct column (100% filled in Eduard's TAM), fallback to city resolution
+      const rawCcaa   = r.CCAA ?? r.ccaa ?? "";
+      const ccaa      = normTamCcaa(rawCcaa, city, resolveCCAA);
 
-      // Normalize industry
-      const sector = standardIndustry(rawIndustry);
+      // Industry: prefer CNAE 4-digit (new TAM), fallback to property_industry string
+      const rawCnae   = (r.CNAE ?? "").trim();
+      const sector    = rawCnae
+        ? cnaeToSector(rawCnae)
+        : hubspotToSector(r.property_industry ?? r.industria ?? r.sector ?? "");
 
-      // Compute size segment
-      let size_segment = "Unknown";
-      if (employees >= 1   && employees <= 19)  size_segment = "XS (1-19)";
-      else if (employees >= 20  && employees <= 50)  size_segment = "S (20-50)";
-      else if (employees >= 51  && employees <= 200) size_segment = "M (51-200)";
-      else if (employees >= 201 && employees <= 500) size_segment = "L (201-500)";
-      else if (employees > 500)                      size_segment = "XL (500+)";
+      // Size
+      const rawEmp    = r.property_numberofemployees ?? r.employees ?? r.empleados ?? "0";
+      const employees = parseInt(rawEmp, 10) || 0;
+      const size_segment = tamSizeSegment(employees);
 
-      return {
-        hubspot_company_id: hubspotId,
-        company_name: name,
-        sector,
-        size_segment,
-        ccaa,
-        employees,
-        city,
-      };
+      // Accumulate breakdown
+      byCcaa[ccaa]        = (byCcaa[ccaa] ?? 0) + 1;
+      bySize[size_segment] = (bySize[size_segment] ?? 0) + 1;
+      bySector[sector]    = (bySector[sector] ?? 0) + 1;
+      if (!byCcaaBySize[ccaa]) byCcaaBySize[ccaa] = {};
+      byCcaaBySize[ccaa][size_segment] = (byCcaaBySize[ccaa][size_segment] ?? 0) + 1;
+      if (!byCcaaBySector[ccaa]) byCcaaBySector[ccaa] = {};
+      byCcaaBySector[ccaa][sector] = (byCcaaBySector[ccaa][sector] ?? 0) + 1;
+
+      return { hubspot_company_id: hubspotId, company_name: name, sector, size_segment, ccaa, employees, city };
     });
 
     const { error } = await supa.from("strategy_sasor").insert(batch);
@@ -323,27 +368,10 @@ export async function importSasorCsv(
     onProgress?.(i + batch.length, deduped.length);
   }
 
-  // Store total + precomputed breakdown in meta (avoids full re-fetch later)
-  const byCcaa: Record<string, number> = {};
-  const bySize: Record<string, number> = {};
-  for (const r of deduped) {
-    const city = r.property_city ?? r.ciudad ?? r.city ?? "";
-    const rawEmp = r.property_numberofemployees ?? r.employees ?? r.empleados ?? "0";
-    const emp = parseInt(rawEmp, 10) || 0;
-    const { resolveCCAA: rc } = await import("./strategyCCAA");
-    const ccaa = rc(city).ccaa === "Unknown" ? "Others" : rc(city).ccaa;
-    let seg = "Unknown";
-    if (emp >= 1   && emp <= 50)  seg = "S (1-50)";
-    else if (emp >= 51  && emp <= 200) seg = "M (51-200)";
-    else if (emp >= 201 && emp <= 500) seg = "L (201-500)";
-    else if (emp > 500)                seg = "XL (500+)";
-    byCcaa[ccaa] = (byCcaa[ccaa] ?? 0) + 1;
-    bySize[seg]  = (bySize[seg]  ?? 0) + 1;
-  }
-
+  // Cache breakdown in meta so fetchSasorBreakdown() returns it instantly
   await Promise.all([
-    supa.from("strategy_meta").upsert({ key: "sasor_total", value: String(deduped.length), updated_at: new Date().toISOString() }),
-    supa.from("strategy_meta").upsert({ key: "sasor_breakdown", value: JSON.stringify({ byCcaa, bySize }), updated_at: new Date().toISOString() }),
+    supa.from("strategy_meta").upsert({ key: "sasor_total",     value: String(deduped.length),          updated_at: new Date().toISOString() }),
+    supa.from("strategy_meta").upsert({ key: "sasor_breakdown", value: JSON.stringify({ byCcaa, bySize, bySector, byCcaaBySize, byCcaaBySector }), updated_at: new Date().toISOString() }),
   ]);
 
   return { inserted, errors };

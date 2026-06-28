@@ -36,6 +36,7 @@ export interface RegionPlaybook {
   industries: {
     label: string;
     active: number;
+    pipeline?: number;
     mrr: number;
     arpu: number;
   }[];
@@ -56,6 +57,10 @@ export interface RegionPlaybook {
   };
   keyInsights: string[];
   openQuestions: string[];
+  tamBySizeForRegion?: Record<string, number>;
+  tamBySectorForRegion?: Record<string, number>;
+  channelSizeCross?: Record<string, Record<string, { active: number; pipeline: number; mrr: number }>>;
+  channelIndustryCross?: Record<string, Record<string, { active: number; pipeline: number; mrr: number }>>;
 }
 
 export const NATIONAL = {

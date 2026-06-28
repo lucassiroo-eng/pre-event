@@ -1,13 +1,14 @@
 import { useMemo, useState, useRef, useEffect, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/lib/auth";
-import { STRATEGY_EMAILS } from "@/lib/strategyStore";
-import { REGIONS, NATIONAL, type RegionPlaybook } from "@/lib/playbookData";
+import { type RegionPlaybook } from "@/lib/playbookData";
 import { SECTORS } from "@/lib/sectorMap";
+import { usePlaybookLiveData } from "@/hooks/usePlaybookLiveData";
+import { type PlaybookLiveData } from "@/lib/playbookCompute";
 import {
   ChevronRight, TrendingUp, TrendingDown, Users, Building2, Handshake,
   Target, AlertCircle, HelpCircle, BarChart3, Zap, ArrowUpRight, Presentation,
-  ChevronLeft, Maximize2, Minimize2,
+  ChevronLeft, Maximize2, Minimize2, Upload, RefreshCw, CheckCircle2, AlertTriangle,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -101,71 +102,72 @@ function KpiCard({ label, value, formatted, baseline, baselineLabel, higherIsBet
   baseline: number; baselineLabel?: string; higherIsBetter?: boolean;
 }) {
   const d = delta(value, baseline);
-  const color = kpiColor(value, baseline, higherIsBetter);
+  const color = baseline > 0 ? kpiColor(value, baseline, higherIsBetter) : "text-foreground";
   return (
     <div className="rounded-xl border border-border bg-card shadow-sm p-4">
       <div className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/70 mb-1">{label}</div>
       <div className={cn("text-2xl font-bold tabular-nums leading-none", color)}>{formatted}</div>
-      <div className="flex items-center gap-1.5 mt-2">
-        {d.positive === higherIsBetter ? (
-          <TrendingUp className="h-3 w-3 text-emerald-600" />
-        ) : (
-          <TrendingDown className="h-3 w-3 text-red-500" />
-        )}
-        <span className={cn("text-xs font-medium tabular-nums", d.positive === higherIsBetter ? "text-emerald-600" : "text-red-500")}>
-          {d.label}{typeof baseline === "number" && baseline < 100 ? "pp" : ""}
-        </span>
-        <span className="text-[10px] text-muted-foreground">vs {baselineLabel ?? "nacional"}</span>
-      </div>
+      {baseline > 0 && (
+        <div className="flex items-center gap-1.5 mt-2">
+          {d.positive === higherIsBetter ? (
+            <TrendingUp className="h-3 w-3 text-emerald-600" />
+          ) : (
+            <TrendingDown className="h-3 w-3 text-red-500" />
+          )}
+          <span className={cn("text-xs font-medium tabular-nums", d.positive === higherIsBetter ? "text-emerald-600" : "text-red-500")}>
+            {d.label}{typeof baseline === "number" && baseline < 100 ? "pp" : ""}
+          </span>
+          <span className="text-[10px] text-muted-foreground">vs {baselineLabel ?? "nacional"}</span>
+        </div>
+      )}
     </div>
   );
 }
 
 // ── Size table ───────────────────────────────────────────────────────────────
 
-function SizeTable({ sizes }: { sizes: RegionPlaybook["sizes"] }) {
-  const maxMrr = Math.max(...sizes.map((s) => s.mrr));
+function SizeTable({ sizes, tamBySize }: { sizes: RegionPlaybook["sizes"]; tamBySize?: Record<string, number> }) {
   return (
     <div className="overflow-x-auto">
       <table className="w-full text-xs">
         <thead>
           <tr className="border-b border-border text-left">
             <th className="py-2 pr-3 font-semibold text-muted-foreground">Segmento</th>
+            <th className="py-2 px-3 font-semibold text-muted-foreground text-right">TAM</th>
             <th className="py-2 px-3 font-semibold text-muted-foreground text-right">Pipeline</th>
-            <th className="py-2 px-3 font-semibold text-muted-foreground text-right">Activos</th>
+            <th className="py-2 px-3 font-semibold text-muted-foreground text-right">Pen.</th>
+            <th className="py-2 px-3 font-semibold text-muted-foreground text-right">Clientes</th>
             <th className="py-2 px-3 font-semibold text-muted-foreground text-right">MRR</th>
             <th className="py-2 px-3 font-semibold text-muted-foreground text-right">ARPU</th>
-            <th className="py-2 px-3 font-semibold text-muted-foreground text-right">D2W</th>
-            <th className="py-2 pl-3 font-semibold text-muted-foreground">% MRR</th>
+            <th className="py-2 pl-3 font-semibold text-muted-foreground text-right">L2W</th>
           </tr>
         </thead>
         <tbody>
-          {sizes.map((s) => (
-            <tr key={s.label} className="border-b border-border/50 hover:bg-muted/30">
-              <td className="py-2 pr-3">
-                <span className={cn("inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-semibold ring-1 ring-inset", segmentBadge(s.label))}>
-                  {s.label}
-                </span>
-              </td>
-              <td className="py-2 px-3 text-right tabular-nums">{s.pipeline.toLocaleString()}</td>
-              <td className="py-2 px-3 text-right tabular-nums">{s.active.toLocaleString()}</td>
-              <td className="py-2 px-3 text-right tabular-nums font-medium">{fmtEur(s.mrr)}</td>
-              <td className="py-2 px-3 text-right tabular-nums">{fmtEur(s.arpu)}</td>
-              <td className={cn("py-2 px-3 text-right tabular-nums font-medium",
-                s.d2w === null ? "text-muted-foreground/40" : s.d2w >= 80 ? "text-emerald-700" : s.d2w >= 65 ? "text-amber-700" : "text-red-600"
-              )}>
-                {s.d2w !== null ? `${s.d2w}%` : "—"}
-              </td>
-              <td className="py-2 pl-3 w-24">
-                <div className="flex items-center gap-2">
-                  <div className="flex-1 h-2 rounded-full bg-muted overflow-hidden">
-                    <div className="h-full rounded-full bg-primary/60" style={{ width: barWidth(s.mrr, maxMrr) }} />
-                  </div>
-                  <span className="text-[10px] tabular-nums text-muted-foreground w-7 text-right">{s.mrrShare}%</span>
-                </div>
-              </td>
-            </tr>
-          ))}
+          {sizes.map((s) => {
+            const tam = tamBySize?.[s.label] ?? 0;
+            const pen = tam > 0 ? Math.round(s.active / tam * 1000) / 10 : null;
+            const l2w = s.pipeline > 0 ? Math.round(s.active / s.pipeline * 1000) / 10 : null;
+            return (
+              <tr key={s.label} className="border-b border-border/50 hover:bg-muted/30">
+                <td className="py-2 pr-3">
+                  <span className={cn("inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-semibold ring-1 ring-inset", segmentBadge(s.label))}>
+                    {s.label}
+                  </span>
+                </td>
+                <td className="py-2 px-3 text-right tabular-nums text-muted-foreground">{tam > 0 ? tam.toLocaleString() : "—"}</td>
+                <td className="py-2 px-3 text-right tabular-nums">{s.pipeline.toLocaleString()}</td>
+                <td className="py-2 px-3 text-right tabular-nums text-muted-foreground">{pen !== null ? `${pen}%` : "—"}</td>
+                <td className="py-2 px-3 text-right tabular-nums font-medium">{s.active.toLocaleString()}</td>
+                <td className="py-2 px-3 text-right tabular-nums font-medium">{fmtEur(s.mrr)}</td>
+                <td className="py-2 px-3 text-right tabular-nums">{fmtEur(s.arpu)}</td>
+                <td className={cn("py-2 pl-3 text-right tabular-nums font-medium",
+                  l2w === null ? "text-muted-foreground/40" : l2w >= 20 ? "text-emerald-700" : l2w >= 12 ? "text-amber-700" : "text-red-600"
+                )}>
+                  {l2w !== null ? `${l2w}%` : "—"}
+                </td>
+              </tr>
+            );
+          })}
         </tbody>
       </table>
     </div>
@@ -183,7 +185,7 @@ function segmentBadge(s: string): string {
 // ── Provenance table ─────────────────────────────────────────────────────────
 
 function ProvenanceTable({ provenances }: { provenances: RegionPlaybook["provenances"] }) {
-  const maxMrr = Math.max(...provenances.map((p) => p.mrr));
+  const maxMrr = Math.max(...provenances.map((p) => p.mrr), 1);
   return (
     <div className="overflow-x-auto">
       <table className="w-full text-xs">
@@ -191,36 +193,39 @@ function ProvenanceTable({ provenances }: { provenances: RegionPlaybook["provena
           <tr className="border-b border-border text-left">
             <th className="py-2 pr-3 font-semibold text-muted-foreground">Canal</th>
             <th className="py-2 px-3 font-semibold text-muted-foreground text-right">Pipeline</th>
-            <th className="py-2 px-3 font-semibold text-muted-foreground text-right">Activos</th>
+            <th className="py-2 px-3 font-semibold text-muted-foreground text-right">Clientes</th>
             <th className="py-2 px-3 font-semibold text-muted-foreground text-right">MRR</th>
             <th className="py-2 px-3 font-semibold text-muted-foreground text-right">ARPU</th>
-            <th className="py-2 px-3 font-semibold text-muted-foreground text-right">D2W</th>
+            <th className="py-2 px-3 font-semibold text-muted-foreground text-right">L2W</th>
             <th className="py-2 pl-3 font-semibold text-muted-foreground">% MRR</th>
           </tr>
         </thead>
         <tbody>
-          {provenances.map((p) => (
-            <tr key={p.label} className="border-b border-border/50 hover:bg-muted/30">
-              <td className="py-2 pr-3 font-medium">{p.label}</td>
-              <td className="py-2 px-3 text-right tabular-nums">{p.pipeline.toLocaleString()}</td>
-              <td className="py-2 px-3 text-right tabular-nums">{p.active.toLocaleString()}</td>
-              <td className="py-2 px-3 text-right tabular-nums font-medium">{fmtEur(p.mrr)}</td>
-              <td className="py-2 px-3 text-right tabular-nums">{fmtEur(p.arpu)}</td>
-              <td className={cn("py-2 px-3 text-right tabular-nums font-medium",
-                p.d2w === null ? "text-muted-foreground/40" : p.d2w >= 80 ? "text-emerald-700" : p.d2w >= 65 ? "text-amber-700" : "text-red-600"
-              )}>
-                {p.d2w !== null ? `${p.d2w}%` : "—"}
-              </td>
-              <td className="py-2 pl-3 w-24">
-                <div className="flex items-center gap-2">
-                  <div className="flex-1 h-2 rounded-full bg-muted overflow-hidden">
-                    <div className="h-full rounded-full bg-primary/60" style={{ width: barWidth(p.mrr, maxMrr) }} />
+          {provenances.map((p) => {
+            const l2w = p.pipeline > 0 ? Math.round(p.active / p.pipeline * 1000) / 10 : null;
+            return (
+              <tr key={p.label} className="border-b border-border/50 hover:bg-muted/30">
+                <td className="py-2 pr-3 font-medium">{p.label}</td>
+                <td className="py-2 px-3 text-right tabular-nums">{p.pipeline.toLocaleString()}</td>
+                <td className="py-2 px-3 text-right tabular-nums">{p.active.toLocaleString()}</td>
+                <td className="py-2 px-3 text-right tabular-nums font-medium">{fmtEur(p.mrr)}</td>
+                <td className="py-2 px-3 text-right tabular-nums">{fmtEur(p.arpu)}</td>
+                <td className={cn("py-2 px-3 text-right tabular-nums font-medium",
+                  l2w === null ? "text-muted-foreground/40" : l2w >= 20 ? "text-emerald-700" : l2w >= 12 ? "text-amber-700" : "text-red-600"
+                )}>
+                  {l2w !== null ? `${l2w}%` : "—"}
+                </td>
+                <td className="py-2 pl-3 w-24">
+                  <div className="flex items-center gap-2">
+                    <div className="flex-1 h-2 rounded-full bg-muted overflow-hidden">
+                      <div className="h-full rounded-full bg-primary/60" style={{ width: barWidth(p.mrr, maxMrr) }} />
+                    </div>
+                    <span className="text-[10px] tabular-nums text-muted-foreground w-7 text-right">{p.mrrShare}%</span>
                   </div>
-                  <span className="text-[10px] tabular-nums text-muted-foreground w-7 text-right">{p.mrrShare}%</span>
-                </div>
-              </td>
-            </tr>
-          ))}
+                </td>
+              </tr>
+            );
+          })}
         </tbody>
       </table>
     </div>
@@ -229,41 +234,48 @@ function ProvenanceTable({ provenances }: { provenances: RegionPlaybook["provena
 
 // ── Industry table ───────────────────────────────────────────────────────────
 
-function IndustryTable({ industries }: { industries: RegionPlaybook["industries"] }) {
-  const maxMrr = Math.max(...industries.map((i) => i.mrr));
-  const totalMrr = industries.reduce((s, i) => s + i.mrr, 0);
+function IndustryTable({ industries, nationalArpu, tamBySector }: {
+  industries: RegionPlaybook["industries"];
+  nationalArpu: number;
+  tamBySector?: Record<string, number>;
+}) {
   return (
     <div className="overflow-x-auto">
       <table className="w-full text-xs">
         <thead>
           <tr className="border-b border-border text-left">
             <th className="py-2 pr-3 font-semibold text-muted-foreground">Industria</th>
-            <th className="py-2 px-3 font-semibold text-muted-foreground text-right">Activos</th>
+            <th className="py-2 px-3 font-semibold text-muted-foreground text-right">TAM</th>
+            <th className="py-2 px-3 font-semibold text-muted-foreground text-right">Pipeline</th>
+            <th className="py-2 px-3 font-semibold text-muted-foreground text-right">Pen.</th>
+            <th className="py-2 px-3 font-semibold text-muted-foreground text-right">Clientes</th>
             <th className="py-2 px-3 font-semibold text-muted-foreground text-right">MRR</th>
             <th className="py-2 px-3 font-semibold text-muted-foreground text-right">ARPU</th>
-            <th className="py-2 pl-3 font-semibold text-muted-foreground">Peso</th>
+            <th className="py-2 pl-3 font-semibold text-muted-foreground text-right">L2W</th>
           </tr>
         </thead>
         <tbody>
           {industries.map((ind) => {
-            const share = totalMrr > 0 ? Math.round((ind.mrr / totalMrr) * 100) : 0;
+            const tam = tamBySector?.[ind.label] ?? 0;
+            const pen = tam > 0 ? Math.round(ind.active / tam * 1000) / 10 : null;
+            const l2w = (ind.pipeline ?? 0) > 0 ? Math.round(ind.active / ind.pipeline! * 1000) / 10 : null;
             return (
               <tr key={ind.label} className="border-b border-border/50 hover:bg-muted/30">
                 <td className="py-2 pr-3 font-medium">{ind.label}</td>
-                <td className="py-2 px-3 text-right tabular-nums">{ind.active}</td>
+                <td className="py-2 px-3 text-right tabular-nums text-muted-foreground">{tam > 0 ? tam.toLocaleString() : "—"}</td>
+                <td className="py-2 px-3 text-right tabular-nums">{ind.pipeline?.toLocaleString() ?? "—"}</td>
+                <td className="py-2 px-3 text-right tabular-nums text-muted-foreground">{pen !== null ? `${pen}%` : "—"}</td>
+                <td className="py-2 px-3 text-right tabular-nums font-medium">{ind.active.toLocaleString()}</td>
                 <td className="py-2 px-3 text-right tabular-nums font-medium">{fmtEur(ind.mrr)}</td>
-                <td className={cn("py-2 px-3 text-right tabular-nums font-medium",
-                  ind.arpu >= NATIONAL.arpu * 1.5 ? "text-emerald-700" : ind.arpu <= NATIONAL.arpu * 0.7 ? "text-red-600" : ""
+                <td className={cn("py-2 px-3 text-right tabular-nums",
+                  ind.arpu >= nationalArpu * 1.5 ? "text-emerald-700" : ind.arpu <= nationalArpu * 0.7 ? "text-red-600" : ""
                 )}>
                   {fmtEur(ind.arpu)}
                 </td>
-                <td className="py-2 pl-3 w-32">
-                  <div className="flex items-center gap-1.5">
-                    <div className="flex-1 h-2 rounded-full bg-muted overflow-hidden">
-                      <div className="h-full rounded-full bg-primary/40" style={{ width: barWidth(ind.mrr, maxMrr) }} />
-                    </div>
-                    <span className="text-[10px] tabular-nums text-muted-foreground w-7 text-right">{share}%</span>
-                  </div>
+                <td className={cn("py-2 pl-3 text-right tabular-nums font-medium",
+                  l2w === null ? "text-muted-foreground/40" : l2w >= 20 ? "text-emerald-700" : l2w >= 12 ? "text-amber-700" : "text-red-600"
+                )}>
+                  {l2w !== null ? `${l2w}%` : "—"}
                 </td>
               </tr>
             );
@@ -358,9 +370,109 @@ function OpenQuestion({ text }: { text: string }) {
   );
 }
 
+// ── Channel cross-table ──────────────────────────────────────────────────────
+
+function ChannelCrossTable({
+  cross,
+  dimLabels,
+  dimName: _dimName,
+}: {
+  cross: Record<string, Record<string, { active: number; pipeline: number; mrr: number }>>;
+  dimLabels: string[];
+  dimName: string;
+}) {
+  const channels = Object.keys(cross).sort((a, b) => {
+    const mrrA = Object.values(cross[a]).reduce((s, v) => s + v.mrr, 0);
+    const mrrB = Object.values(cross[b]).reduce((s, v) => s + v.mrr, 0);
+    return mrrB - mrrA;
+  });
+  const activeDims = dimLabels.filter((d) => channels.some((ch) => cross[ch][d]?.pipeline > 0));
+  if (!channels.length || !activeDims.length) return null;
+
+  // Per channel, compute min/max ARPU, L2W for color scaling
+  const channelStats = Object.fromEntries(channels.map((ch) => {
+    const cells = activeDims.map((d) => cross[ch][d]).filter(Boolean);
+    const l2ws  = cells.map((c) => c.pipeline > 0 ? c.active / c.pipeline : 0);
+    const arpus = cells.filter((c) => c.active > 0).map((c) => c.mrr / c.active);
+    return [ch, {
+      minL2w: Math.min(...l2ws), maxL2w: Math.max(...l2ws),
+      minArpu: Math.min(...arpus, Infinity), maxArpu: Math.max(...arpus, 0),
+    }];
+  }));
+
+  function scaleColor(val: number, min: number, max: number, higher: boolean): string {
+    if (max === min) return "";
+    const t = (val - min) / (max - min);
+    const score = higher ? t : 1 - t;
+    if (score >= 0.7) return "bg-emerald-50 text-emerald-800";
+    if (score >= 0.4) return "bg-amber-50 text-amber-800";
+    return "bg-red-50 text-red-700";
+  }
+
+  return (
+    <div className="overflow-x-auto">
+      <table className="w-full text-[11px]">
+        <thead>
+          <tr className="border-b border-border">
+            <th className="py-1.5 pr-3 text-left font-semibold text-muted-foreground w-32">Canal</th>
+            {activeDims.map((d) => (
+              <th key={d} className="py-1.5 px-2 text-center font-semibold text-muted-foreground whitespace-nowrap max-w-[100px]">
+                <span className="block truncate max-w-[90px] mx-auto">{d.replace(" & ", " &​")}</span>
+              </th>
+            ))}
+          </tr>
+          <tr className="border-b border-border/40 text-[10px] text-muted-foreground/60">
+            <td className="py-1 pr-3">L2W / ARPU</td>
+            {activeDims.map((d) => <td key={d} className="py-1 px-2 text-center">pen · l2w · arpu</td>)}
+          </tr>
+        </thead>
+        <tbody>
+          {channels.map((ch) => {
+            const stats = channelStats[ch];
+            return (
+              <tr key={ch} className="border-b border-border/30 hover:bg-muted/20">
+                <td className="py-1.5 pr-3 font-medium text-foreground">{ch}</td>
+                {activeDims.map((d) => {
+                  const cell = cross[ch]?.[d];
+                  if (!cell || cell.pipeline === 0) {
+                    return <td key={d} className="py-1.5 px-2 text-center text-muted-foreground/30">—</td>;
+                  }
+                  const l2w  = Math.round(cell.active / cell.pipeline * 1000) / 10;
+                  const arpu = cell.active > 0 ? Math.round(cell.mrr / cell.active) : 0;
+                  const pen  = cell.pipeline; // raw pipeline count — no TAM cross-data
+                  return (
+                    <td key={d} className="py-1.5 px-1">
+                      <div className="flex flex-col gap-0.5 items-center">
+                        <span className="text-[10px] text-muted-foreground tabular-nums">{pen}</span>
+                        <span className={cn("px-1.5 py-0.5 rounded text-[10px] tabular-nums font-medium w-full text-center",
+                          scaleColor(l2w, stats.minL2w * 100, stats.maxL2w * 100, true)
+                        )}>
+                          {l2w}%
+                        </span>
+                        <span className={cn("px-1.5 py-0.5 rounded text-[10px] tabular-nums w-full text-center",
+                          cell.active > 0 ? scaleColor(arpu, stats.minArpu, stats.maxArpu, true) : "text-muted-foreground/30"
+                        )}>
+                          {cell.active > 0 ? fmtEur(arpu) : "—"}
+                        </span>
+                      </div>
+                    </td>
+                  );
+                })}
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
 // ── Region detail panel ──────────────────────────────────────────────────────
 
-function RegionDetail({ region }: { region: RegionPlaybook }) {
+function RegionDetail({ region, national }: {
+  region: RegionPlaybook;
+  national: { arpu: number; penetration: number; mrr: number; tam: number; hubspot: number; active: number }
+}) {
   const [activeTab, setActiveTab] = useState<"overview" | "channels" | "segments" | "industries" | "partners">("overview");
   const whitespace = region.tam - region.active;
   const whitespaceRatio = 100 - region.penetration;
@@ -397,10 +509,10 @@ function RegionDetail({ region }: { region: RegionPlaybook }) {
 
       {/* KPI grid */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-        <KpiCard label="ARPU" value={region.arpu} formatted={fmtEur(region.arpu)} baseline={NATIONAL.arpu} />
-        <KpiCard label="Demo → Won" value={region.d2w} formatted={`${region.d2w}%`} baseline={NATIONAL.d2w} />
-        <KpiCard label="Penetración" value={region.penetration} formatted={`${region.penetration}%`} baseline={NATIONAL.penetration} />
-        <KpiCard label="€/TAM" value={region.mrrPerTam} formatted={`${region.mrrPerTam.toFixed(1)}€`} baseline={NATIONAL.mrr / NATIONAL.tam} />
+        <KpiCard label="Clientes" value={region.active} formatted={region.active.toLocaleString()} baseline={0} baselineLabel="" higherIsBetter />
+        <KpiCard label="ARPU" value={region.arpu} formatted={fmtEur(region.arpu)} baseline={national.arpu} baselineLabel={`nacional: ${fmtEur(national.arpu)}`} higherIsBetter />
+        <KpiCard label="L2W" value={Math.round(region.active/region.hubspot*1000)/10} formatted={`${Math.round(region.active/region.hubspot*1000)/10}%`} baseline={Math.round(national.active/national.hubspot*1000)/10} baselineLabel={`nacional: ${Math.round(national.active/national.hubspot*1000)/10}%`} higherIsBetter />
+        <KpiCard label="Penetración" value={region.penetration} formatted={`${region.penetration}%`} baseline={national.penetration} baselineLabel={`nacional: ${national.penetration}%`} higherIsBetter />
       </div>
 
       {/* Tab bar */}
@@ -486,6 +598,26 @@ function RegionDetail({ region }: { region: RegionPlaybook }) {
             <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2">Diagnóstico de canal</h3>
             <div className="text-xs text-muted-foreground leading-relaxed">{region.strategy.leadChannelDetail}</div>
           </div>
+          {region.channelSizeCross && Object.keys(region.channelSizeCross).length > 0 && (
+            <div className="rounded-xl border border-border bg-card shadow-sm p-4">
+              <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-3">Canal × Tamaño</h3>
+              <ChannelCrossTable
+                cross={region.channelSizeCross}
+                dimLabels={["XS (1-19)", "S (20-50)", "M (51-200)", "L (201-500)", "XL (500+)"]}
+                dimName="Tamaño"
+              />
+            </div>
+          )}
+          {region.channelIndustryCross && Object.keys(region.channelIndustryCross).length > 0 && (
+            <div className="rounded-xl border border-border bg-card shadow-sm p-4">
+              <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-3">Canal × Industria</h3>
+              <ChannelCrossTable
+                cross={region.channelIndustryCross}
+                dimLabels={["Tecnología & Software","Industria & Manufactura","Construcción & Inmobiliaria","Agroalimentario","Hostelería & Turismo","Salud","Distribución & Retail","Transporte & Logística","Servicios Profesionales","Educación & Formación","Energía & Medioambiente","Otros Servicios"]}
+                dimName="Industria"
+              />
+            </div>
+          )}
         </div>
       )}
 
@@ -493,7 +625,7 @@ function RegionDetail({ region }: { region: RegionPlaybook }) {
         <div className="space-y-4">
           <div className="rounded-xl border border-border bg-card shadow-sm p-4">
             <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-3">Desglose por tamaño de empresa</h3>
-            <SizeTable sizes={region.sizes} />
+            <SizeTable sizes={region.sizes} tamBySize={region.tamBySizeForRegion} />
           </div>
           <div className="rounded-xl border border-border bg-card shadow-sm p-4">
             <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2">Estrategia de tamaño</h3>
@@ -506,7 +638,7 @@ function RegionDetail({ region }: { region: RegionPlaybook }) {
         <div className="space-y-4">
           <div className="rounded-xl border border-border bg-card shadow-sm p-4">
             <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-3">Top industrias por MRR</h3>
-            <IndustryTable industries={region.industries} />
+            <IndustryTable industries={region.industries} nationalArpu={national.arpu} tamBySector={region.tamBySectorForRegion} />
           </div>
         </div>
       )}
@@ -529,53 +661,57 @@ function RegionDetail({ region }: { region: RegionPlaybook }) {
 
 // ── Summary table ────────────────────────────────────────────────────────────
 
-function SummaryView() {
+function SummaryView({ data }: { data: PlaybookLiveData }) {
+  const { regions: REGIONS, national: NATIONAL } = data;
   const [summaryTab, setSummaryTab] = useState<"ccaa" | "industria" | "tamaño">("ccaa");
-  const sorted = useMemo(() => [...REGIONS].sort((a, b) => b.mrr - a.mrr), []);
+  const sorted = useMemo(() => [...REGIONS].sort((a, b) => b.mrr - a.mrr), [REGIONS]);
 
   const nationalIndustries = useMemo(() => {
-    const map = new Map<string, { active: number; mrr: number }>(
-      SECTORS.map((s) => [s, { active: 0, mrr: 0 }]),
+    const map = new Map<string, { active: number; pipeline: number; mrr: number }>(
+      SECTORS.map((s) => [s, { active: 0, pipeline: 0, mrr: 0 }]),
     );
     for (const r of REGIONS) {
       for (const ind of r.industries) {
-        const g = map.get(ind.label) ?? { active: 0, mrr: 0 };
-        g.active += ind.active;
-        g.mrr += ind.mrr;
+        const g = map.get(ind.label) ?? { active: 0, pipeline: 0, mrr: 0 };
+        g.active  += ind.active;
+        g.pipeline += ind.pipeline ?? 0;
+        g.mrr     += ind.mrr;
         map.set(ind.label, g);
       }
     }
     return [...map.entries()]
-      .map(([label, g]) => ({ label, active: g.active, mrr: g.mrr, arpu: g.active > 0 ? Math.round(g.mrr / g.active) : 0 }))
+      .map(([label, g]) => ({
+        label, active: g.active, pipeline: g.pipeline, mrr: g.mrr,
+        arpu: g.active > 0 ? Math.round(g.mrr / g.active) : 0,
+        l2w: g.pipeline > 0 ? Math.round(g.active / g.pipeline * 1000) / 10 : null,
+      }))
       .sort((a, b) => b.mrr - a.mrr);
-  }, []);
+  }, [REGIONS]);
 
   const nationalSizes = useMemo(() => {
     const ORDER = ["XS (1-19)", "S (20-50)", "M (51-200)", "L (201-500)", "XL (500+)"];
-    const map = new Map<string, { active: number; mrr: number; won: number; demos: number }>();
+    const map = new Map<string, { active: number; pipeline: number; mrr: number }>();
     for (const r of REGIONS) {
       for (const s of r.sizes) {
-        const g = map.get(s.label) ?? { active: 0, mrr: 0, won: 0, demos: 0 };
-        g.active += s.active;
-        g.mrr += s.mrr;
-        if (s.d2w !== null && s.pipeline > 0) {
-          g.demos += s.pipeline;
-          g.won += Math.round(s.pipeline * (s.d2w / 100));
-        }
+        const g = map.get(s.label) ?? { active: 0, pipeline: 0, mrr: 0 };
+        g.active   += s.active;
+        g.pipeline += s.pipeline;
+        g.mrr      += s.mrr;
         map.set(s.label, g);
       }
     }
     return [...map.entries()]
       .map(([label, g]) => ({
         label,
-        active: g.active,
-        mrr: g.mrr,
-        arpu: g.active > 0 ? Math.round(g.mrr / g.active) : 0,
-        d2w: g.demos > 0 ? Math.round((g.won / g.demos) * 100 * 10) / 10 : null,
+        active:   g.active,
+        pipeline: g.pipeline,
+        mrr:      g.mrr,
+        arpu:     g.active > 0 ? Math.round(g.mrr / g.active) : 0,
+        l2w:      g.pipeline > 0 ? Math.round(g.active / g.pipeline * 1000) / 10 : null,
       }))
       .filter((r) => r.active > 0)
       .sort((a, b) => (ORDER.indexOf(a.label) ?? 99) - (ORDER.indexOf(b.label) ?? 99));
-  }, []);
+  }, [REGIONS]);
 
   const SUMMARY_TABS = [
     { key: "ccaa" as const, label: "CCAA" },
@@ -619,49 +755,46 @@ function SummaryView() {
                 <tr className="border-b border-border text-left">
                   <th className="py-2 pr-2 font-semibold text-muted-foreground">CCAA</th>
                   <th className="py-2 px-2 font-semibold text-muted-foreground">Arquetipo</th>
-                  <th className="py-2 px-2 font-semibold text-muted-foreground text-right">Activos</th>
-                  <th className="py-2 px-2 font-semibold text-muted-foreground text-right">MRR</th>
-                  <th className="py-2 px-2 font-semibold text-muted-foreground text-right">ARPU</th>
-                  <th className="py-2 px-2 font-semibold text-muted-foreground text-right">D2W</th>
                   <th className="py-2 px-2 font-semibold text-muted-foreground text-right">TAM</th>
                   <th className="py-2 px-2 font-semibold text-muted-foreground text-right">Pen.</th>
-                  <th className="py-2 pl-2 font-semibold text-muted-foreground text-right">€/TAM</th>
+                  <th className="py-2 px-2 font-semibold text-muted-foreground text-right">Clientes</th>
+                  <th className="py-2 px-2 font-semibold text-muted-foreground text-right">MRR</th>
+                  <th className="py-2 px-2 font-semibold text-muted-foreground text-right">ARPU</th>
+                  <th className="py-2 pl-2 font-semibold text-muted-foreground text-right">L2W</th>
                 </tr>
               </thead>
               <tbody>
-                {sorted.map((r) => (
-                  <tr key={r.code} className="border-b border-border/50 hover:bg-muted/30">
-                    <td className="py-2 pr-2 font-medium">{r.ccaa}</td>
-                    <td className="py-2 px-2">
-                      <span className={cn("text-[10px] px-1.5 py-0.5 rounded border font-medium whitespace-nowrap", archetypeColor(r.archetype))}>
-                        {archetypeLabel(r.archetype)}
-                      </span>
-                    </td>
-                    <td className="py-2 px-2 text-right tabular-nums">{r.active.toLocaleString()}</td>
-                    <td className="py-2 px-2 text-right tabular-nums font-medium">{fmtEur(r.mrr)}</td>
-                    <td className={cn("py-2 px-2 text-right tabular-nums font-medium",
-                      r.arpu >= NATIONAL.arpu * 1.1 ? "text-emerald-700" : r.arpu <= NATIONAL.arpu * 0.85 ? "text-red-600" : ""
-                    )}>
-                      {fmtEur(r.arpu)}
-                    </td>
-                    <td className={cn("py-2 px-2 text-right tabular-nums font-medium",
-                      r.d2w >= NATIONAL.d2w ? "text-emerald-700" : r.d2w <= NATIONAL.d2w - 5 ? "text-red-600" : ""
-                    )}>
-                      {r.d2w}%
-                    </td>
-                    <td className="py-2 px-2 text-right tabular-nums">{r.tam.toLocaleString()}</td>
-                    <td className={cn("py-2 px-2 text-right tabular-nums",
-                      r.penetration >= NATIONAL.penetration ? "text-emerald-700" : "text-muted-foreground"
-                    )}>
-                      {r.penetration}%
-                    </td>
-                    <td className={cn("py-2 pl-2 text-right tabular-nums font-medium",
-                      r.mrrPerTam >= 50 ? "text-emerald-700" : r.mrrPerTam <= 30 ? "text-red-600" : ""
-                    )}>
-                      {r.mrrPerTam.toFixed(1)}€
-                    </td>
-                  </tr>
-                ))}
+                {sorted.map((r) => {
+                  const l2w = r.hubspot > 0 ? Math.round(r.active / r.hubspot * 1000) / 10 : null;
+                  return (
+                    <tr key={r.code} className="border-b border-border/50 hover:bg-muted/30">
+                      <td className="py-2 pr-2 font-medium">{r.ccaa}</td>
+                      <td className="py-2 px-2">
+                        <span className={cn("text-[10px] px-1.5 py-0.5 rounded border font-medium whitespace-nowrap", archetypeColor(r.archetype))}>
+                          {archetypeLabel(r.archetype)}
+                        </span>
+                      </td>
+                      <td className="py-2 px-2 text-right tabular-nums text-muted-foreground">{r.tam.toLocaleString()}</td>
+                      <td className={cn("py-2 px-2 text-right tabular-nums",
+                        r.penetration >= NATIONAL.penetration ? "text-emerald-700" : "text-muted-foreground"
+                      )}>
+                        {r.penetration}%
+                      </td>
+                      <td className="py-2 px-2 text-right tabular-nums">{r.active.toLocaleString()}</td>
+                      <td className="py-2 px-2 text-right tabular-nums font-medium">{fmtEur(r.mrr)}</td>
+                      <td className={cn("py-2 px-2 text-right tabular-nums font-medium",
+                        r.arpu >= NATIONAL.arpu * 1.1 ? "text-emerald-700" : r.arpu <= NATIONAL.arpu * 0.85 ? "text-red-600" : ""
+                      )}>
+                        {fmtEur(r.arpu)}
+                      </td>
+                      <td className={cn("py-2 pl-2 text-right tabular-nums font-medium",
+                        l2w === null ? "text-muted-foreground/40" : l2w >= 22 ? "text-emerald-700" : l2w >= 15 ? "text-amber-700" : "text-red-600"
+                      )}>
+                        {l2w !== null ? `${l2w}%` : "—"}
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           )}
@@ -671,24 +804,40 @@ function SummaryView() {
               <thead>
                 <tr className="border-b border-border text-left">
                   <th className="py-2 pr-3 font-semibold text-muted-foreground">Industria</th>
-                  <th className="py-2 px-3 font-semibold text-muted-foreground text-right">Activos</th>
+                  <th className="py-2 px-3 font-semibold text-muted-foreground text-right">TAM</th>
+                  <th className="py-2 px-3 font-semibold text-muted-foreground text-right">Pipeline</th>
+                  <th className="py-2 px-3 font-semibold text-muted-foreground text-right">Pen.</th>
+                  <th className="py-2 px-3 font-semibold text-muted-foreground text-right">Clientes</th>
                   <th className="py-2 px-3 font-semibold text-muted-foreground text-right">MRR</th>
-                  <th className="py-2 pl-3 font-semibold text-muted-foreground text-right">ARPU</th>
+                  <th className="py-2 px-3 font-semibold text-muted-foreground text-right">ARPU</th>
+                  <th className="py-2 pl-3 font-semibold text-muted-foreground text-right">L2W</th>
                 </tr>
               </thead>
               <tbody>
-                {nationalIndustries.map((ind) => (
-                  <tr key={ind.label} className="border-b border-border/50 hover:bg-muted/30">
-                    <td className="py-2 pr-3 font-medium">{ind.label}</td>
-                    <td className="py-2 px-3 text-right tabular-nums">{ind.active.toLocaleString()}</td>
-                    <td className="py-2 px-3 text-right tabular-nums font-medium">{fmtEur(ind.mrr)}</td>
-                    <td className={cn("py-2 pl-3 text-right tabular-nums font-medium",
-                      ind.arpu >= NATIONAL.arpu * 1.1 ? "text-emerald-700" : ind.arpu <= NATIONAL.arpu * 0.85 ? "text-red-600" : ""
-                    )}>
-                      {fmtEur(ind.arpu)}
-                    </td>
-                  </tr>
-                ))}
+                {nationalIndustries.map((ind) => {
+                  const tam = data.tamBySector[ind.label] ?? 0;
+                  const pen = tam > 0 ? Math.round(ind.active / tam * 1000) / 10 : null;
+                  return (
+                    <tr key={ind.label} className="border-b border-border/50 hover:bg-muted/30">
+                      <td className="py-2 pr-3 font-medium">{ind.label}</td>
+                      <td className="py-2 px-3 text-right tabular-nums text-muted-foreground">{tam > 0 ? tam.toLocaleString() : "—"}</td>
+                      <td className="py-2 px-3 text-right tabular-nums">{ind.pipeline.toLocaleString()}</td>
+                      <td className="py-2 px-3 text-right tabular-nums text-muted-foreground">{pen !== null ? `${pen}%` : "—"}</td>
+                      <td className="py-2 px-3 text-right tabular-nums">{ind.active.toLocaleString()}</td>
+                      <td className="py-2 px-3 text-right tabular-nums font-medium">{fmtEur(ind.mrr)}</td>
+                      <td className={cn("py-2 px-3 text-right tabular-nums font-medium",
+                        ind.arpu >= NATIONAL.arpu * 1.1 ? "text-emerald-700" : ind.arpu <= NATIONAL.arpu * 0.85 ? "text-red-600" : ""
+                      )}>
+                        {fmtEur(ind.arpu)}
+                      </td>
+                      <td className={cn("py-2 pl-3 text-right tabular-nums font-medium",
+                        ind.l2w === null ? "text-muted-foreground/40" : ind.l2w >= 20 ? "text-emerald-700" : ind.l2w >= 12 ? "text-amber-700" : "text-red-600"
+                      )}>
+                        {ind.l2w !== null ? `${ind.l2w}%` : "—"}
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           )}
@@ -698,32 +847,40 @@ function SummaryView() {
               <thead>
                 <tr className="border-b border-border text-left">
                   <th className="py-2 pr-3 font-semibold text-muted-foreground">Tamaño</th>
-                  <th className="py-2 px-3 font-semibold text-muted-foreground text-right">Activos</th>
+                  <th className="py-2 px-3 font-semibold text-muted-foreground text-right">TAM</th>
+                  <th className="py-2 px-3 font-semibold text-muted-foreground text-right">Pipeline</th>
+                  <th className="py-2 px-3 font-semibold text-muted-foreground text-right">Pen.</th>
+                  <th className="py-2 px-3 font-semibold text-muted-foreground text-right">Clientes</th>
                   <th className="py-2 px-3 font-semibold text-muted-foreground text-right">MRR</th>
                   <th className="py-2 px-3 font-semibold text-muted-foreground text-right">ARPU</th>
-                  <th className="py-2 pl-3 font-semibold text-muted-foreground text-right">D2W</th>
+                  <th className="py-2 pl-3 font-semibold text-muted-foreground text-right">L2W</th>
                 </tr>
               </thead>
               <tbody>
-                {nationalSizes.map((s) => (
-                  <tr key={s.label} className="border-b border-border/50 hover:bg-muted/30">
-                    <td className="py-2 pr-3 font-medium">{s.label}</td>
-                    <td className="py-2 px-3 text-right tabular-nums">{s.active.toLocaleString()}</td>
-                    <td className="py-2 px-3 text-right tabular-nums font-medium">{fmtEur(s.mrr)}</td>
-                    <td className={cn("py-2 px-3 text-right tabular-nums font-medium",
-                      s.arpu >= NATIONAL.arpu * 1.1 ? "text-emerald-700" : s.arpu <= NATIONAL.arpu * 0.85 ? "text-red-600" : ""
-                    )}>
-                      {fmtEur(s.arpu)}
-                    </td>
-                    <td className={cn("py-2 pl-3 text-right tabular-nums font-medium",
-                      s.d2w === null ? "text-muted-foreground/40"
-                      : s.d2w >= NATIONAL.d2w ? "text-emerald-700"
-                      : s.d2w <= NATIONAL.d2w - 5 ? "text-red-600" : ""
-                    )}>
-                      {s.d2w !== null ? `${s.d2w}%` : "—"}
-                    </td>
-                  </tr>
-                ))}
+                {nationalSizes.map((s) => {
+                  const tam = data.tamBySize[s.label] ?? 0;
+                  const pen = tam > 0 ? Math.round(s.active / tam * 1000) / 10 : null;
+                  return (
+                    <tr key={s.label} className="border-b border-border/50 hover:bg-muted/30">
+                      <td className="py-2 pr-3 font-medium">{s.label}</td>
+                      <td className="py-2 px-3 text-right tabular-nums text-muted-foreground">{tam > 0 ? tam.toLocaleString() : "—"}</td>
+                      <td className="py-2 px-3 text-right tabular-nums">{s.pipeline.toLocaleString()}</td>
+                      <td className="py-2 px-3 text-right tabular-nums text-muted-foreground">{pen !== null ? `${pen}%` : "—"}</td>
+                      <td className="py-2 px-3 text-right tabular-nums">{s.active.toLocaleString()}</td>
+                      <td className="py-2 px-3 text-right tabular-nums font-medium">{fmtEur(s.mrr)}</td>
+                      <td className={cn("py-2 px-3 text-right tabular-nums font-medium",
+                        s.arpu >= NATIONAL.arpu * 1.1 ? "text-emerald-700" : s.arpu <= NATIONAL.arpu * 0.85 ? "text-red-600" : ""
+                      )}>
+                        {fmtEur(s.arpu)}
+                      </td>
+                      <td className={cn("py-2 pl-3 text-right tabular-nums font-medium",
+                        s.l2w === null ? "text-muted-foreground/40" : s.l2w >= 20 ? "text-emerald-700" : s.l2w >= 12 ? "text-amber-700" : "text-red-600"
+                      )}>
+                        {s.l2w !== null ? `${s.l2w}%` : "—"}
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           )}
@@ -854,7 +1011,8 @@ function penColorClass(p: number): string {
 
 // ── SlidesView ────────────────────────────────────────────────────────────────
 
-function SlidesView() {
+function SlidesView({ data }: { data: PlaybookLiveData }) {
+  const { regions: REGIONS, national: NATIONAL } = data;
   const [slide, setSlide] = useState(0);
   const TOTAL = 14;
 
@@ -883,7 +1041,7 @@ function SlidesView() {
         d2w: g.d2wDen > 0 ? Math.round((g.d2wNum / g.d2wDen) * 10) / 10 : null,
       }))
       .sort((a, b) => b.mrr - a.mrr);
-  }, []);
+  }, [REGIONS]);
 
   // ── Aggregated industry data ─────────────────────────────────────────────────
   const nationalIndustries = useMemo(() => {
@@ -907,7 +1065,7 @@ function SlidesView() {
     if (otrosMrr > 0) top5.push({ label: "Otros", active: otrosActive, mrr: otrosMrr, arpu: otrosActive > 0 ? Math.round(otrosMrr / otrosActive) : 0 });
     const totalMrr = top5.reduce((s, x) => s + x.mrr, 0);
     return top5.map((x) => ({ ...x, pct: totalMrr > 0 ? Math.round((x.mrr / totalMrr) * 100) : 0 }));
-  }, []);
+  }, [REGIONS]);
 
   // ── Aggregated size data ─────────────────────────────────────────────────────
   const nationalSizes = useMemo(() => {
@@ -933,7 +1091,7 @@ function SlidesView() {
         mrrShare: totalMrr > 0 ? Math.round((g.mrr / totalMrr) * 100) : 0,
       }))
       .sort((a, b) => ORDER.indexOf(a.label) - ORDER.indexOf(b.label));
-  }, []);
+  }, [REGIONS]);
 
   // ── Top-10 by untapped TAM ───────────────────────────────────────────────────
   const untappedTop10 = useMemo(() =>
@@ -958,7 +1116,7 @@ function SlidesView() {
       const avgD2w = regions.length > 0 ? Math.round((regions.reduce((s, r) => s + r.d2w, 0) / regions.length) * 10) / 10 : 0;
       return { arch, regions, mrr: totalMrr, active: totalActive, count: regions.length, avgArpu, avgD2w };
     });
-  }, []);
+  }, [REGIONS]);
 
   // ── Partner-led provenance aggregate ─────────────────────────────────────────
   const partnerLedData = useMemo(() => {
@@ -996,7 +1154,7 @@ function SlidesView() {
       return partnerProv ? r.partners[0]?.name ?? "—" : "—";
     };
     return { regions, channels, totalActive, totalMrr, weightedArpu, weightedD2w, dominantPartner };
-  }, []);
+  }, [REGIONS]);
 
   // ── Outbound-responsive provenance aggregate ─────────────────────────────────
   const outboundData = useMemo(() => {
@@ -1030,7 +1188,7 @@ function SlidesView() {
       : null;
     const outboundD2w = (r: RegionPlaybook) => r.provenances.find((p) => p.label === "Outbound")?.d2w ?? null;
     return { regions, channels, totalActive, totalMrr, weightedArpu, weightedD2w, outboundD2w };
-  }, []);
+  }, [REGIONS]);
 
   // ── Multi-channel data ────────────────────────────────────────────────────────
   const multiChannelData = useMemo(() => {
@@ -1040,7 +1198,7 @@ function SlidesView() {
     const avgArpu = totalActive > 0 ? Math.round(totalMrr / totalActive) : 0;
     const topChannel = (r: RegionPlaybook) => [...r.provenances].sort((a, b) => b.mrrShare - a.mrrShare)[0];
     return { regions, totalMrr, totalActive, avgArpu, topChannel };
-  }, []);
+  }, [REGIONS]);
 
   // ── Top-5 opportunities ───────────────────────────────────────────────────────
   const top5Opp = useMemo(() =>
@@ -1788,7 +1946,7 @@ function SlidesView() {
     const handler = () => setIsFullscreen(!!document.fullscreenElement);
     document.addEventListener("fullscreenchange", handler);
     return () => document.removeEventListener("fullscreenchange", handler);
-  }, []);
+  }, [REGIONS]);
 
   const toggleFullscreen = useCallback(() => {
     if (!document.fullscreenElement) {
@@ -1796,7 +1954,7 @@ function SlidesView() {
     } else {
       document.exitFullscreen();
     }
-  }, []);
+  }, [REGIONS]);
 
   // Keyboard navigation
   useEffect(() => {
@@ -1838,6 +1996,13 @@ export function PlaybookPage() {
   const [selectedCode, setSelectedCode] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState("");
   const [showSlides, setShowSlides] = useState(false);
+  const [importProgress, setImportProgress] = useState<string | null>(null);
+  const [importResult, setImportResult] = useState<{ ok: boolean; msg: string } | null>(null);
+  const hubspotFileRef = useRef<HTMLInputElement>(null);
+  const tamFileRef = useRef<HTMLInputElement>(null);
+
+  const { data, source, status, rowCount, error, refresh, importHubspotCsv, importTamCsv } =
+    usePlaybookLiveData();
 
   if (country !== "es") {
     navigate("/");
@@ -1854,22 +2019,122 @@ export function PlaybookPage() {
     );
   }
 
-  const selectedRegion = selectedCode ? REGIONS.find((r) => r.code === selectedCode) ?? null : null;
+  const REGIONS = data.regions;
+  const NATIONAL = data.national;
 
+  const selectedRegion = selectedCode ? REGIONS.find((r) => r.code === selectedCode) ?? null : null;
   const filteredRegions = searchTerm
     ? REGIONS.filter((r) => r.ccaa.toLowerCase().includes(searchTerm.toLowerCase()))
     : REGIONS;
-
   const sortedRegions = [...filteredRegions].sort((a, b) => b.mrr - a.mrr);
+
+  async function handleHubspotImport(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setImportProgress("Subiendo HubSpot CSV…");
+    setImportResult(null);
+    try {
+      const result = await importHubspotCsv(file, (done, total) =>
+        setImportProgress(`HubSpot: ${done}/${total} filas`),
+      );
+      setImportResult({ ok: true, msg: `HubSpot: ${result.inserted} registros importados${result.errors ? ` (${result.errors} errores)` : ""}.` });
+    } catch (err) {
+      setImportResult({ ok: false, msg: err instanceof Error ? err.message : "Error importando HubSpot CSV" });
+    } finally {
+      setImportProgress(null);
+      if (hubspotFileRef.current) hubspotFileRef.current.value = "";
+    }
+  }
+
+  async function handleTamImport(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setImportProgress("Subiendo TAM CSV…");
+    setImportResult(null);
+    try {
+      const result = await importTamCsv(file, (done, total) =>
+        setImportProgress(`TAM: ${done}/${total} filas`),
+      );
+      setImportResult({ ok: true, msg: `TAM: ${result.inserted} registros importados${result.errors ? ` (${result.errors} errores)` : ""}.` });
+    } catch (err) {
+      setImportResult({ ok: false, msg: err instanceof Error ? err.message : "Error importando TAM CSV" });
+    } finally {
+      setImportProgress(null);
+      if (tamFileRef.current) tamFileRef.current.value = "";
+    }
+  }
 
   return (
     <div className="min-h-screen">
       {/* Header */}
-      <header className="border-b border-border px-6 py-5" style={{ background: "var(--gradient-factorial)" }}>
-        <h1 className="text-xl font-bold text-white">The Spanish Playbook</h1>
-        <p className="text-sm text-white/70 mt-0.5">
-          Estrategia por región · {REGIONS.length} CCAAs · {NATIONAL.active.toLocaleString()} clientes · {fmtEur(NATIONAL.mrr)} MRR
-        </p>
+      <header className="border-b border-border px-6 py-4" style={{ background: "var(--gradient-factorial)" }}>
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <h1 className="text-xl font-bold text-white">The Spanish Playbook</h1>
+            <p className="text-sm text-white/70 mt-0.5">
+              Estrategia por región · {REGIONS.length} CCAAs · {NATIONAL.active.toLocaleString()} clientes · {fmtEur(NATIONAL.mrr)} MRR
+              {source === "live" && rowCount > 0 && (
+                <span className="ml-2 text-white/50 text-xs">· {rowCount.toLocaleString()} deals en vivo</span>
+              )}
+              {source === "static" && status === "ready" && (
+                <span className="ml-2 text-white/50 text-xs">· datos estáticos</span>
+              )}
+            </p>
+            {(importProgress || importResult) && (
+              <div className="mt-1.5 flex items-center gap-1.5">
+                {importProgress && (
+                  <span className="text-xs text-white/80 flex items-center gap-1">
+                    <RefreshCw className="h-3 w-3 animate-spin" />
+                    {importProgress}
+                  </span>
+                )}
+                {!importProgress && importResult && (
+                  <span className={cn("text-xs flex items-center gap-1", importResult.ok ? "text-green-300" : "text-red-300")}>
+                    {importResult.ok ? <CheckCircle2 className="h-3 w-3" /> : <AlertTriangle className="h-3 w-3" />}
+                    {importResult.msg}
+                  </span>
+                )}
+              </div>
+            )}
+          </div>
+          <div className="flex items-center gap-2 shrink-0">
+            {error && (
+              <span className="text-xs text-red-300 flex items-center gap-1">
+                <AlertTriangle className="h-3 w-3" />
+                {error}
+              </span>
+            )}
+            <input ref={hubspotFileRef} type="file" accept=".csv" className="hidden" onChange={handleHubspotImport} />
+            <input ref={tamFileRef} type="file" accept=".csv" className="hidden" onChange={handleTamImport} />
+            <button
+              type="button"
+              disabled={!!importProgress}
+              onClick={() => hubspotFileRef.current?.click()}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white/15 hover:bg-white/25 text-white text-xs font-medium transition-colors disabled:opacity-50"
+            >
+              <Upload className="h-3 w-3" />
+              HubSpot CSV
+            </button>
+            <button
+              type="button"
+              disabled={!!importProgress}
+              onClick={() => tamFileRef.current?.click()}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white/15 hover:bg-white/25 text-white text-xs font-medium transition-colors disabled:opacity-50"
+            >
+              <Upload className="h-3 w-3" />
+              TAM CSV
+            </button>
+            <button
+              type="button"
+              disabled={status === "loading"}
+              onClick={refresh}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white/15 hover:bg-white/25 text-white text-xs font-medium transition-colors disabled:opacity-50"
+              title="Recargar desde Supabase"
+            >
+              <RefreshCw className={cn("h-3 w-3", status === "loading" && "animate-spin")} />
+            </button>
+          </div>
+        </div>
       </header>
 
       <div className="flex">
@@ -1925,12 +2190,17 @@ export function PlaybookPage() {
 
         {/* Right panel — detail */}
         <div className={cn("flex-1 min-w-0", showSlides ? "p-4 flex flex-col h-[calc(100vh-8rem)]" : "p-6")}>
-          {showSlides ? (
-            <SlidesView />
+          {status === "loading" && !data.regions.length ? (
+            <div className="flex items-center justify-center h-64 text-muted-foreground text-sm">
+              <RefreshCw className="h-4 w-4 animate-spin mr-2" />
+              Cargando datos…
+            </div>
+          ) : showSlides ? (
+            <SlidesView data={data} />
           ) : selectedRegion ? (
-            <RegionDetail region={selectedRegion} />
+            <RegionDetail region={selectedRegion} national={NATIONAL} />
           ) : (
-            <SummaryView />
+            <SummaryView data={data} />
           )}
         </div>
       </div>
