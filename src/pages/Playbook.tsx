@@ -2534,6 +2534,8 @@ export function PlaybookPage() {
               <Users className="h-4 w-4" />
               Vista resumen
             </button>
+            {/* Best Practices tab — temporarily hidden, re-enable when ready */}
+            {false && (
             <button
               type="button"
               onClick={() => { setNavView("bestpractices"); setSelectedCode(null); }}
@@ -2552,6 +2554,7 @@ export function PlaybookPage() {
                 </span>
               )}
             </button>
+            )}
             <div className="border-t border-border" />
             {sortedRegions.map((r) => (
               <RegionListItem
@@ -2580,7 +2583,7 @@ export function PlaybookPage() {
               setView={() => { setNavView("summary"); }}
             />
           ) : selectedRegion ? (
-            <RegionDetail region={selectedRegion} national={NATIONAL} bestPractices={data.bestPractices} />
+            <RegionDetail region={selectedRegion} national={NATIONAL} bestPractices={[]} />
           ) : (
             <SummaryView data={data} />
           )}
