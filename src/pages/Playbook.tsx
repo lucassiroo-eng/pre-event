@@ -534,32 +534,45 @@ function SummaryView() {
 
   const sortedCcaa = useMemo(() => [...REGIONS].sort((a, b) => b.mrr - a.mrr), []);
 
+  type ArchKey = RegionPlaybook["archetype"];
+  function dominantArchetype(archMrr: Record<ArchKey, number>): ArchKey {
+    return (Object.entries(archMrr) as [ArchKey, number][]).reduce((a, b) => b[1] > a[1] ? b : a)[0];
+  }
+
   const byIndustry = useMemo(() => {
-    const map = new Map<string, { active: number; mrr: number }>();
+    const map = new Map<string, { active: number; mrr: number; archMrr: Record<ArchKey, number> }>();
     for (const r of REGIONS) {
       for (const ind of r.industries) {
-        const e = map.get(ind.label) ?? { active: 0, mrr: 0 };
-        map.set(ind.label, { active: e.active + ind.active, mrr: e.mrr + ind.mrr });
+        const e = map.get(ind.label) ?? { active: 0, mrr: 0, archMrr: { "partner-led": 0, "outbound-responsive": 0, "multi-channel": 0 } };
+        e.active += ind.active;
+        e.mrr += ind.mrr;
+        e.archMrr[r.archetype] += ind.mrr;
+        map.set(ind.label, e);
       }
     }
     return [...map.entries()]
-      .map(([label, d]) => ({ label, active: d.active, mrr: d.mrr, arpu: d.active > 0 ? Math.round(d.mrr / d.active) : 0 }))
+      .map(([label, d]) => ({
+        label, active: d.active, mrr: d.mrr,
+        arpu: d.active > 0 ? Math.round(d.mrr / d.active) : 0,
+        archetype: dominantArchetype(d.archMrr),
+        mrrPct: Math.round((d.mrr / NATIONAL.mrr) * 100),
+      }))
       .sort((a, b) => b.mrr - a.mrr);
   }, []);
 
   const bySize = useMemo(() => {
     const SIZE_ORDER = ["S (1-50)", "M (51-200)", "L (201-500)", "XL (500+)", "Unknown"];
-    const map = new Map<string, { pipeline: number; active: number; mrr: number; d2wNum: number; d2wDen: number }>();
+    const map = new Map<string, { pipeline: number; active: number; mrr: number; d2wNum: number; d2wDen: number; archMrr: Record<ArchKey, number> }>();
     for (const r of REGIONS) {
       for (const s of r.sizes) {
-        const e = map.get(s.label) ?? { pipeline: 0, active: 0, mrr: 0, d2wNum: 0, d2wDen: 0 };
-        map.set(s.label, {
-          pipeline: e.pipeline + s.pipeline,
-          active: e.active + s.active,
-          mrr: e.mrr + s.mrr,
-          d2wNum: e.d2wNum + (s.d2w ?? 0) * s.active,
-          d2wDen: e.d2wDen + (s.d2w !== null ? s.active : 0),
-        });
+        const e = map.get(s.label) ?? { pipeline: 0, active: 0, mrr: 0, d2wNum: 0, d2wDen: 0, archMrr: { "partner-led": 0, "outbound-responsive": 0, "multi-channel": 0 } };
+        e.pipeline += s.pipeline;
+        e.active += s.active;
+        e.mrr += s.mrr;
+        e.d2wNum += (s.d2w ?? 0) * s.active;
+        e.d2wDen += s.d2w !== null ? s.active : 0;
+        e.archMrr[r.archetype] += s.mrr;
+        map.set(s.label, e);
       }
     }
     return [...map.entries()]
@@ -567,6 +580,8 @@ function SummaryView() {
         label, pipeline: d.pipeline, active: d.active, mrr: d.mrr,
         arpu: d.active > 0 ? Math.round(d.mrr / d.active) : 0,
         d2w: d.d2wDen > 0 ? Math.round((d.d2wNum / d.d2wDen) * 10) / 10 : null,
+        archetype: dominantArchetype(d.archMrr),
+        mrrPct: Math.round((d.mrr / NATIONAL.mrr) * 100),
       }))
       .sort((a, b) => SIZE_ORDER.indexOf(a.label) - SIZE_ORDER.indexOf(b.label));
   }, []);
@@ -648,20 +663,28 @@ function SummaryView() {
               <thead>
                 <tr className="border-b border-border text-left">
                   <th className="py-2 pr-2 font-semibold text-muted-foreground">Industria</th>
+                  <th className="py-2 px-2 font-semibold text-muted-foreground">Arquetipo dominante</th>
                   <th className="py-2 px-2 font-semibold text-muted-foreground text-right">Activos</th>
                   <th className="py-2 px-2 font-semibold text-muted-foreground text-right">MRR</th>
-                  <th className="py-2 pl-2 font-semibold text-muted-foreground text-right">ARPU</th>
+                  <th className="py-2 px-2 font-semibold text-muted-foreground text-right">ARPU</th>
+                  <th className="py-2 pl-2 font-semibold text-muted-foreground text-right">% MRR nac.</th>
                 </tr>
               </thead>
               <tbody>
                 {byIndustry.map((row) => (
                   <tr key={row.label} className="border-b border-border/50 hover:bg-muted/30">
                     <td className="py-2 pr-2 font-medium">{row.label}</td>
+                    <td className="py-2 px-2">
+                      <span className={cn("text-[10px] px-1.5 py-0.5 rounded border font-medium whitespace-nowrap", archetypeColor(row.archetype))}>
+                        {archetypeLabel(row.archetype)}
+                      </span>
+                    </td>
                     <td className="py-2 px-2 text-right tabular-nums">{row.active.toLocaleString()}</td>
                     <td className="py-2 px-2 text-right tabular-nums font-medium">{fmtEur(row.mrr)}</td>
-                    <td className={cn("py-2 pl-2 text-right tabular-nums font-medium",
+                    <td className={cn("py-2 px-2 text-right tabular-nums font-medium",
                       row.arpu >= NATIONAL.arpu * 1.1 ? "text-emerald-700" : row.arpu <= NATIONAL.arpu * 0.85 ? "text-red-600" : ""
                     )}>{fmtEur(row.arpu)}</td>
+                    <td className="py-2 pl-2 text-right tabular-nums text-muted-foreground">{row.mrrPct}%</td>
                   </tr>
                 ))}
               </tbody>
@@ -673,26 +696,34 @@ function SummaryView() {
               <thead>
                 <tr className="border-b border-border text-left">
                   <th className="py-2 pr-2 font-semibold text-muted-foreground">Tamaño</th>
+                  <th className="py-2 px-2 font-semibold text-muted-foreground">Arquetipo dominante</th>
                   <th className="py-2 px-2 font-semibold text-muted-foreground text-right">Pipeline</th>
                   <th className="py-2 px-2 font-semibold text-muted-foreground text-right">Activos</th>
                   <th className="py-2 px-2 font-semibold text-muted-foreground text-right">MRR</th>
                   <th className="py-2 px-2 font-semibold text-muted-foreground text-right">ARPU</th>
-                  <th className="py-2 pl-2 font-semibold text-muted-foreground text-right">D2W</th>
+                  <th className="py-2 px-2 font-semibold text-muted-foreground text-right">D2W</th>
+                  <th className="py-2 pl-2 font-semibold text-muted-foreground text-right">% MRR nac.</th>
                 </tr>
               </thead>
               <tbody>
                 {bySize.map((row) => (
                   <tr key={row.label} className="border-b border-border/50 hover:bg-muted/30">
                     <td className="py-2 pr-2 font-medium">{row.label}</td>
+                    <td className="py-2 px-2">
+                      <span className={cn("text-[10px] px-1.5 py-0.5 rounded border font-medium whitespace-nowrap", archetypeColor(row.archetype))}>
+                        {archetypeLabel(row.archetype)}
+                      </span>
+                    </td>
                     <td className="py-2 px-2 text-right tabular-nums text-muted-foreground">{row.pipeline.toLocaleString()}</td>
                     <td className="py-2 px-2 text-right tabular-nums">{row.active.toLocaleString()}</td>
                     <td className="py-2 px-2 text-right tabular-nums font-medium">{fmtEur(row.mrr)}</td>
                     <td className={cn("py-2 px-2 text-right tabular-nums font-medium",
                       row.arpu >= NATIONAL.arpu * 1.1 ? "text-emerald-700" : row.arpu <= NATIONAL.arpu * 0.85 ? "text-red-600" : ""
                     )}>{fmtEur(row.arpu)}</td>
-                    <td className={cn("py-2 pl-2 text-right tabular-nums font-medium",
+                    <td className={cn("py-2 px-2 text-right tabular-nums font-medium",
                       row.d2w !== null && row.d2w >= NATIONAL.d2w ? "text-emerald-700" : row.d2w !== null && row.d2w <= NATIONAL.d2w - 5 ? "text-red-600" : ""
                     )}>{row.d2w !== null ? `${row.d2w}%` : "—"}</td>
+                    <td className="py-2 pl-2 text-right tabular-nums text-muted-foreground">{row.mrrPct}%</td>
                   </tr>
                 ))}
               </tbody>
@@ -701,8 +732,8 @@ function SummaryView() {
         </div>
       </div>
 
-      {/* Archetype summary */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-3">
+      {/* Archetype summary — only meaningful when rows are CCAAs */}
+      {groupBy === "ccaa" && <div className="grid grid-cols-1 lg:grid-cols-3 gap-3">
         {(["partner-led", "outbound-responsive", "multi-channel"] as const).map((arch) => {
           const regions = REGIONS.filter((r) => r.archetype === arch);
           const totalMrr = regions.reduce((s, r) => s + r.mrr, 0);
@@ -723,7 +754,7 @@ function SummaryView() {
             </div>
           );
         })}
-      </div>
+      </div>}
     </div>
   );
 }
