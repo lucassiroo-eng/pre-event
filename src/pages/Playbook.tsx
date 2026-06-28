@@ -977,6 +977,20 @@ function SummaryView({ data }: { data: PlaybookLiveData }) {
                   );
                 })}
               </tbody>
+              <tfoot>
+                <tr className="border-t-2 border-border bg-muted/20">
+                  <td className="py-2 pr-2 font-bold text-foreground">Total</td>
+                  <td className="py-2 px-2" />
+                  <td className="py-2 px-2 text-right tabular-nums font-bold text-foreground">{NATIONAL.tam.toLocaleString()}</td>
+                  <td className="py-2 px-2 text-right tabular-nums font-bold text-foreground">{NATIONAL.penetration}%</td>
+                  <td className="py-2 px-2 text-right tabular-nums font-bold text-foreground">{NATIONAL.active.toLocaleString()}</td>
+                  <td className="py-2 px-2 text-right tabular-nums font-bold text-foreground">{fmtEur(NATIONAL.mrr)}</td>
+                  <td className="py-2 px-2 text-right tabular-nums font-bold text-foreground">{fmtEur(NATIONAL.arpu)}</td>
+                  <td className="py-2 pl-2 text-right tabular-nums font-bold text-foreground">
+                    {NATIONAL.hubspot > 0 ? `${Math.round(NATIONAL.active / NATIONAL.hubspot * 1000) / 10}%` : "—"}
+                  </td>
+                </tr>
+              </tfoot>
             </table>
           )}
 
@@ -1020,6 +1034,28 @@ function SummaryView({ data }: { data: PlaybookLiveData }) {
                   );
                 })}
               </tbody>
+              <tfoot>
+                {(() => {
+                  const totalTam = nationalIndustries.reduce((s, ind) => s + (data.tamBySector[ind.label] ?? 0), 0);
+                  const totalLeads = nationalIndustries.reduce((s, ind) => s + ind.pipeline, 0);
+                  const totalActive = nationalIndustries.reduce((s, ind) => s + ind.active, 0);
+                  const totalMrr = nationalIndustries.reduce((s, ind) => s + ind.mrr, 0);
+                  const totalArpu = totalActive > 0 ? Math.round(totalMrr / totalActive) : 0;
+                  const totalL2w = totalLeads > 0 ? Math.round(totalActive / totalLeads * 1000) / 10 : null;
+                  return (
+                    <tr className="border-t-2 border-border bg-muted/20">
+                      <td className="py-2 pr-3 font-bold text-foreground">Total</td>
+                      <td className="py-2 px-3 text-right tabular-nums font-bold text-foreground">{totalTam > 0 ? totalTam.toLocaleString() : "—"}</td>
+                      <td className="py-2 px-3 text-right tabular-nums font-bold text-foreground">{totalLeads.toLocaleString()}</td>
+                      <td className="py-2 px-3 text-right tabular-nums font-bold text-foreground">{NATIONAL.penetration}%</td>
+                      <td className="py-2 px-3 text-right tabular-nums font-bold text-foreground">{totalActive.toLocaleString()}</td>
+                      <td className="py-2 px-3 text-right tabular-nums font-bold text-foreground">{fmtEur(totalMrr)}</td>
+                      <td className="py-2 px-3 text-right tabular-nums font-bold text-foreground">{fmtEur(totalArpu)}</td>
+                      <td className="py-2 pl-3 text-right tabular-nums font-bold text-foreground">{totalL2w !== null ? `${totalL2w}%` : "—"}</td>
+                    </tr>
+                  );
+                })()}
+              </tfoot>
             </table>
           )}
 
@@ -1064,6 +1100,28 @@ function SummaryView({ data }: { data: PlaybookLiveData }) {
                   );
                 })}
               </tbody>
+              <tfoot>
+                {(() => {
+                  const totalTam = nationalSizes.filter(s => s.label !== "XS (1-19)").reduce((s, sz) => s + (data.tamBySize[sz.label] ?? 0), 0);
+                  const totalLeads = nationalSizes.reduce((s, sz) => s + sz.pipeline, 0);
+                  const totalActive = nationalSizes.reduce((s, sz) => s + sz.active, 0);
+                  const totalMrr = nationalSizes.reduce((s, sz) => s + sz.mrr, 0);
+                  const totalArpu = totalActive > 0 ? Math.round(totalMrr / totalActive) : 0;
+                  const totalL2w = totalLeads > 0 ? Math.round(totalActive / totalLeads * 1000) / 10 : null;
+                  return (
+                    <tr className="border-t-2 border-border bg-muted/20">
+                      <td className="py-2 pr-3 font-bold text-foreground">Total</td>
+                      <td className="py-2 px-3 text-right tabular-nums font-bold text-foreground">{totalTam > 0 ? totalTam.toLocaleString() : "—"}</td>
+                      <td className="py-2 px-3 text-right tabular-nums font-bold text-foreground">{totalLeads.toLocaleString()}</td>
+                      <td className="py-2 px-3 text-right tabular-nums font-bold text-foreground">{NATIONAL.penetration}%</td>
+                      <td className="py-2 px-3 text-right tabular-nums font-bold text-foreground">{totalActive.toLocaleString()}</td>
+                      <td className="py-2 px-3 text-right tabular-nums font-bold text-foreground">{fmtEur(totalMrr)}</td>
+                      <td className="py-2 px-3 text-right tabular-nums font-bold text-foreground">{fmtEur(totalArpu)}</td>
+                      <td className="py-2 pl-3 text-right tabular-nums font-bold text-foreground">{totalL2w !== null ? `${totalL2w}%` : "—"}</td>
+                    </tr>
+                  );
+                })()}
+              </tfoot>
             </table>
           )}
         </div>
