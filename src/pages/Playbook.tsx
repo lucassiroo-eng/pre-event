@@ -1053,14 +1053,14 @@ function SlidesView() {
 
   // ── Why each top-5 wins ───────────────────────────────────────────────────────
   const oppWhy: Record<string, string> = {
-    "CM": "17.3K empresas en TAM, pero solo 1.5K activas (8.5% penetración) — 9 de cada 10 empresas elegibles nunca han hablado con Factorial. El modelo multi-canal ya funciona: D2W del 80.4% confirma que cuando llegamos, cerramos. El problema es llegar.",
+    "MD": "17.3K empresas en TAM, pero solo 1.5K activas (8.5% penetración) — 9 de cada 10 empresas elegibles nunca han hablado con Factorial. El modelo multi-canal ya funciona: D2W del 80.4% confirma que cuando llegamos, cerramos. El problema es llegar.",
     "CT": "Mayor base activa de España (1.95K clientes, €1.3M MRR) pero con un 10% de penetración sobre 19K de TAM. Outbound tiene D2W del 87% — el canal más eficiente del país. Partners aportan ARPU 55% superior al outbound directo. Escala de los dos a la vez.",
     "AN": "TAM de 11.7K con solo 5.5% penetrado — la segunda región por mercado sin tocar. D2W sólido (75.8%) demuestra que el equipo sabe cerrar. El cuello de botella está arriba del funnel: pocas empresas entran en pipeline, no pocas convierten.",
     "PV": "Mercado corporativo denso: ARPU medio de €967 vs €729 nacional (+33%). Partners locales generan el 38% del MRR con muy poca penetración (4.4%). Cada punto de penetración aquí vale más en euros que en casi cualquier otra región.",
     "VC": "8.8K TAM con solo 5.4% penetrado. Outbound D2W del 70.4% — por debajo de media nacional, pero el volumen sin cubrir (8.3K empresas) compensa. Segunda economía del Mediterráneo con base industrial diversificada y crecimiento demográfico.",
   };
   const oppAction: Record<string, string> = {
-    "CM": "Doblar frecuencia de outbound en Madrid ciudad (centro financiero + tech hub). Activar 2 partners enterprise nuevos en Q3 — foco en Wolters Kluwer y Cobee. Objetivo: +300 demos en 90 días.",
+    "MD": "Doblar frecuencia de outbound en Madrid ciudad (centro financiero + tech hub). Activar 2 partners enterprise nuevos en Q3 — foco en Wolters Kluwer y Cobee. Objetivo: +300 demos en 90 días.",
     "CT": "Añadir 2 SDRs dedicados al segmento M/L (51-500 emp.) donde el ARPU partner es €1,128. Consolidar pipeline via Canal Partners para deals >200 empleados. No tocar el inbound — aporta 20% del MRR con coste mínimo.",
     "AN": "Lanzar campaña outbound focalizada en Sevilla y Málaga (60% del TAM andaluz). Doblar volumen de secuencias en Q3. El D2W no es el problema — no invertir en mejora de conversión, solo en volumen.",
     "PV": "Formalizar acuerdo con 1-2 partners locales clave en Bilbao (sector industrial + finanzas). Priorizar deals M/L desde inicio — el ARPU de segmento L en PV es el más alto del cluster outbound-responsive. ROI del partner = €967/cliente vs €729 outbound directo.",
@@ -1349,7 +1349,7 @@ function SlidesView() {
             <h2 className="text-xl font-bold text-gray-900 mb-0.5">Dónde Está el Mercado: TAM por Región y Penetración</h2>
             <p className="text-xs text-gray-400">Cada barra = empresas del TAM regional. Parte coloreada = clientes activos nuestros. Las 5 primeras CCAA concentran el {top5TamPct}% del TAM total.</p>
           </div>
-          <div className="flex-1 min-h-0 flex flex-col gap-1.5 justify-center">
+          <div className="flex-1 min-h-0 flex flex-col justify-center gap-0">
             {byTam.map((r, i) => {
               const tamBarPct = Math.round((r.tam / maxTam) * 100);
               const penetrationPct = Math.round((r.active / r.tam) * 100 * 10) / 10;
@@ -1357,45 +1357,53 @@ function SlidesView() {
               const barColor = r.archetype === "partner-led"
                 ? "bg-violet-500" : r.archetype === "outbound-responsive"
                 ? "bg-sky-400" : "bg-emerald-500";
+              const penColor = penetrationPct >= 8 ? "text-emerald-700" : penetrationPct >= 5 ? "text-amber-600" : "text-red-600";
+              const isAboveFold = i < 5;
               return (
                 <div key={r.code}>
                   {i === 5 && (
-                    <div className="border-t border-dashed border-gray-300 my-1.5" />
+                    <div className="border-t border-dashed border-gray-200 my-2" />
                   )}
-                  <div className="flex items-center gap-3">
-                    <div className="w-40 text-xs text-gray-700 font-medium truncate shrink-0">{r.ccaa}</div>
-                    {/* Outer container sized to TAM share */}
-                    <div className="flex-1 relative h-6">
+                  <div className={cn("flex items-center gap-3 py-1 rounded-md px-1", isAboveFold ? "" : "opacity-80")}>
+                    {/* Region name */}
+                    <div className="w-44 shrink-0">
+                      <span className={cn("text-xs font-semibold truncate block", isAboveFold ? "text-gray-800" : "text-gray-500")}>{r.ccaa}</span>
+                    </div>
+                    {/* Stacked bar */}
+                    <div className="flex-1 flex items-center gap-1.5">
                       <div
-                        className="h-full rounded bg-gray-100 overflow-hidden relative"
+                        className="relative h-5 rounded overflow-hidden bg-gray-100"
                         style={{ width: `${tamBarPct}%` }}
                       >
-                        {/* Colored fill = active / tam */}
-                        <div
-                          className={cn("h-full rounded-l", barColor)}
-                          style={{ width: `${fillPct}%` }}
-                        />
+                        <div className={cn("h-full transition-all", barColor)} style={{ width: `${fillPct}%` }} />
+                        {fillPct > 12 && (
+                          <span className="absolute left-1.5 top-1/2 -translate-y-1/2 text-white text-[9px] font-semibold whitespace-nowrap">
+                            {r.active.toLocaleString()}
+                          </span>
+                        )}
                       </div>
                     </div>
-                    <div className="w-44 text-xs tabular-nums shrink-0 flex items-center gap-2">
-                      <span className="text-gray-500">{r.tam.toLocaleString()} emp.</span>
-                      <span className={cn("font-semibold", penColorClass(penetrationPct))}>
-                        {penetrationPct}%
-                      </span>
+                    {/* Stats */}
+                    <div className="w-40 shrink-0 flex items-center justify-end gap-2 text-xs tabular-nums">
+                      <span className="text-gray-400">{(r.tam / 1000).toFixed(1)}K emp.</span>
+                      <span className={cn("font-bold w-10 text-right", penColor)}>{penetrationPct}%</span>
                     </div>
                     {i === 4 && (
-                      <div className="text-[10px] font-bold text-red-600 bg-red-50 px-2 py-0.5 rounded shrink-0">← {top5TamPct}% TAM</div>
+                      <span className="shrink-0 text-[9px] font-bold text-red-600 bg-red-50 border border-red-200 px-1.5 py-0.5 rounded">
+                        {top5TamPct}% TAM
+                      </span>
                     )}
+                    {i !== 4 && <div className="w-16 shrink-0" />}
                   </div>
                 </div>
               );
             })}
           </div>
-          <div className="flex gap-4 text-[10px] text-gray-400">
-            <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded bg-violet-500 inline-block" /> Partner-Led</span>
-            <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded bg-sky-400 inline-block" /> Outbound-Responsive</span>
-            <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded bg-emerald-500 inline-block" /> Multi-Channel</span>
-            <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded bg-gray-200 inline-block" /> Sin cubrir</span>
+          <div className="flex gap-5 text-[10px] text-gray-400 pt-1">
+            <span className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-violet-500 inline-block" /> Partner-Led</span>
+            <span className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-sky-400 inline-block" /> Outbound-Responsive</span>
+            <span className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-emerald-500 inline-block" /> Multi-Channel</span>
+            <span className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-gray-200 inline-block" /> Sin cubrir</span>
           </div>
           <InsightBox text="Las regiones con barra larga y poco color son la mayor oportunidad: mercado enorme, apenas tocado. Madrid (17K TAM, 8.5% pen.) y Andalucía (11.7K, 5.5%) lideran la lista de trabajo pendiente." />
         </div>
@@ -1679,52 +1687,40 @@ function SlidesView() {
                 </tbody>
               </table>
             </div>
-            {/* Right 60%: Tamaño × Canal matrix */}
+            {/* Right 60%: Canal performance for this region */}
             <div className="flex-1 min-w-0 flex flex-col gap-2">
-              <p className="text-[10px] uppercase tracking-widest text-gray-400 font-semibold">Tamaño × Canal (top 4 canales)</p>
-              <div className="overflow-x-auto">
-                <table className="w-full text-xs border-collapse">
-                  <thead>
-                    <tr>
-                      <th className="border border-gray-100 bg-gray-50 p-2 text-[10px] font-semibold text-gray-500 text-left">Seg.</th>
-                      {top4Provs.map((p) => (
-                        <th key={p.label} className="border border-gray-100 bg-gray-50 p-2 text-[10px] font-semibold text-gray-500 text-center">
-                          {p.label}
-                        </th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {r.sizes.map((s) => (
-                      <tr key={s.label}>
-                        <td className="border border-gray-100 bg-gray-50 p-2 text-xs font-medium text-gray-700">{s.label}</td>
-                        {top4Provs.map((p) => {
-                          const prov = r.provenances.find((pv) => pv.label === p.label);
-                          // ARPU comes from size segment; D2W comes from the channel
-                          const sizeArpu = fmtEur(s.arpu);
-                          const provD2w = prov?.d2w ?? null;
-                          const d2wColor = provD2w === null
-                            ? "text-gray-400"
-                            : provD2w >= 80
-                            ? "text-emerald-700"
-                            : provD2w >= 70
-                            ? "text-amber-600"
-                            : "text-red-600";
-                          return (
-                            <td key={p.label} className="border border-gray-100 p-2 text-center">
-                              <div className="text-xs font-semibold text-gray-800 tabular-nums">{sizeArpu}</div>
-                              <div className={cn("text-[10px] tabular-nums font-medium", d2wColor)}>
-                                {provD2w !== null ? `${provD2w}%` : "—"}
-                              </div>
-                            </td>
-                          );
-                        })}
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+              <p className="text-[10px] uppercase tracking-widest text-gray-400 font-semibold">Rendimiento por Canal</p>
+              <div className="flex flex-col gap-1.5">
+                {top4Provs.map((p) => {
+                  const mrrBarPct = Math.round((p.mrr / top4Provs[0].mrr) * 100);
+                  const d2wColor = p.d2w === null
+                    ? "text-gray-400"
+                    : p.d2w >= 80 ? "text-emerald-700"
+                    : p.d2w >= 70 ? "text-amber-600"
+                    : "text-red-600";
+                  const barColor = p.label === "Channel Partners"
+                    ? "bg-violet-400"
+                    : p.label === "Outbound" ? "bg-sky-400"
+                    : p.label === "Inbound" ? "bg-blue-400"
+                    : "bg-gray-400";
+                  return (
+                    <div key={p.label} className="bg-gray-50 rounded-lg p-2.5 flex flex-col gap-1">
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs font-semibold text-gray-700">{p.label}</span>
+                        <div className="flex items-center gap-3 text-xs tabular-nums">
+                          <span className="text-gray-500">ARPU <span className="font-semibold text-gray-800">{fmtEur(p.arpu)}</span></span>
+                          <span className="text-gray-500">D2W <span className={cn("font-semibold", d2wColor)}>{p.d2w !== null ? `${p.d2w}%` : "—"}</span></span>
+                          <span className="text-gray-400 font-medium">{p.mrrShare}%</span>
+                        </div>
+                      </div>
+                      <div className="h-1.5 bg-gray-200 rounded-full overflow-hidden">
+                        <div className={cn("h-full rounded-full", barColor)} style={{ width: `${mrrBarPct}%` }} />
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
-              <p className="text-[9px] text-gray-400 italic">ARPU = valor del segmento de tamaño · D2W = tasa de conversión del canal</p>
+              <p className="text-[9px] text-gray-400 italic">MRR share · ARPU · D2W por canal — datos reales de esta región</p>
             </div>
           </div>
           <InsightBox actionable={!!actionable} text={actionable || `Analizar oportunidades de crecimiento en ${r.ccaa}.`} />
@@ -1733,37 +1729,46 @@ function SlidesView() {
     }),
 
     // ── Slide 14 — Priorización Final ─────────────────────────────────────────
-    <div key="s14" className="flex flex-col h-full p-8 gap-4 bg-white">
+    <div key="s14" className="flex flex-col h-full p-8 gap-3 bg-white">
       <div>
         <h2 className="text-xl font-bold text-gray-900 mb-0.5">Top 5 Oportunidades Ganadoras</h2>
-        <p className="text-xs text-gray-400">Cruce entre volumen disponible y eficiencia histórica de conversión — score = TAM sin cubrir × (D2W/100)</p>
+        <p className="text-xs text-gray-400">Score = TAM sin cubrir × (D2W/100) — cruce de mercado disponible × eficiencia histórica</p>
       </div>
-      <div className="flex-1 flex flex-col gap-3 min-h-0">
+      <div className="flex-1 flex flex-col gap-2 min-h-0">
         {top5Opp.map((r, i) => (
-          <div key={r.code} className="rounded-lg border border-gray-200 bg-white p-3 flex gap-4 items-start hover:bg-gray-50">
-            <div className="text-3xl font-bold text-gray-100 tabular-nums w-8 shrink-0 text-right leading-none mt-1">{i + 1}</div>
-            <div className="flex-1 min-w-0">
-              <div className="flex items-center gap-2 mb-1">
+          <div key={r.code} className="rounded-xl border border-gray-100 bg-gray-50/60 p-3 flex gap-3 items-stretch">
+            {/* Rank */}
+            <div className="flex flex-col items-center justify-center w-8 shrink-0">
+              <span className="text-2xl font-black text-gray-200 tabular-nums leading-none">{i + 1}</span>
+            </div>
+            {/* Divider */}
+            <div className="w-px bg-gray-200 shrink-0" />
+            {/* Content */}
+            <div className="flex-1 min-w-0 flex flex-col gap-1">
+              <div className="flex items-center gap-2">
                 <span className="text-sm font-bold text-gray-900">{r.ccaa}</span>
-                <span className={cn("px-2 py-0.5 rounded text-[10px] font-semibold border", archetypeColor(r.archetype))}>
+                <span className={cn("px-1.5 py-0.5 rounded text-[9px] font-semibold border", archetypeColor(r.archetype))}>
                   {archetypeLabel(r.archetype)}
                 </span>
               </div>
-              <div className="flex gap-4 text-xs mb-1">
-                <span className="text-gray-400">Sin cubrir: <span className="font-semibold text-gray-700">{r.untapped.toLocaleString()}</span></span>
-                <span className="text-gray-400">D2W: <span className={cn("font-semibold", r.d2w >= 80 ? "text-emerald-700" : "text-amber-700")}>{r.d2w}%</span></span>
-                <span className="text-gray-400">Penetración: <span className={cn("font-semibold", penColorClass(r.penetration))}>{r.penetration}%</span></span>
+              <div className="flex gap-3 text-[10px]">
+                <span className="text-gray-400">Sin cubrir <span className="font-semibold text-gray-700 tabular-nums">{r.untapped.toLocaleString()}</span></span>
+                <span className="text-gray-300">·</span>
+                <span className="text-gray-400">D2W <span className={cn("font-semibold tabular-nums", r.d2w >= 80 ? "text-emerald-700" : "text-amber-700")}>{r.d2w}%</span></span>
+                <span className="text-gray-300">·</span>
+                <span className="text-gray-400">Pen. <span className={cn("font-semibold tabular-nums", penColorClass(r.penetration))}>{r.penetration}%</span></span>
               </div>
-              <div className="text-xs text-gray-500">
-                <span className="font-semibold text-gray-700">Por qué: </span>{oppWhy[r.code] ?? `Penetración ${r.penetration}% con ${r.untapped.toLocaleString()} empresas sin cubrir.`}
-              </div>
-              <div className="text-xs text-gray-500 mt-0.5">
-                <span className="font-semibold text-[#c0392b]">Acción: </span>{oppAction[r.code] ?? r.strategy.leadChannel}
-              </div>
+              <p className="text-[10px] text-gray-600 leading-relaxed">
+                <span className="font-semibold text-gray-800">Por qué: </span>{oppWhy[r.code] ?? `Penetración ${r.penetration}% con ${r.untapped.toLocaleString()} empresas sin cubrir.`}
+              </p>
+              <p className="text-[10px] text-gray-600 leading-relaxed">
+                <span className="font-semibold text-red-600">Acción: </span>{oppAction[r.code] ?? r.strategy.leadChannel}
+              </p>
             </div>
-            <div className="text-right shrink-0">
-              <div className="text-[10px] text-gray-400">Score</div>
-              <div className="text-lg font-bold tabular-nums text-[#c0392b]">{r.score.toLocaleString()}</div>
+            {/* Score pill */}
+            <div className="shrink-0 flex flex-col items-end justify-center gap-0.5 pl-2">
+              <span className="text-[9px] uppercase tracking-wider text-gray-400 font-medium">Score</span>
+              <span className="text-base font-black tabular-nums text-red-600">{r.score.toLocaleString()}</span>
             </div>
           </div>
         ))}
