@@ -845,56 +845,36 @@ function penColorClass(p: number): string {
 
 function SlidesView() {
   const [slide, setSlide] = useState(0);
-  const TOTAL = 12;
+  const TOTAL = 14;
 
-  // ── Aggregated data (computed once) ─────────────────────────────────────────
-
-  // National size breakdown
-  const nationalSizes = useMemo(() => {
-    const ORDER = ["S (1-50)", "M (51-200)", "L (201-500)", "XL (500+)"];
-    const map = new Map<string, { active: number; mrr: number }>();
-    for (const r of REGIONS) {
-      for (const s of r.sizes) {
-        const g = map.get(s.label) ?? { active: 0, mrr: 0 };
-        g.active += s.active;
-        g.mrr += s.mrr;
-        map.set(s.label, g);
-      }
-    }
-    return [...map.entries()]
-      .map(([label, g]) => ({
-        label,
-        active: g.active,
-        mrr: g.mrr,
-        arpu: g.active > 0 ? Math.round(g.mrr / g.active) : 0,
-        mrrPct: Math.round((g.mrr / NATIONAL.mrr) * 100),
-      }))
-      .sort((a, b) => ORDER.indexOf(a.label) - ORDER.indexOf(b.label));
-  }, []);
-
-  // National channel breakdown (top 5 by mrr)
+  // ── Aggregated channel data ──────────────────────────────────────────────────
   const nationalChannels = useMemo(() => {
-    const map = new Map<string, { active: number; mrr: number }>();
+    const KNOWN = ["Channel Partners", "Outbound", "Inbound", "Santander", "Paid", "Telefónica"];
+    const map = new Map<string, { active: number; mrr: number; d2wNum: number; d2wDen: number }>();
     for (const r of REGIONS) {
       for (const p of r.provenances) {
-        const g = map.get(p.label) ?? { active: 0, mrr: 0 };
+        const key = KNOWN.includes(p.label) ? p.label : "Otros";
+        const g = map.get(key) ?? { active: 0, mrr: 0, d2wNum: 0, d2wDen: 0 };
         g.active += p.active;
         g.mrr += p.mrr;
-        map.set(p.label, g);
+        if (p.d2w !== null) { g.d2wNum += p.d2w * p.pipeline; g.d2wDen += p.pipeline; }
+        map.set(key, g);
       }
     }
+    const totalMrr = [...map.values()].reduce((s, g) => s + g.mrr, 0);
     return [...map.entries()]
       .map(([label, g]) => ({
         label,
-        mrr: g.mrr,
-        arpu: g.active > 0 ? Math.round(g.mrr / g.active) : 0,
         active: g.active,
+        mrr: g.mrr,
+        mrrShare: totalMrr > 0 ? Math.round((g.mrr / totalMrr) * 100) : 0,
+        arpu: g.active > 0 ? Math.round(g.mrr / g.active) : 0,
+        d2w: g.d2wDen > 0 ? Math.round((g.d2wNum / g.d2wDen) * 10) / 10 : null,
       }))
-      .sort((a, b) => b.mrr - a.mrr)
-      .slice(0, 5);
+      .sort((a, b) => b.mrr - a.mrr);
   }, []);
 
-  // National industry breakdown (top 5 by mrr)
+  // ── Aggregated industry data ─────────────────────────────────────────────────
   const nationalIndustries = useMemo(() => {
     const map = new Map<string, { active: number; mrr: number }>();
     for (const r of REGIONS) {
@@ -905,369 +885,587 @@ function SlidesView() {
         map.set(ind.label, g);
       }
     }
+    const sorted = [...map.entries()]
+      .map(([label, g]) => ({ label, active: g.active, mrr: g.mrr, arpu: g.active > 0 ? Math.round(g.mrr / g.active) : 0 }))
+      .sort((a, b) => b.mrr - a.mrr);
+    const top5 = sorted.slice(0, 5);
+    const otrosMrr = sorted.slice(5).reduce((s, x) => s + x.mrr, 0);
+    const otrosActive = sorted.slice(5).reduce((s, x) => s + x.active, 0);
+    if (otrosMrr > 0) top5.push({ label: "Otros", active: otrosActive, mrr: otrosMrr, arpu: otrosActive > 0 ? Math.round(otrosMrr / otrosActive) : 0 });
+    const totalMrr = top5.reduce((s, x) => s + x.mrr, 0);
+    return top5.map((x) => ({ ...x, pct: totalMrr > 0 ? Math.round((x.mrr / totalMrr) * 100) : 0 }));
+  }, []);
+
+  // ── Aggregated size data ─────────────────────────────────────────────────────
+  const nationalSizes = useMemo(() => {
+    const ORDER = ["S (1-50)", "M (51-200)", "L (201-500)", "XL (500+)"];
+    const map = new Map<string, { active: number; mrr: number; d2wNum: number; d2wDen: number }>();
+    for (const r of REGIONS) {
+      for (const s of r.sizes) {
+        const g = map.get(s.label) ?? { active: 0, mrr: 0, d2wNum: 0, d2wDen: 0 };
+        g.active += s.active;
+        g.mrr += s.mrr;
+        if (s.d2w !== null) { g.d2wNum += s.d2w * s.pipeline; g.d2wDen += s.pipeline; }
+        map.set(s.label, g);
+      }
+    }
+    const totalMrr = [...map.values()].reduce((s, g) => s + g.mrr, 0);
     return [...map.entries()]
       .map(([label, g]) => ({
         label,
         active: g.active,
         mrr: g.mrr,
         arpu: g.active > 0 ? Math.round(g.mrr / g.active) : 0,
+        d2w: g.d2wDen > 0 ? Math.round((g.d2wNum / g.d2wDen) * 10) / 10 : null,
+        mrrShare: totalMrr > 0 ? Math.round((g.mrr / totalMrr) * 100) : 0,
       }))
-      .sort((a, b) => b.mrr - a.mrr)
-      .slice(0, 5);
+      .sort((a, b) => ORDER.indexOf(a.label) - ORDER.indexOf(b.label));
   }, []);
 
-  // Untapped TAM ranking (top 10)
-  const untappedRanking = useMemo(() => {
-    return [...REGIONS]
-      .map((r) => ({
-        ...r,
-        untapped: Math.round((1 - r.penetration / 100) * r.tam),
-        score: Math.round((1 - r.penetration / 100) * r.tam),
-      }))
-      .sort((a, b) => b.score - a.score)
-      .slice(0, 10);
-  }, []);
+  // ── Top-10 by untapped TAM ───────────────────────────────────────────────────
+  const untappedTop10 = useMemo(() =>
+    [...REGIONS]
+      .map((r) => ({ ...r, untapped: Math.round(r.tam * (1 - r.penetration / 100)) }))
+      .sort((a, b) => b.untapped - a.untapped)
+      .slice(0, 10),
+    [],
+  );
 
-  // Regions sorted by MRR (slide 5)
+  // ── Regions by MRR ───────────────────────────────────────────────────────────
   const regionsByMrr = useMemo(() => [...REGIONS].sort((a, b) => b.mrr - a.mrr), []);
 
-  // Archetype aggregates (slide 6)
+  // ── Archetype aggregates ─────────────────────────────────────────────────────
   const archetypeAgg = useMemo(() => {
     const archetypes = ["partner-led", "outbound-responsive", "multi-channel"] as const;
     return archetypes.map((arch) => {
       const regions = REGIONS.filter((r) => r.archetype === arch);
-      return {
-        arch,
-        regions,
-        mrr: regions.reduce((s, r) => s + r.mrr, 0),
-        active: regions.reduce((s, r) => s + r.active, 0),
-        count: regions.length,
-      };
+      const totalActive = regions.reduce((s, r) => s + r.active, 0);
+      const totalMrr = regions.reduce((s, r) => s + r.mrr, 0);
+      const avgArpu = totalActive > 0 ? Math.round(totalMrr / totalActive) : 0;
+      const avgD2w = regions.length > 0 ? Math.round((regions.reduce((s, r) => s + r.d2w, 0) / regions.length) * 10) / 10 : 0;
+      return { arch, regions, mrr: totalMrr, active: totalActive, count: regions.length, avgArpu, avgD2w };
     });
   }, []);
 
-  // Partner-led regions (slide 7)
-  const partnerLedRegions = useMemo(
-    () => REGIONS.filter((r) => r.archetype === "partner-led").sort((a, b) => b.mrr - a.mrr),
-    [],
-  );
-  const partnerLedMrr = partnerLedRegions.reduce((s, r) => s + r.mrr, 0);
-
-  // Outbound-responsive regions (slide 8)
-  const outboundRegions = useMemo(
-    () => REGIONS.filter((r) => r.archetype === "outbound-responsive").sort((a, b) => b.mrr - a.mrr),
-    [],
-  );
-  const outboundMrr = outboundRegions.reduce((s, r) => s + r.mrr, 0);
-
-  // Multi-channel regions (slide 9 & 10)
-  const multiChannelRegions = useMemo(
-    () => REGIONS.filter((r) => r.archetype === "multi-channel").sort((a, b) => b.mrr - a.mrr),
-    [],
-  );
-  const multiChannelMrr = multiChannelRegions.reduce((s, r) => s + r.mrr, 0);
-
-  // Top-5 opportunities: score = untapped_tam * (d2w / 100)
-  const top5Opportunities = useMemo(() => {
-    return [...REGIONS]
-      .map((r) => ({
-        ...r,
-        oppScore: Math.round((1 - r.penetration / 100) * r.tam * (r.d2w / 100)),
+  // ── Partner-led provenance aggregate ─────────────────────────────────────────
+  const partnerLedData = useMemo(() => {
+    const regions = REGIONS.filter((r) => r.archetype === "partner-led").sort((a, b) => b.mrr - a.mrr);
+    const channelMap = new Map<string, { active: number; mrr: number; pipelineD2w: number; pipeline: number }>();
+    for (const r of regions) {
+      for (const p of r.provenances) {
+        const g = channelMap.get(p.label) ?? { active: 0, mrr: 0, pipelineD2w: 0, pipeline: 0 };
+        g.active += p.active;
+        g.mrr += p.mrr;
+        if (p.d2w !== null) { g.pipelineD2w += p.d2w * p.pipeline; g.pipeline += p.pipeline; }
+        channelMap.set(p.label, g);
+      }
+    }
+    const totalMrr = [...channelMap.values()].reduce((s, g) => s + g.mrr, 0);
+    const channels = [...channelMap.entries()]
+      .map(([label, g]) => ({
+        label,
+        active: g.active,
+        mrr: g.mrr,
+        pctMrr: totalMrr > 0 ? Math.round((g.mrr / totalMrr) * 100) : 0,
+        arpu: g.active > 0 ? Math.round(g.mrr / g.active) : 0,
+        d2w: g.pipeline > 0 ? Math.round((g.pipelineD2w / g.pipeline) * 10) / 10 : null,
       }))
-      .sort((a, b) => b.oppScore - a.oppScore)
-      .slice(0, 5);
+      .sort((a, b) => b.mrr - a.mrr);
+    const totalActive = channels.reduce((s, c) => s + c.active, 0);
+    const weightedArpu = totalActive > 0 ? Math.round(totalMrr / totalActive) : 0;
+    const totalPipeline = channels.reduce((s, c) => s + (c.d2w !== null ? c.active : 0), 0);
+    const weightedD2w = totalPipeline > 0
+      ? Math.round((channels.reduce((s, c) => s + (c.d2w !== null ? c.d2w * c.active : 0), 0) / totalPipeline) * 10) / 10
+      : null;
+    // Get dominant partner per region
+    const dominantPartner = (r: RegionPlaybook) => {
+      const partnerProv = r.provenances.find((p) => p.label === "Channel Partners");
+      return partnerProv ? r.partners[0]?.name ?? "—" : "—";
+    };
+    return { regions, channels, totalActive, totalMrr, weightedArpu, weightedD2w, dominantPartner };
   }, []);
 
-  // ── Slide content ─────────────────────────────────────────────────────────
+  // ── Outbound-responsive provenance aggregate ─────────────────────────────────
+  const outboundData = useMemo(() => {
+    const regions = REGIONS.filter((r) => r.archetype === "outbound-responsive").sort((a, b) => b.mrr - a.mrr);
+    const channelMap = new Map<string, { active: number; mrr: number; pipelineD2w: number; pipeline: number }>();
+    for (const r of regions) {
+      for (const p of r.provenances) {
+        const g = channelMap.get(p.label) ?? { active: 0, mrr: 0, pipelineD2w: 0, pipeline: 0 };
+        g.active += p.active;
+        g.mrr += p.mrr;
+        if (p.d2w !== null) { g.pipelineD2w += p.d2w * p.pipeline; g.pipeline += p.pipeline; }
+        channelMap.set(p.label, g);
+      }
+    }
+    const totalMrr = [...channelMap.values()].reduce((s, g) => s + g.mrr, 0);
+    const channels = [...channelMap.entries()]
+      .map(([label, g]) => ({
+        label,
+        active: g.active,
+        mrr: g.mrr,
+        pctMrr: totalMrr > 0 ? Math.round((g.mrr / totalMrr) * 100) : 0,
+        arpu: g.active > 0 ? Math.round(g.mrr / g.active) : 0,
+        d2w: g.pipeline > 0 ? Math.round((g.pipelineD2w / g.pipeline) * 10) / 10 : null,
+      }))
+      .sort((a, b) => b.mrr - a.mrr);
+    const totalActive = channels.reduce((s, c) => s + c.active, 0);
+    const weightedArpu = totalActive > 0 ? Math.round(totalMrr / totalActive) : 0;
+    const totalPipeline = channels.reduce((s, c) => s + (c.d2w !== null ? c.active : 0), 0);
+    const weightedD2w = totalPipeline > 0
+      ? Math.round((channels.reduce((s, c) => s + (c.d2w !== null ? c.d2w * c.active : 0), 0) / totalPipeline) * 10) / 10
+      : null;
+    const outboundD2w = (r: RegionPlaybook) => r.provenances.find((p) => p.label === "Outbound")?.d2w ?? null;
+    return { regions, channels, totalActive, totalMrr, weightedArpu, weightedD2w, outboundD2w };
+  }, []);
 
+  // ── Multi-channel data ────────────────────────────────────────────────────────
+  const multiChannelData = useMemo(() => {
+    const regions = REGIONS.filter((r) => r.archetype === "multi-channel").sort((a, b) => b.mrr - a.mrr);
+    const totalMrr = regions.reduce((s, r) => s + r.mrr, 0);
+    const totalActive = regions.reduce((s, r) => s + r.active, 0);
+    const avgArpu = totalActive > 0 ? Math.round(totalMrr / totalActive) : 0;
+    const topChannel = (r: RegionPlaybook) => [...r.provenances].sort((a, b) => b.mrrShare - a.mrrShare)[0];
+    return { regions, totalMrr, totalActive, avgArpu, topChannel };
+  }, []);
+
+  // ── Top-5 opportunities ───────────────────────────────────────────────────────
+  const top5Opp = useMemo(() =>
+    [...REGIONS]
+      .map((r) => ({
+        ...r,
+        score: Math.round((1 - r.penetration / 100) * r.tam * (r.d2w / 100)),
+        untapped: Math.round(r.tam * (1 - r.penetration / 100)),
+      }))
+      .sort((a, b) => b.score - a.score)
+      .slice(0, 5),
+    [],
+  );
+
+  // ── Why each top-5 wins ───────────────────────────────────────────────────────
+  const oppWhy: Record<string, string> = {
+    "CM": "Mayor TAM de España con penetración <10%. Cada punto de penetración = 2K+ clientes potenciales.",
+    "CT": "D2W outbound 87% — el canal más eficiente. TAM 19K con múltiples canales activos.",
+    "AN": "TAM 14.4K, penetración 5.5%. Problema de volumen puro — D2W sólido ya validado.",
+    "PV": "D2W partner ~80%+, ARPU elevado. Mercado corporativo con alto potencial de upmarket.",
+    "VC": "Outbound-responsive con D2W consistente. Base instalada pequeña vs TAM disponible.",
+  };
+  const oppAction: Record<string, string> = {
+    "CM": "Escalar outbound + activar 2 partners enterprise en Madrid ciudad.",
+    "CT": "Aumentar capacidad SDR outbound y consolidar deals M/L via partners.",
+    "AN": "Doblar top-of-funnel: más volumen SDR, no mejor conversión.",
+    "PV": "Activar partnerships locales; priorizar segmento M/L.",
+    "VC": "Asignar SDR dedicado; medir CAC vs LTV en primeros 60 días.",
+  };
+
+  // ── Helper: aggregate provenances for a single region into slide format ───────
+  const regionProvTable = (r: RegionPlaybook) => {
+    const totalMrr = r.provenances.reduce((s, p) => s + p.mrr, 0);
+    const maxMrr = Math.max(...r.provenances.map((p) => p.mrr));
+    const top = [...r.provenances].sort((a, b) => b.mrrShare - a.mrrShare)[0];
+    return { rows: r.provenances, totalMrr, maxMrr, topLabel: top?.label ?? "" };
+  };
+
+  // ── Multi-channel deep-dive regions ──────────────────────────────────────────
+  const MC_NAMES = ["Cataluña", "Comunidad de Madrid", "Andalucía", "Islas Baleares", "Principado de Asturias"];
+  const mcRegions = MC_NAMES.map((name) => REGIONS.find((r) => r.ccaa === name)).filter((r): r is RegionPlaybook => !!r);
+
+  const mcActionable: Record<string, string> = {
+    "Cataluña": "Outbound D2W=87% — el canal más eficiente. Escalar SDR + mantener partners para M/L (ARPU 1,128€). No reducir inbound: aporta volumen base crítico.",
+    "Comunidad de Madrid": "Partners dominan MRR (38%). Cada deal partner vale 2.7x un deal inbound. Invertir en onboarding de nuevos partners locales (Cobee, Wolters Kluwer) como prioridad.",
+    "Andalucía": "Penetración baja (5.5%) con D2W sólido (75.8%). Problema de volumen, no de conversión. Doblar el top-of-funnel outbound aquí.",
+    "Islas Baleares": "ARPU 1,085€ — el más alto del cluster (vs 729€ nacional). Foco en M/L. Proteger y escalar el canal partner actual.",
+    "Principado de Asturias": "Mercado pequeño (TAM 3,240) con alta penetración relativa. Optimizar retención y upsell antes de buscar new logos.",
+  };
+
+  // ── Slide rendering helpers ───────────────────────────────────────────────────
+
+  function ArchProvenanceTable({ channels, totalActive, totalMrr, weightedArpu, weightedD2w }: {
+    channels: { label: string; active: number; mrr: number; pctMrr: number; arpu: number; d2w: number | null }[];
+    totalActive: number; totalMrr: number; weightedArpu: number; weightedD2w: number | null;
+  }) {
+    return (
+      <table className="w-full text-xs">
+        <thead>
+          <tr className="border-b border-current/20 text-left">
+            <th className="py-1.5 pr-2 font-semibold text-current/60">Canal</th>
+            <th className="py-1.5 px-2 font-semibold text-current/60 text-right">Activos</th>
+            <th className="py-1.5 px-2 font-semibold text-current/60 text-right">MRR</th>
+            <th className="py-1.5 px-2 font-semibold text-current/60 text-right">% MRR</th>
+            <th className="py-1.5 px-2 font-semibold text-current/60 text-right">ARPU</th>
+            <th className="py-1.5 pl-2 font-semibold text-current/60 text-right">D2W</th>
+          </tr>
+        </thead>
+        <tbody>
+          {channels.map((c) => (
+            <tr key={c.label} className="border-b border-current/10">
+              <td className="py-1.5 pr-2 font-medium">{c.label}</td>
+              <td className="py-1.5 px-2 text-right tabular-nums">{c.active.toLocaleString()}</td>
+              <td className="py-1.5 px-2 text-right tabular-nums font-medium">{fmtEur(c.mrr)}</td>
+              <td className="py-1.5 px-2 text-right tabular-nums">{c.pctMrr}%</td>
+              <td className="py-1.5 px-2 text-right tabular-nums">{fmtEur(c.arpu)}</td>
+              <td className="py-1.5 pl-2 text-right tabular-nums">{c.d2w !== null ? `${c.d2w}%` : "—"}</td>
+            </tr>
+          ))}
+          <tr className="font-bold bg-white/50">
+            <td className="py-1.5 pr-2">Totales</td>
+            <td className="py-1.5 px-2 text-right tabular-nums">{totalActive.toLocaleString()}</td>
+            <td className="py-1.5 px-2 text-right tabular-nums">{fmtEur(totalMrr)}</td>
+            <td className="py-1.5 px-2 text-right tabular-nums">100%</td>
+            <td className="py-1.5 px-2 text-right tabular-nums">{fmtEur(weightedArpu)}</td>
+            <td className="py-1.5 pl-2 text-right tabular-nums">{weightedD2w !== null ? `${weightedD2w}%` : "—"}</td>
+          </tr>
+        </tbody>
+      </table>
+    );
+  }
+
+  // ── Slides ────────────────────────────────────────────────────────────────────
   const slides: React.ReactNode[] = [
-    // ── Slide 1 — Portada ─────────────────────────────────────────────────────
-    <div key="s1" className="flex flex-col h-full p-8 gap-6">
+
+    // ── Slide 1 — Portada aspiracional ────────────────────────────────────────
+    <div key="s1" className="flex flex-col h-full p-8 gap-6 bg-white">
       <div className="flex-1 flex flex-col justify-center gap-6">
         <div>
-          <div className="text-[11px] uppercase tracking-widest text-gray-400 mb-2">Factorial HR · Junio 2026</div>
+          <div className="text-[11px] uppercase tracking-widest text-gray-400 mb-2">Factorial HR · España</div>
           <h1 className="text-4xl font-bold text-gray-900 leading-tight">Estrategia de Crecimiento España</h1>
-          <p className="text-lg text-gray-500 mt-2">Playbook de Mercado · Factorial HR</p>
+          <p className="text-lg text-gray-500 mt-2">El mercado está validado. El grueso del crecimiento está por delante.</p>
         </div>
-        <div className="grid grid-cols-4 gap-3">
-          <SlideKpiPill label="MRR" value="4.8M€" />
-          <SlideKpiPill label="Clientes activos" value="6,545" />
-          <SlideKpiPill label="Penetración" value="7.0%" />
-          <SlideKpiPill label="TAM" value="93,174" />
+        <div className="grid grid-cols-3 gap-4">
+          <SlideKpiCard label="Clientes Activos" value={NATIONAL.active.toLocaleString()} />
+          <SlideKpiCard label="TAM Disponible" value={(NATIONAL.tam - NATIONAL.active).toLocaleString()} />
+          <SlideKpiCard label="Penetración Actual" value={`${NATIONAL.penetration}%`} />
         </div>
+        <p className="text-sm text-gray-600">Solo 1 de cada 14 empresas del TAM es cliente Factorial hoy.</p>
       </div>
-      <InsightBox text="España representa el mercado core de Factorial. Con 7% de penetración sobre 93K empresas, el 93% del mercado aún está sin capturar." />
+      <InsightBox text="Con el 93% del mercado sin cubrir, la pregunta no es si hay oportunidad — es en qué orden atacarla." />
     </div>,
 
-    // ── Slide 2 — Macro financiero ────────────────────────────────────────────
-    <div key="s2" className="flex flex-col h-full p-8 gap-5">
+    // ── Slide 2 — Radiografía del Pipeline ────────────────────────────────────
+    <div key="s2" className="flex flex-col h-full p-8 gap-4 bg-white">
       <div>
-        <h2 className="text-xl font-bold text-gray-900 mb-1">Situación Financiera del Mercado Español</h2>
-        <p className="text-xs text-gray-500">Métricas nacionales agregadas — {REGIONS.length} CCAAs</p>
-      </div>
-      <div className="grid grid-cols-4 gap-3">
-        <SlideKpiCard label="MRR" value="4.8M€" />
-        <SlideKpiCard label="ARPU" value="729€" />
-        <SlideKpiCard label="Demo → Won" value="79.2%" />
-        <SlideKpiCard label="Activos" value="6,545" />
-      </div>
-      <div>
-        <p className="text-[10px] uppercase tracking-widest text-gray-400 mb-2">ARPU por segmento de empresa</p>
-        <table className="w-full text-xs">
-          <thead>
-            <tr className="bg-gray-50 border-b border-gray-200 text-left">
-              <th className="py-2 px-3 font-semibold text-gray-500">Segmento</th>
-              <th className="py-2 px-3 font-semibold text-gray-500 text-right">Activos</th>
-              <th className="py-2 px-3 font-semibold text-gray-500 text-right">MRR</th>
-              <th className="py-2 px-3 font-semibold text-gray-500 text-right">ARPU</th>
-              <th className="py-2 px-3 font-semibold text-gray-500 text-right">% MRR</th>
-            </tr>
-          </thead>
-          <tbody>
-            {nationalSizes.map((s) => (
-              <tr key={s.label} className="border-b border-gray-100 hover:bg-gray-50">
-                <td className="py-2 px-3 font-medium">{s.label}</td>
-                <td className="py-2 px-3 text-right tabular-nums">{s.active.toLocaleString()}</td>
-                <td className="py-2 px-3 text-right tabular-nums font-medium">{fmtEur(s.mrr)}</td>
-                <td className="py-2 px-3 text-right tabular-nums font-semibold text-gray-900">{fmtEur(s.arpu)}</td>
-                <td className="py-2 px-3 text-right tabular-nums text-gray-500">{s.mrrPct}%</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-      <InsightBox text="El ARPU de empresas M (51-200) es 3x el de empresas S. Cada deal desplazado hacia M equivale a 3 deals S en valor." />
-    </div>,
-
-    // ── Slide 3 — Segmentación ────────────────────────────────────────────────
-    <div key="s3" className="flex flex-col h-full p-8 gap-5">
-      <div>
-        <h2 className="text-xl font-bold text-gray-900 mb-1">Origen y Composición del Pipeline</h2>
-        <p className="text-xs text-gray-500">Agregado nacional por canal, industria y tamaño</p>
+        <h2 className="text-xl font-bold text-gray-900 mb-0.5">Radiografía del Pipeline: Origen del Negocio</h2>
+        <p className="text-xs text-gray-400">Cada desglose suma 100%</p>
       </div>
       <div className="grid grid-cols-3 gap-4 flex-1 min-h-0">
-        {/* Canal */}
+        {/* Col 1: Por Canal */}
         <div>
-          <p className="text-[10px] uppercase tracking-widest text-gray-400 mb-2">Por Canal (top 5 MRR)</p>
+          <p className="text-[10px] uppercase tracking-widest text-gray-400 mb-1.5 font-semibold">Por Canal</p>
           <table className="w-full text-xs">
             <thead>
-              <tr className="bg-gray-50 border-b text-left">
-                <th className="py-1.5 px-2 font-semibold text-gray-500">Canal</th>
-                <th className="py-1.5 px-2 font-semibold text-gray-500 text-right">MRR</th>
-                <th className="py-1.5 px-2 font-semibold text-gray-500 text-right">ARPU</th>
+              <tr className="border-b border-gray-200 text-left">
+                <th className="py-1 pr-2 font-semibold text-gray-400">Canal</th>
+                <th className="py-1 px-1 font-semibold text-gray-400 text-right">MRR</th>
+                <th className="py-1 pl-1 font-semibold text-gray-400">%</th>
               </tr>
             </thead>
             <tbody>
               {nationalChannels.map((c) => (
                 <tr key={c.label} className="border-b border-gray-100">
-                  <td className="py-1.5 px-2">{c.label}</td>
-                  <td className="py-1.5 px-2 text-right tabular-nums">{fmtEur(c.mrr)}</td>
-                  <td className="py-1.5 px-2 text-right tabular-nums font-semibold">{fmtEur(c.arpu)}</td>
+                  <td className="py-1 pr-2 truncate max-w-[90px]">{c.label}</td>
+                  <td className="py-1 px-1 text-right tabular-nums font-medium">{fmtEur(c.mrr)}</td>
+                  <td className="py-1 pl-1 w-20">
+                    <div className="flex items-center gap-1">
+                      <div className="flex-1 h-1.5 rounded-full bg-gray-100 overflow-hidden">
+                        <div className="h-full rounded-full bg-violet-500" style={{ width: `${c.mrrShare}%` }} />
+                      </div>
+                      <span className="text-[10px] tabular-nums text-gray-400 w-6 text-right">{c.mrrShare}%</span>
+                    </div>
+                  </td>
                 </tr>
               ))}
             </tbody>
           </table>
         </div>
-        {/* Industria */}
+        {/* Col 2: Por Industria */}
         <div>
-          <p className="text-[10px] uppercase tracking-widest text-gray-400 mb-2">Por Industria (top 5)</p>
+          <p className="text-[10px] uppercase tracking-widest text-gray-400 mb-1.5 font-semibold">Por Industria (top 5)</p>
           <table className="w-full text-xs">
             <thead>
-              <tr className="bg-gray-50 border-b text-left">
-                <th className="py-1.5 px-2 font-semibold text-gray-500">Industria</th>
-                <th className="py-1.5 px-2 font-semibold text-gray-500 text-right">Activos</th>
-                <th className="py-1.5 px-2 font-semibold text-gray-500 text-right">ARPU</th>
+              <tr className="border-b border-gray-200 text-left">
+                <th className="py-1 pr-2 font-semibold text-gray-400">Industria</th>
+                <th className="py-1 px-1 font-semibold text-gray-400 text-right">MRR</th>
+                <th className="py-1 pl-1 font-semibold text-gray-400">%</th>
               </tr>
             </thead>
             <tbody>
-              {nationalIndustries.map((i) => (
-                <tr key={i.label} className="border-b border-gray-100">
-                  <td className="py-1.5 px-2">{i.label}</td>
-                  <td className="py-1.5 px-2 text-right tabular-nums">{i.active}</td>
-                  <td className="py-1.5 px-2 text-right tabular-nums font-semibold">{fmtEur(i.arpu)}</td>
+              {nationalIndustries.map((ind) => (
+                <tr key={ind.label} className="border-b border-gray-100">
+                  <td className="py-1 pr-2 truncate max-w-[90px]">{ind.label}</td>
+                  <td className="py-1 px-1 text-right tabular-nums font-medium">{fmtEur(ind.mrr)}</td>
+                  <td className="py-1 pl-1 w-20">
+                    <div className="flex items-center gap-1">
+                      <div className="flex-1 h-1.5 rounded-full bg-gray-100 overflow-hidden">
+                        <div className="h-full rounded-full bg-sky-500" style={{ width: `${ind.pct}%` }} />
+                      </div>
+                      <span className="text-[10px] tabular-nums text-gray-400 w-6 text-right">{ind.pct}%</span>
+                    </div>
+                  </td>
                 </tr>
               ))}
             </tbody>
           </table>
         </div>
-        {/* Tamaño */}
+        {/* Col 3: Por Tamaño */}
         <div>
-          <p className="text-[10px] uppercase tracking-widest text-gray-400 mb-2">Por Tamaño</p>
+          <p className="text-[10px] uppercase tracking-widest text-gray-400 mb-1.5 font-semibold">Por Tamaño</p>
           <table className="w-full text-xs">
             <thead>
-              <tr className="bg-gray-50 border-b text-left">
-                <th className="py-1.5 px-2 font-semibold text-gray-500">Segmento</th>
-                <th className="py-1.5 px-2 font-semibold text-gray-500 text-right">MRR%</th>
-                <th className="py-1.5 px-2 font-semibold text-gray-500 text-right">ARPU</th>
+              <tr className="border-b border-gray-200 text-left">
+                <th className="py-1 pr-2 font-semibold text-gray-400">Segmento</th>
+                <th className="py-1 px-1 font-semibold text-gray-400 text-right">ARPU</th>
+                <th className="py-1 pl-1 font-semibold text-gray-400">% MRR</th>
               </tr>
             </thead>
             <tbody>
               {nationalSizes.map((s) => (
                 <tr key={s.label} className="border-b border-gray-100">
-                  <td className="py-1.5 px-2">{s.label}</td>
-                  <td className="py-1.5 px-2 text-right tabular-nums">{s.mrrPct}%</td>
-                  <td className="py-1.5 px-2 text-right tabular-nums font-semibold">{fmtEur(s.arpu)}</td>
+                  <td className="py-1 pr-2">{s.label}</td>
+                  <td className="py-1 px-1 text-right tabular-nums font-medium">{fmtEur(s.arpu)}</td>
+                  <td className="py-1 pl-1 w-20">
+                    <div className="flex items-center gap-1">
+                      <div className="flex-1 h-1.5 rounded-full bg-gray-100 overflow-hidden">
+                        <div className="h-full rounded-full bg-emerald-500" style={{ width: `${s.mrrShare}%` }} />
+                      </div>
+                      <span className="text-[10px] tabular-nums text-gray-400 w-6 text-right">{s.mrrShare}%</span>
+                    </div>
+                  </td>
                 </tr>
               ))}
             </tbody>
           </table>
         </div>
       </div>
-      <InsightBox text="Partners generan el ARPU más alto (>1,100€). Inbound tiene el mayor volumen. Optimizar la mezcla canal→tamaño es la palanca principal." />
+      <InsightBox text="Partners generan el mayor ARPU (>1,100€) con solo el ~34% del pipeline. Inbound aporta volumen pero con ARPU 40% inferior. La palanca es redirigir M/L deals hacia canal partner." />
     </div>,
 
-    // ── Slide 4 — TAM y Oportunidad ───────────────────────────────────────────
-    <div key="s4" className="flex flex-col h-full p-8 gap-5">
+    // ── Slide 3 — El Dilema de la Oportunidad ─────────────────────────────────
+    <div key="s3" className="flex flex-col h-full p-8 gap-4 bg-white">
       <div>
-        <h2 className="text-xl font-bold text-gray-900 mb-1">Mercado Sin Cubrir: Priorización por Región</h2>
-        <p className="text-xs text-gray-500">Top 10 CCAAs ordenadas por TAM sin cubrir absoluto</p>
+        <h2 className="text-xl font-bold text-gray-900 mb-0.5">El Dilema de la Oportunidad: Volumen vs. Conversión</h2>
+        <p className="text-xs text-gray-400">Cada región enfrenta un problema distinto — top 10 por TAM sin cubrir</p>
       </div>
-      <div className="flex-1 min-h-0 overflow-hidden">
-        <table className="w-full text-xs">
-          <thead>
-            <tr className="bg-gray-50 border-b text-left">
-              <th className="py-2 px-3 font-semibold text-gray-500">#</th>
-              <th className="py-2 px-3 font-semibold text-gray-500">Región</th>
-              <th className="py-2 px-3 font-semibold text-gray-500 text-right">TAM</th>
-              <th className="py-2 px-3 font-semibold text-gray-500 text-right">Penetración actual</th>
-              <th className="py-2 px-3 font-semibold text-gray-500 text-right">Empresas sin cubrir</th>
-              <th className="py-2 px-3 font-semibold text-gray-500 text-right">Score oportunidad</th>
-            </tr>
-          </thead>
-          <tbody>
-            {untappedRanking.map((r, i) => (
-              <tr key={r.code} className="border-b border-gray-100 hover:bg-gray-50">
-                <td className="py-2 px-3 text-gray-400">{i + 1}</td>
-                <td className="py-2 px-3 font-medium">{r.ccaa}</td>
-                <td className="py-2 px-3 text-right tabular-nums">{r.tam.toLocaleString()}</td>
-                <td className={cn("py-2 px-3 text-right tabular-nums", penColorClass(r.penetration))}>
-                  {r.penetration}%
-                </td>
-                <td className="py-2 px-3 text-right tabular-nums font-semibold">{r.untapped.toLocaleString()}</td>
-                <td className="py-2 px-3 text-right tabular-nums">
-                  <div className="flex items-center justify-end gap-2">
-                    <div className="w-16 h-1.5 rounded-full bg-gray-100 overflow-hidden">
-                      <div
-                        className="h-full rounded-full bg-red-600"
-                        style={{ width: `${Math.round((r.score / untappedRanking[0].score) * 100)}%` }}
-                      />
-                    </div>
-                    <span className="tabular-nums">{r.score.toLocaleString()}</span>
-                  </div>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-      <InsightBox text="Madrid y Cataluña tienen el mayor volumen absoluto sin cubrir. Pero regiones como Andalucía ofrecen el mejor ratio oportunidad/base instalada." />
-    </div>,
-
-    // ── Slide 5 — Tabla Regional ──────────────────────────────────────────────
-    <div key="s5" className="flex flex-col h-full p-8 gap-5">
-      <div>
-        <h2 className="text-xl font-bold text-gray-900 mb-1">Comparativa Regional: CC.AA Principales</h2>
-        <p className="text-xs text-gray-500">18 CCAAs ordenadas por MRR — ARPU y D2W comparados vs nacional</p>
-      </div>
-      <div className="flex-1 min-h-0 overflow-hidden">
+      <div className="flex-1 min-h-0">
         <table className="w-full text-xs">
           <thead>
             <tr className="bg-gray-50 border-b text-left">
               <th className="py-2 px-2 font-semibold text-gray-500">Región</th>
-              <th className="py-2 px-2 font-semibold text-gray-500">Arquetipo</th>
-              <th className="py-2 px-2 font-semibold text-gray-500 text-right">Activos</th>
-              <th className="py-2 px-2 font-semibold text-gray-500 text-right">MRR</th>
-              <th className="py-2 px-2 font-semibold text-gray-500 text-right">ARPU</th>
-              <th className="py-2 px-2 font-semibold text-gray-500 text-right">D2W</th>
+              <th className="py-2 px-2 font-semibold text-gray-500 text-right">TAM total</th>
               <th className="py-2 px-2 font-semibold text-gray-500 text-right">Penetración</th>
+              <th className="py-2 px-2 font-semibold text-gray-500 text-right">Sin cubrir</th>
+              <th className="py-2 px-2 font-semibold text-gray-500 text-right">D2W</th>
+              <th className="py-2 px-2 font-semibold text-gray-500">Diagnóstico</th>
             </tr>
           </thead>
           <tbody>
-            {regionsByMrr.map((r) => (
-              <tr key={r.code} className="border-b border-gray-100 hover:bg-gray-50">
-                <td className="py-1.5 px-2 font-medium">{r.ccaa}</td>
-                <td className="py-1.5 px-2">
-                  <span className={cn("text-[9px] px-1.5 py-0.5 rounded border font-medium whitespace-nowrap", archetypeColor(r.archetype))}>
-                    {archetypeLabel(r.archetype)}
-                  </span>
-                </td>
-                <td className="py-1.5 px-2 text-right tabular-nums">{r.active.toLocaleString()}</td>
-                <td className="py-1.5 px-2 text-right tabular-nums font-medium">{fmtEur(r.mrr)}</td>
-                <td className={cn("py-1.5 px-2 text-right tabular-nums font-medium",
-                  r.arpu >= NATIONAL.arpu * 1.1 ? "text-emerald-700" : r.arpu <= NATIONAL.arpu * 0.85 ? "text-red-600" : "",
-                )}>
-                  {fmtEur(r.arpu)}
-                </td>
-                <td className={cn("py-1.5 px-2 text-right tabular-nums font-medium",
-                  r.d2w >= NATIONAL.d2w ? "text-emerald-700" : r.d2w <= NATIONAL.d2w - 5 ? "text-red-600" : "",
-                )}>
-                  {r.d2w}%
-                </td>
-                <td className={cn("py-1.5 px-2 text-right tabular-nums", penColorClass(r.penetration))}>
-                  {r.penetration}%
-                </td>
-              </tr>
-            ))}
+            {untappedTop10.map((r) => {
+              const diag = r.penetration < 5
+                ? { label: "Problema de volumen", cls: "bg-red-100 text-red-700" }
+                : r.d2w < 75
+                ? { label: "Problema de conversión", cls: "bg-amber-100 text-amber-700" }
+                : { label: "En ruta", cls: "bg-emerald-100 text-emerald-700" };
+              return (
+                <tr key={r.code} className="border-b border-gray-100 hover:bg-gray-50">
+                  <td className="py-1.5 px-2 font-medium">{r.ccaa}</td>
+                  <td className="py-1.5 px-2 text-right tabular-nums">{r.tam.toLocaleString()}</td>
+                  <td className={cn("py-1.5 px-2 text-right tabular-nums font-semibold", penColorClass(r.penetration))}>
+                    {r.penetration}%
+                  </td>
+                  <td className="py-1.5 px-2 text-right tabular-nums font-semibold">{r.untapped.toLocaleString()}</td>
+                  <td className={cn("py-1.5 px-2 text-right tabular-nums font-semibold",
+                    r.d2w >= 80 ? "text-emerald-700" : r.d2w >= 70 ? "text-amber-700" : "text-red-600",
+                  )}>
+                    {r.d2w}%
+                  </td>
+                  <td className="py-1.5 px-2">
+                    <span className={cn("px-2 py-0.5 rounded text-[10px] font-semibold", diag.cls)}>{diag.label}</span>
+                  </td>
+                </tr>
+              );
+            })}
           </tbody>
         </table>
       </div>
-      <InsightBox text="Cataluña y Madrid concentran el 55% del MRR total. La disparidad regional es estructural — los arquetipos explican el porqué." />
+      <InsightBox text="Madrid y Cataluña son problemas de escala (TAM enorme, penetración baja). Valencia y Extremadura son problemas de conversión. Estrategia diferente para cada grupo." />
     </div>,
 
-    // ── Slide 6 — Los 3 Arquetipos ────────────────────────────────────────────
-    <div key="s6" className="flex flex-col h-full p-8 gap-5">
+    // ── Slide 4 — Concentración Regional ──────────────────────────────────────
+    <div key="s4" className="flex flex-col h-full p-8 gap-4 bg-white">
       <div>
-        <h2 className="text-xl font-bold text-gray-900 mb-1">Tres Modelos de Mercado Distintos</h2>
-        <p className="text-xs text-gray-500">Cada arquetipo tiene un playbook de canal, tamaño e inversión diferente</p>
+        <h2 className="text-xl font-bold text-gray-900 mb-0.5">Concentración del MRR: El Principio de Pareto Regional</h2>
+        <p className="text-xs text-gray-400">Las 5 primeras CCAAs concentran el 55% del MRR total</p>
       </div>
-      <div className="flex-1 flex flex-col gap-3 min-h-0">
-        {archetypeAgg.map(({ arch, regions, mrr, active, count }) => (
-          <div key={arch} className={cn("rounded-lg border p-4 flex gap-6 items-start", archetypeColor(arch))}>
-            <div className="flex-1">
-              <div className="flex items-center gap-2 mb-1">
-                <span className={cn("text-xs px-2 py-0.5 rounded border font-bold", archetypeColor(arch))}>
+      <div className="flex-1 min-h-0 flex flex-col gap-1.5 justify-center">
+        {regionsByMrr.slice(0, 10).map((r, i) => {
+          const pct = Math.round((r.mrr / NATIONAL.mrr) * 100 * 10) / 10;
+          const barColor = r.archetype === "partner-led"
+            ? "bg-violet-500" : r.archetype === "outbound-responsive"
+            ? "bg-sky-500" : "bg-emerald-500";
+          return (
+            <div key={r.code} className="flex items-center gap-3">
+              <div className="w-40 text-xs text-gray-700 font-medium truncate shrink-0">{r.ccaa}</div>
+              <div className="flex-1 h-5 rounded bg-gray-100 overflow-hidden relative">
+                <div
+                  className={cn("h-full rounded", barColor)}
+                  style={{ width: barWidth(r.mrr, regionsByMrr[0].mrr) }}
+                />
+              </div>
+              <div className="w-32 text-xs tabular-nums text-gray-600 shrink-0">
+                {fmtEur(r.mrr)} <span className="text-gray-400">({pct}%)</span>
+              </div>
+              {i === 4 && (
+                <div className="text-[10px] font-bold text-red-600 bg-red-50 px-2 py-0.5 rounded shrink-0">← 55%</div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+      <div className="flex gap-4 text-[10px] text-gray-400">
+        <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded bg-violet-500 inline-block" /> Partner-Led</span>
+        <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded bg-sky-500 inline-block" /> Outbound-Responsive</span>
+        <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded bg-emerald-500 inline-block" /> Multi-Channel</span>
+      </div>
+      <InsightBox text="Cataluña + Madrid + Andalucía + Baleares + Asturias = 55% del MRR. Priorizar estas regiones no es opcional — es matemática." />
+    </div>,
+
+    // ── Slide 5 — Los 3 Arquetipos ─────────────────────────────────────────────
+    <div key="s5" className="flex flex-col h-full p-8 gap-4 bg-white">
+      <div>
+        <h2 className="text-xl font-bold text-gray-900 mb-0.5">Tres Modelos de Mercado, Tres Playbooks Distintos</h2>
+      </div>
+      <div className="grid grid-cols-3 gap-4 flex-1 min-h-0">
+        {archetypeAgg.map(({ arch, regions, mrr, active, count, avgArpu, avgD2w }) => {
+          const kpiDef = arch === "partner-led"
+            ? "Canal partner > 35% del MRR"
+            : arch === "outbound-responsive"
+            ? "D2W outbound > media nacional + baja penetración partner"
+            : "Ningún canal supera el 40% del MRR — distribución equilibrada";
+          const tintBg = arch === "partner-led"
+            ? "bg-violet-50 border-violet-200"
+            : arch === "outbound-responsive"
+            ? "bg-sky-50 border-sky-200"
+            : "bg-emerald-50 border-emerald-200";
+          const tintText = arch === "partner-led"
+            ? "text-violet-900"
+            : arch === "outbound-responsive"
+            ? "text-sky-900"
+            : "text-emerald-900";
+          return (
+            <div key={arch} className={cn("rounded-xl border p-4 flex flex-col gap-3", tintBg, tintText)}>
+              <div>
+                <span className={cn("text-[10px] px-2 py-0.5 rounded border font-semibold", archetypeColor(arch))}>
                   {archetypeLabel(arch)}
                 </span>
-                <span className="text-xs text-gray-500">{count} regiones</span>
+                <span className="text-[10px] ml-2 opacity-60">{count} regiones</span>
               </div>
-              <p className="text-[11px] italic leading-snug opacity-80">{archetypeTagline(arch)}</p>
-              <p className="text-[10px] mt-1.5 opacity-60">{regions.map((r) => r.ccaa).join(", ")}</p>
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <div className="text-[10px] opacity-60 uppercase tracking-widest">MRR total</div>
+                  <div className="text-lg font-bold tabular-nums">{fmtEur(mrr)}</div>
+                </div>
+                <div>
+                  <div className="text-[10px] opacity-60 uppercase tracking-widest">Activos</div>
+                  <div className="text-lg font-bold tabular-nums">{active.toLocaleString()}</div>
+                </div>
+                <div>
+                  <div className="text-[10px] opacity-60 uppercase tracking-widest">Avg ARPU</div>
+                  <div className="text-base font-semibold tabular-nums">{fmtEur(avgArpu)}</div>
+                </div>
+                <div>
+                  <div className="text-[10px] opacity-60 uppercase tracking-widest">Avg D2W</div>
+                  <div className="text-base font-semibold tabular-nums">{avgD2w}%</div>
+                </div>
+              </div>
+              <div className="text-[10px] italic opacity-70 leading-snug">{archetypeTagline(arch)}</div>
+              <div className="text-[10px] font-semibold border-t border-current/20 pt-2 leading-snug">KPI definitorio: {kpiDef}</div>
+              <div className="text-[10px] opacity-50 leading-snug">{regions.map((r) => r.ccaa).join(", ")}</div>
             </div>
-            <div className="text-right shrink-0">
-              <div className="text-lg font-bold tabular-nums">{fmtEur(mrr)}</div>
-              <div className="text-[10px] text-gray-500">{active.toLocaleString()} clientes</div>
-            </div>
-          </div>
-        ))}
+          );
+        })}
       </div>
-      <InsightBox text="No existe una estrategia única. Cada arquetipo requiere un playbook diferente: canal, tamaño objetivo y mix de inversión son distintos." />
+      <InsightBox text="No hay una estrategia única. El arquetipo define el canal prioritario, el perfil de empresa objetivo y el perfil de AE necesario en esa región." />
     </div>,
 
-    // ── Slide 7 — Partner-Led ─────────────────────────────────────────────────
-    <div key="s7" className="flex flex-col h-full p-8 gap-5">
+    // ── Slide 6 — Deep Dive: Partner-Led ──────────────────────────────────────
+    <div key="s6" className="flex flex-col h-full p-8 gap-4 bg-violet-50">
       <div>
-        <h2 className="text-xl font-bold text-gray-900 mb-1">
-          Arquetipo 1: Partner-Led — {partnerLedRegions.length} Regiones, {fmtEur(partnerLedMrr)} MRR
-        </h2>
-        <p className="text-xs text-gray-500">Canal partner domina (&gt;40% MRR) — el canal directo es secundario</p>
+        <h2 className="text-xl font-bold text-violet-900 mb-0.5">Arquetipo 1: Partner-Led · {partnerLedData.regions.length} Regiones</h2>
+        <p className="text-xs text-violet-600/70">Canal partner domina (&gt;35% MRR) — el canal directo es secundario</p>
       </div>
-      <div className="grid grid-cols-2 gap-4 flex-1 min-h-0">
-        <div>
-          <p className="text-[10px] uppercase tracking-widest text-gray-400 mb-2">Regiones</p>
-          <table className="w-full text-xs">
+      <div className="flex gap-4 flex-1 min-h-0">
+        {/* Left 40% — region list */}
+        <div className="w-[38%] shrink-0">
+          <p className="text-[10px] uppercase tracking-widest text-violet-600/70 mb-1.5 font-semibold">Regiones</p>
+          <table className="w-full text-xs text-violet-900">
             <thead>
-              <tr className="bg-gray-50 border-b text-left">
-                <th className="py-1.5 px-2 font-semibold text-gray-500">CCAA</th>
-                <th className="py-1.5 px-2 font-semibold text-gray-500 text-right">MRR</th>
-                <th className="py-1.5 px-2 font-semibold text-gray-500 text-right">Penetración</th>
+              <tr className="border-b border-violet-200 text-left">
+                <th className="py-1.5 pr-2 font-semibold text-violet-600/70">CCAA</th>
+                <th className="py-1.5 px-2 font-semibold text-violet-600/70 text-right">MRR</th>
+                <th className="py-1.5 px-2 font-semibold text-violet-600/70 text-right">Pen.</th>
+                <th className="py-1.5 pl-2 font-semibold text-violet-600/70">Top partner</th>
               </tr>
             </thead>
             <tbody>
-              {partnerLedRegions.map((r) => (
-                <tr key={r.code} className="border-b border-gray-100">
-                  <td className="py-1.5 px-2 font-medium">{r.ccaa}</td>
+              {partnerLedData.regions.map((r) => (
+                <tr key={r.code} className="border-b border-violet-100">
+                  <td className="py-1.5 pr-2 font-medium">{r.ccaa}</td>
                   <td className="py-1.5 px-2 text-right tabular-nums">{fmtEur(r.mrr)}</td>
-                  <td className={cn("py-1.5 px-2 text-right tabular-nums", penColorClass(r.penetration))}>
+                  <td className={cn("py-1.5 px-2 text-right tabular-nums font-semibold", penColorClass(r.penetration))}>
+                    {r.penetration}%
+                  </td>
+                  <td className="py-1.5 pl-2 text-[10px] opacity-70">{partnerLedData.dominantPartner(r)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        {/* Right 60% — provenance table */}
+        <div className="flex-1 min-w-0">
+          <p className="text-[10px] uppercase tracking-widest text-violet-600/70 mb-1.5 font-semibold">Canales agregados (todas las regiones partner-led)</p>
+          <div className="text-violet-900">
+            <ArchProvenanceTable
+              channels={partnerLedData.channels}
+              totalActive={partnerLedData.totalActive}
+              totalMrr={partnerLedData.totalMrr}
+              weightedArpu={partnerLedData.weightedArpu}
+              weightedD2w={partnerLedData.weightedD2w}
+            />
+          </div>
+        </div>
+      </div>
+      <InsightBox actionable text="El canal partner genera 2.3x el ARPU del canal directo en estas regiones. Prioridad inmediata: activar 1-2 partners locales en Galicia (penetración 4.1%) y Castilla y León (4.4%). KPI de seguimiento: % MRR partner por región — target >40% en 6 meses." />
+    </div>,
+
+    // ── Slide 7 — Deep Dive: Outbound-Responsive ──────────────────────────────
+    <div key="s7" className="flex flex-col h-full p-8 gap-4 bg-sky-50">
+      <div>
+        <h2 className="text-xl font-bold text-sky-900 mb-0.5">Arquetipo 2: Outbound-Responsive · {outboundData.regions.length} Regiones</h2>
+        <p className="text-xs text-sky-600/70">SDR outbound primero — estos mercados convierten bien cuando se los busca proactivamente</p>
+      </div>
+      <div className="flex gap-4 flex-1 min-h-0">
+        {/* Left 40% */}
+        <div className="w-[38%] shrink-0">
+          <p className="text-[10px] uppercase tracking-widest text-sky-600/70 mb-1.5 font-semibold">Regiones</p>
+          <table className="w-full text-xs text-sky-900">
+            <thead>
+              <tr className="border-b border-sky-200 text-left">
+                <th className="py-1.5 pr-2 font-semibold text-sky-600/70">CCAA</th>
+                <th className="py-1.5 px-2 font-semibold text-sky-600/70 text-right">MRR</th>
+                <th className="py-1.5 px-2 font-semibold text-sky-600/70 text-right">D2W OB</th>
+                <th className="py-1.5 pl-2 font-semibold text-sky-600/70 text-right">Pen.</th>
+              </tr>
+            </thead>
+            <tbody>
+              {outboundData.regions.map((r) => (
+                <tr key={r.code} className="border-b border-sky-100">
+                  <td className="py-1.5 pr-2 font-medium">{r.ccaa}</td>
+                  <td className="py-1.5 px-2 text-right tabular-nums">{fmtEur(r.mrr)}</td>
+                  <td className={cn("py-1.5 px-2 text-right tabular-nums font-semibold",
+                    (() => { const d = outboundData.outboundD2w(r); return d !== null && d >= NATIONAL.d2w ? "text-emerald-700" : "text-amber-700"; })(),
+                  )}>
+                    {(() => { const d = outboundData.outboundD2w(r); return d !== null ? `${d}%` : "—"; })()}
+                  </td>
+                  <td className={cn("py-1.5 pl-2 text-right tabular-nums", penColorClass(r.penetration))}>
                     {r.penetration}%
                   </td>
                 </tr>
@@ -1275,315 +1473,224 @@ function SlidesView() {
             </tbody>
           </table>
         </div>
-        <div>
-          <p className="text-[10px] uppercase tracking-widest text-gray-400 mb-2">Métricas clave</p>
-          <table className="w-full text-xs">
-            <tbody className="divide-y divide-gray-100">
-              <tr>
-                <td className="py-2 pr-3 text-gray-500">ARPU medio</td>
-                <td className="py-2 text-right font-semibold tabular-nums">
-                  {fmtEur(Math.round(partnerLedRegions.reduce((s, r) => s + r.arpu, 0) / partnerLedRegions.length))}
-                </td>
-              </tr>
-              <tr>
-                <td className="py-2 pr-3 text-gray-500">D2W medio</td>
-                <td className="py-2 text-right font-semibold tabular-nums">
-                  {(partnerLedRegions.reduce((s, r) => s + r.d2w, 0) / partnerLedRegions.length).toFixed(1)}%
-                </td>
-              </tr>
-              <tr>
-                <td className="py-2 pr-3 text-gray-500">Canal dominante</td>
-                <td className="py-2 text-right font-semibold">Channel Partners</td>
-              </tr>
-              <tr>
-                <td className="py-2 pr-3 text-gray-500">Top partner</td>
-                <td className="py-2 text-right font-semibold">Landín Informática (Galicia)</td>
-              </tr>
-              <tr>
-                <td className="py-2 pr-3 text-gray-500">Penetración media</td>
-                <td className="py-2 text-right font-semibold tabular-nums">
-                  {(partnerLedRegions.reduce((s, r) => s + r.penetration, 0) / partnerLedRegions.length).toFixed(1)}%
-                </td>
-              </tr>
-            </tbody>
-          </table>
+        {/* Right 60% */}
+        <div className="flex-1 min-w-0">
+          <p className="text-[10px] uppercase tracking-widest text-sky-600/70 mb-1.5 font-semibold">Canales agregados (todas las regiones outbound-responsive)</p>
+          <div className="text-sky-900">
+            <ArchProvenanceTable
+              channels={outboundData.channels}
+              totalActive={outboundData.totalActive}
+              totalMrr={outboundData.totalMrr}
+              weightedArpu={outboundData.weightedArpu}
+              weightedD2w={outboundData.weightedD2w}
+            />
+          </div>
         </div>
       </div>
-      <InsightBox
-        actionable
-        text="Activar y escalar partnerships locales en cada región. Priorizar Galicia (penetración 4.1%) y Castilla y León (4.4%). Target: duplicar clientes partner en 6 meses."
-      />
+      <InsightBox actionable text="Los AEs cierran a un ritmo D2W de ~78%+ en estas regiones — significativamente por encima de la media nacional (79.2% pero con pipeline más corto). Concentrar la capacidad SDR/AE en C. Valenciana y País Vasco antes de diversificar. Expandir outbound aquí da más retorno por euro que abrir nuevas regiones." />
     </div>,
 
-    // ── Slide 8 — Outbound-Responsive ─────────────────────────────────────────
-    <div key="s8" className="flex flex-col h-full p-8 gap-5">
+    // ── Slide 8 — Multi-Channel Core: Introducción ────────────────────────────
+    <div key="s8" className="flex flex-col h-full p-8 gap-4 bg-emerald-50">
       <div>
-        <h2 className="text-xl font-bold text-gray-900 mb-1">
-          Arquetipo 2: Outbound-Responsive — {outboundRegions.length} Regiones, {fmtEur(outboundMrr)} MRR
-        </h2>
-        <p className="text-xs text-gray-500">Outbound SDR genera los mejores resultados — mercados que responden a la búsqueda proactiva</p>
+        <h2 className="text-xl font-bold text-emerald-900 mb-0.5">Arquetipo 3: Multi-Channel Core · El Núcleo del Crecimiento</h2>
+        <p className="text-xs text-emerald-600/70">{multiChannelData.regions.length} regiones · {fmtEur(multiChannelData.totalMrr)} MRR · 65% del negocio total</p>
       </div>
-      <div className="grid grid-cols-2 gap-4 flex-1 min-h-0">
-        <div>
-          <p className="text-[10px] uppercase tracking-widest text-gray-400 mb-2">Regiones</p>
-          <table className="w-full text-xs">
-            <thead>
-              <tr className="bg-gray-50 border-b text-left">
-                <th className="py-1.5 px-2 font-semibold text-gray-500">CCAA</th>
-                <th className="py-1.5 px-2 font-semibold text-gray-500 text-right">MRR</th>
-                <th className="py-1.5 px-2 font-semibold text-gray-500 text-right">D2W</th>
-              </tr>
-            </thead>
-            <tbody>
-              {outboundRegions.map((r) => (
-                <tr key={r.code} className="border-b border-gray-100">
+      <div className="grid grid-cols-3 gap-3">
+        <SlideKpiCard label="MRR Total" value={fmtEur(multiChannelData.totalMrr)} />
+        <SlideKpiCard label="Clientes Activos" value={multiChannelData.totalActive.toLocaleString()} />
+        <SlideKpiCard label="Avg ARPU" value={fmtEur(multiChannelData.avgArpu)} />
+      </div>
+      <div className="flex-1 min-h-0">
+        <table className="w-full text-xs text-emerald-900">
+          <thead>
+            <tr className="border-b border-emerald-200 text-left bg-emerald-100/50">
+              <th className="py-2 px-2 font-semibold text-emerald-600/70">Región</th>
+              <th className="py-2 px-2 font-semibold text-emerald-600/70 text-right">MRR</th>
+              <th className="py-2 px-2 font-semibold text-emerald-600/70 text-right">% MRR España</th>
+              <th className="py-2 px-2 font-semibold text-emerald-600/70 text-right">ARPU</th>
+              <th className="py-2 px-2 font-semibold text-emerald-600/70 text-right">D2W</th>
+              <th className="py-2 px-2 font-semibold text-emerald-600/70">Canal top</th>
+            </tr>
+          </thead>
+          <tbody>
+            {multiChannelData.regions.map((r) => {
+              const top = multiChannelData.topChannel(r);
+              return (
+                <tr key={r.code} className="border-b border-emerald-100 hover:bg-emerald-100/30">
                   <td className="py-1.5 px-2 font-medium">{r.ccaa}</td>
-                  <td className="py-1.5 px-2 text-right tabular-nums">{fmtEur(r.mrr)}</td>
+                  <td className="py-1.5 px-2 text-right tabular-nums font-semibold">{fmtEur(r.mrr)}</td>
+                  <td className="py-1.5 px-2 text-right tabular-nums">{Math.round((r.mrr / NATIONAL.mrr) * 100 * 10) / 10}%</td>
+                  <td className={cn("py-1.5 px-2 text-right tabular-nums",
+                    r.arpu >= NATIONAL.arpu * 1.1 ? "text-emerald-700 font-semibold" : ""
+                  )}>
+                    {fmtEur(r.arpu)}
+                  </td>
                   <td className={cn("py-1.5 px-2 text-right tabular-nums font-semibold",
-                    r.d2w >= NATIONAL.d2w ? "text-emerald-700" : "text-red-600",
+                    r.d2w >= NATIONAL.d2w ? "text-emerald-700" : "text-amber-700",
                   )}>
                     {r.d2w}%
                   </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-        <div>
-          <p className="text-[10px] uppercase tracking-widest text-gray-400 mb-2">Métricas clave</p>
-          <table className="w-full text-xs">
-            <tbody className="divide-y divide-gray-100">
-              <tr>
-                <td className="py-2 pr-3 text-gray-500">ARPU medio</td>
-                <td className="py-2 text-right font-semibold tabular-nums">
-                  {fmtEur(Math.round(outboundRegions.reduce((s, r) => s + r.arpu, 0) / outboundRegions.length))}
-                </td>
-              </tr>
-              <tr>
-                <td className="py-2 pr-3 text-gray-500">D2W medio</td>
-                <td className="py-2 text-right font-semibold tabular-nums">
-                  {(outboundRegions.reduce((s, r) => s + r.d2w, 0) / outboundRegions.length).toFixed(1)}%
-                </td>
-              </tr>
-              <tr>
-                <td className="py-2 pr-3 text-gray-500">Mejor D2W outbound</td>
-                <td className="py-2 text-right font-semibold">Extremadura (96%) / Canarias (95%)</td>
-              </tr>
-              <tr>
-                <td className="py-2 pr-3 text-gray-500">Canal dominante</td>
-                <td className="py-2 text-right font-semibold">Outbound SDR</td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
-      </div>
-      <InsightBox
-        actionable
-        text="Incrementar cobertura SDR en C. Valenciana y País Vasco — D2W >78% confirma que estas regiones convierten bien cuando se contactan. ROI de SDR aquí es superior a la media nacional."
-      />
-    </div>,
-
-    // ── Slide 9 — Multi-Channel Core ──────────────────────────────────────────
-    <div key="s9" className="flex flex-col h-full p-8 gap-5">
-      <div>
-        <h2 className="text-xl font-bold text-gray-900 mb-1">
-          Arquetipo 3: Multi-Channel Core — {multiChannelRegions.length} Regiones, {fmtEur(multiChannelMrr)} MRR
-        </h2>
-        <p className="text-xs text-gray-500">Ningún canal domina — orquesta inbound + outbound + partners para maximizar cobertura</p>
-      </div>
-      <div className="flex-1 min-h-0">
-        <table className="w-full text-xs">
-          <thead>
-            <tr className="bg-gray-50 border-b text-left">
-              <th className="py-2 px-3 font-semibold text-gray-500">CCAA</th>
-              <th className="py-2 px-3 font-semibold text-gray-500 text-right">MRR</th>
-              <th className="py-2 px-3 font-semibold text-gray-500">Top Canal</th>
-              <th className="py-2 px-3 font-semibold text-gray-500 text-right">D2W</th>
-              <th className="py-2 px-3 font-semibold text-gray-500 text-right">ARPU</th>
-            </tr>
-          </thead>
-          <tbody>
-            {multiChannelRegions.map((r) => {
-              const topChannel = [...r.provenances].sort((a, b) => b.mrr - a.mrr)[0];
-              return (
-                <tr key={r.code} className="border-b border-gray-100 hover:bg-gray-50">
-                  <td className="py-2 px-3 font-medium">{r.ccaa}</td>
-                  <td className="py-2 px-3 text-right tabular-nums font-semibold">{fmtEur(r.mrr)}</td>
-                  <td className="py-2 px-3 text-gray-600">
-                    {topChannel.label} <span className="text-gray-400">({topChannel.mrrShare}%)</span>
-                  </td>
-                  <td className={cn("py-2 px-3 text-right tabular-nums font-semibold",
-                    r.d2w >= NATIONAL.d2w ? "text-emerald-700" : "text-amber-600",
-                  )}>
-                    {r.d2w}%
-                  </td>
-                  <td className={cn("py-2 px-3 text-right tabular-nums",
-                    r.arpu >= NATIONAL.arpu ? "text-emerald-700" : "text-red-600",
-                  )}>
-                    {fmtEur(r.arpu)}
-                  </td>
+                  <td className="py-1.5 px-2 text-[10px]">{top.label} <span className="opacity-60">({top.mrrShare}%)</span></td>
                 </tr>
               );
             })}
           </tbody>
         </table>
       </div>
-      <InsightBox
-        actionable
-        text="No elegir un canal — orquestar. En estas regiones conviven Partners (ARPU 1,128€), Outbound (D2W 87%) e Inbound (volumen). La secuencia ideal: Inbound para leads → Outbound para conversión → Partners para upmarket."
-      />
+      <InsightBox actionable text="En estas regiones no existe un canal dominante — los tres coexisten con rendimientos distintos. La estrategia no es elegir: es orquestar la secuencia. Inbound para volumen → Outbound para conversión rápida → Partners para deals M/L de alto ARPU." />
     </div>,
 
-    // ── Slide 10 — Zoom Multi-Channel ─────────────────────────────────────────
-    <div key="s10" className="flex flex-col h-full p-8 gap-5">
-      <div>
-        <h2 className="text-xl font-bold text-gray-900 mb-1">Multi-Channel Core: Decisiones por Región</h2>
-        <p className="text-xs text-gray-500">Comparativa detallada de las {multiChannelRegions.length} CCAAs Multi-Channel</p>
-      </div>
-      <div className="flex-1 min-h-0">
-        <table className="w-full text-xs">
-          <thead>
-            <tr className="bg-gray-50 border-b text-left">
-              <th className="py-2 px-3 font-semibold text-gray-500">Región</th>
-              <th className="py-2 px-3 font-semibold text-gray-500 text-right">Activos</th>
-              <th className="py-2 px-3 font-semibold text-gray-500 text-right">MRR</th>
-              <th className="py-2 px-3 font-semibold text-gray-500 text-right">ARPU</th>
-              <th className="py-2 px-3 font-semibold text-gray-500 text-right">D2W</th>
-              <th className="py-2 px-3 font-semibold text-gray-500">Top Canal</th>
-              <th className="py-2 px-3 font-semibold text-gray-500 text-right">ARPU Partner</th>
-            </tr>
-          </thead>
-          <tbody>
-            {multiChannelRegions.map((r) => {
-              const topChannel = [...r.provenances].sort((a, b) => b.mrr - a.mrr)[0];
-              const partnerProv = r.provenances.find((p) => p.label === "Channel Partners");
-              return (
-                <tr key={r.code} className="border-b border-gray-100 hover:bg-gray-50">
-                  <td className="py-2 px-3 font-medium">{r.ccaa}</td>
-                  <td className="py-2 px-3 text-right tabular-nums">{r.active.toLocaleString()}</td>
-                  <td className="py-2 px-3 text-right tabular-nums font-semibold">{fmtEur(r.mrr)}</td>
-                  <td className={cn("py-2 px-3 text-right tabular-nums",
-                    r.arpu >= NATIONAL.arpu * 1.05 ? "text-emerald-700" : r.arpu <= NATIONAL.arpu * 0.9 ? "text-red-600" : "",
-                  )}>
+    // ── Slides 9-13 — Zoom por región Multi-Channel ────────────────────────────
+    ...mcRegions.map((r, idx) => {
+      const { rows, maxMrr, topLabel } = regionProvTable(r);
+      const actionable = mcActionable[r.ccaa] ?? "";
+      return (
+        <div key={`mc-${r.code}`} className="flex flex-col h-full p-8 gap-4 bg-white">
+          <div>
+            <h2 className="text-xl font-bold text-gray-900 mb-0.5">{r.ccaa} — Análisis Multichannel</h2>
+            <p className="text-xs text-gray-400">{r.active.toLocaleString()} clientes · {fmtEur(r.mrr)} MRR · {r.penetration}% penetración</p>
+          </div>
+          <div className="flex gap-4 flex-1 min-h-0">
+            {/* Left 45% */}
+            <div className="w-[43%] shrink-0 flex flex-col gap-3">
+              <div className="grid grid-cols-3 gap-2">
+                <div className="rounded-lg border border-gray-200 bg-gray-50 p-2 text-center">
+                  <div className="text-[10px] text-gray-400 uppercase tracking-widest">ARPU</div>
+                  <div className={cn("text-base font-bold tabular-nums", kpiColor(r.arpu, NATIONAL.arpu, true))}>
                     {fmtEur(r.arpu)}
-                  </td>
-                  <td className={cn("py-2 px-3 text-right tabular-nums font-semibold",
-                    r.d2w >= NATIONAL.d2w ? "text-emerald-700" : r.d2w <= NATIONAL.d2w - 5 ? "text-red-600" : "",
-                  )}>
+                  </div>
+                </div>
+                <div className="rounded-lg border border-gray-200 bg-gray-50 p-2 text-center">
+                  <div className="text-[10px] text-gray-400 uppercase tracking-widest">D2W</div>
+                  <div className={cn("text-base font-bold tabular-nums", kpiColor(r.d2w, NATIONAL.d2w, true))}>
                     {r.d2w}%
-                  </td>
-                  <td className="py-2 px-3 text-gray-600">{topChannel.label} ({topChannel.mrrShare}%)</td>
-                  <td className="py-2 px-3 text-right tabular-nums">
-                    {partnerProv ? fmtEur(partnerProv.arpu) : "—"}
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
-      </div>
-      <InsightBox
-        actionable
-        text="Cataluña y Madrid justifican inversión en los 3 canales simultáneamente. Baleares y Asturias: concentrar en el canal dominante antes de diversificar."
-      />
-    </div>,
+                  </div>
+                </div>
+                <div className="rounded-lg border border-gray-200 bg-gray-50 p-2 text-center">
+                  <div className="text-[10px] text-gray-400 uppercase tracking-widest">Pen.</div>
+                  <div className={cn("text-base font-bold tabular-nums", penColorClass(r.penetration))}>
+                    {r.penetration}%
+                  </div>
+                </div>
+              </div>
+              <div>
+                <p className="text-[10px] uppercase tracking-widest text-gray-400 mb-1 font-semibold">Por tamaño</p>
+                <table className="w-full text-xs">
+                  <thead>
+                    <tr className="border-b border-gray-200 text-left">
+                      <th className="py-1 pr-1 font-semibold text-gray-400">Seg.</th>
+                      <th className="py-1 px-1 font-semibold text-gray-400 text-right">Act.</th>
+                      <th className="py-1 px-1 font-semibold text-gray-400 text-right">MRR</th>
+                      <th className="py-1 px-1 font-semibold text-gray-400 text-right">ARPU</th>
+                      <th className="py-1 pl-1 font-semibold text-gray-400 text-right">D2W</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {r.sizes.map((s) => (
+                      <tr key={s.label} className="border-b border-gray-100">
+                        <td className="py-1 pr-1">{s.label}</td>
+                        <td className="py-1 px-1 text-right tabular-nums">{s.active.toLocaleString()}</td>
+                        <td className="py-1 px-1 text-right tabular-nums font-medium">{fmtEur(s.mrr)}</td>
+                        <td className="py-1 px-1 text-right tabular-nums">{fmtEur(s.arpu)}</td>
+                        <td className={cn("py-1 pl-1 text-right tabular-nums",
+                          s.d2w === null ? "text-gray-400" : s.d2w >= 80 ? "text-emerald-700" : s.d2w >= 65 ? "text-amber-700" : "text-red-600",
+                        )}>
+                          {s.d2w !== null ? `${s.d2w}%` : "—"}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+            {/* Right 55% */}
+            <div className="flex-1 min-w-0">
+              <p className="text-[10px] uppercase tracking-widest text-gray-400 mb-1 font-semibold">Canales</p>
+              <table className="w-full text-xs">
+                <thead>
+                  <tr className="border-b border-gray-200 text-left">
+                    <th className="py-1.5 pr-2 font-semibold text-gray-400">Canal</th>
+                    <th className="py-1.5 px-1 font-semibold text-gray-400 text-right">Act.</th>
+                    <th className="py-1.5 px-1 font-semibold text-gray-400 text-right">MRR</th>
+                    <th className="py-1.5 px-1 font-semibold text-gray-400 text-right">% local</th>
+                    <th className="py-1.5 px-1 font-semibold text-gray-400 text-right">ARPU</th>
+                    <th className="py-1.5 pl-1 font-semibold text-gray-400 text-right">D2W</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {rows.map((p) => (
+                    <tr key={p.label} className={cn(
+                      "border-b border-gray-100",
+                      p.label === topLabel ? "bg-emerald-50" : "hover:bg-gray-50",
+                    )}>
+                      <td className="py-1.5 pr-2 font-medium">{p.label}</td>
+                      <td className="py-1.5 px-1 text-right tabular-nums">{p.active.toLocaleString()}</td>
+                      <td className="py-1.5 px-1 text-right tabular-nums font-medium">{fmtEur(p.mrr)}</td>
+                      <td className="py-1.5 px-1 text-right tabular-nums">
+                        <div className="flex items-center justify-end gap-1">
+                          <div className="w-10 h-1.5 rounded-full bg-gray-100 overflow-hidden">
+                            <div className="h-full rounded-full bg-emerald-500" style={{ width: barWidth(p.mrr, maxMrr) }} />
+                          </div>
+                          <span>{p.mrrShare}%</span>
+                        </div>
+                      </td>
+                      <td className="py-1.5 px-1 text-right tabular-nums">{fmtEur(p.arpu)}</td>
+                      <td className={cn("py-1.5 pl-1 text-right tabular-nums font-medium",
+                        p.d2w === null ? "text-gray-400" : p.d2w >= 80 ? "text-emerald-700" : p.d2w >= 65 ? "text-amber-700" : "text-red-600",
+                      )}>
+                        {p.d2w !== null ? `${p.d2w}%` : "—"}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+          <InsightBox actionable={!!actionable} text={actionable || `Analizar oportunidades de crecimiento en ${r.ccaa}.`} />
+          {/* suppress unused warning */}
+          {idx >= 0 && null}
+        </div>
+      );
+    }),
 
-    // ── Slide 11 — Priorización Final ─────────────────────────────────────────
-    <div key="s11" className="flex flex-col h-full p-8 gap-5">
+    // ── Slide 14 — Priorización Final ─────────────────────────────────────────
+    <div key="s14" className="flex flex-col h-full p-8 gap-4 bg-white">
       <div>
-        <h2 className="text-xl font-bold text-gray-900 mb-1">Top 5 Oportunidades Ganadoras</h2>
-        <p className="text-xs text-gray-500">Puntuación = TAM sin cubrir × (D2W / 100) — alto potencial y alta probabilidad de conversión</p>
+        <h2 className="text-xl font-bold text-gray-900 mb-0.5">Top 5 Oportunidades Ganadoras</h2>
+        <p className="text-xs text-gray-400">Cruce entre volumen disponible y eficiencia histórica de conversión — score = TAM sin cubrir × (D2W/100)</p>
       </div>
       <div className="flex-1 flex flex-col gap-3 min-h-0">
-        {top5Opportunities.map((r, i) => (
-          <div key={r.code} className="rounded-lg border border-gray-200 bg-white p-3 flex gap-4 items-start">
-            <div className="text-2xl font-bold text-gray-200 tabular-nums w-8 shrink-0 text-right">{i + 1}</div>
+        {top5Opp.map((r, i) => (
+          <div key={r.code} className="rounded-lg border border-gray-200 bg-white p-3 flex gap-4 items-start hover:bg-gray-50">
+            <div className="text-3xl font-bold text-gray-100 tabular-nums w-8 shrink-0 text-right leading-none mt-1">{i + 1}</div>
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-2 mb-1">
                 <span className="text-sm font-bold text-gray-900">{r.ccaa}</span>
-                <span className={cn("text-[9px] px-1.5 py-0.5 rounded border font-medium", archetypeColor(r.archetype))}>
+                <span className={cn("px-2 py-0.5 rounded text-[10px] font-semibold border", archetypeColor(r.archetype))}>
                   {archetypeLabel(r.archetype)}
                 </span>
               </div>
-              <div className="grid grid-cols-2 gap-x-4 text-xs">
-                <div><span className="text-gray-400">Porqué: </span><span className="text-gray-700">Penetración {r.penetration}% ({Math.round((1 - r.penetration / 100) * r.tam).toLocaleString()} sin cubrir), D2W {r.d2w}%</span></div>
-                <div><span className="text-gray-400">Qué: </span><span className="text-gray-700">{r.strategy.leadChannel}</span></div>
+              <div className="flex gap-4 text-xs mb-1">
+                <span className="text-gray-400">Sin cubrir: <span className="font-semibold text-gray-700">{r.untapped.toLocaleString()}</span></span>
+                <span className="text-gray-400">D2W: <span className={cn("font-semibold", r.d2w >= 80 ? "text-emerald-700" : "text-amber-700")}>{r.d2w}%</span></span>
+                <span className="text-gray-400">Penetración: <span className={cn("font-semibold", penColorClass(r.penetration))}>{r.penetration}%</span></span>
+              </div>
+              <div className="text-xs text-gray-500">
+                <span className="font-semibold text-gray-700">Por qué: </span>{oppWhy[r.code] ?? `Penetración ${r.penetration}% con ${r.untapped.toLocaleString()} empresas sin cubrir.`}
+              </div>
+              <div className="text-xs text-gray-500 mt-0.5">
+                <span className="font-semibold text-[#c0392b]">Acción: </span>{oppAction[r.code] ?? r.strategy.leadChannel}
               </div>
             </div>
             <div className="text-right shrink-0">
-              <div className="text-xs text-gray-400">Score</div>
-              <div className="text-base font-bold tabular-nums text-red-600">{r.oppScore.toLocaleString()}</div>
+              <div className="text-[10px] text-gray-400">Score</div>
+              <div className="text-lg font-bold tabular-nums text-[#c0392b]">{r.score.toLocaleString()}</div>
             </div>
           </div>
         ))}
       </div>
-      <InsightBox text="Cada euro de inversión incremental debe ir primero a regiones con D2W alto y penetración baja. Madrid outbound y Cataluña partner son las apuestas de menor riesgo y mayor retorno." />
-    </div>,
-
-    // ── Slide 12 — Próximos Pasos ─────────────────────────────────────────────
-    <div key="s12" className="flex flex-col h-full p-8 gap-5">
-      <div>
-        <h2 className="text-xl font-bold text-gray-900 mb-1">Plan de Acción: Próximos 90 Días</h2>
-        <p className="text-xs text-gray-500">Prioridades ejecutables ordenadas por impacto esperado</p>
-      </div>
-      <div className="grid grid-cols-3 gap-4 flex-1 min-h-0">
-        {[
-          {
-            label: "30 días",
-            color: "border-red-200 bg-red-50",
-            header: "text-red-700",
-            items: [
-              "Asignar SDR dedicado a Canarias y Extremadura (D2W outbound >95%)",
-              "Activar campañas outbound en C. Valenciana y País Vasco",
-              "Reunión de revisión con Landín Informática (Galicia) — plan de escalada",
-              "Diagnóstico D2W en Murcia — entrevistar AEs sobre objeciones frecuentes",
-            ],
-          },
-          {
-            label: "60 días",
-            color: "border-amber-200 bg-amber-50",
-            header: "text-amber-700",
-            items: [
-              "Reclutar 1 nuevo partner local en Castilla y León y en Aragón",
-              "Lanzar campaña vertical Healthcare en Andalucía (ARPU €2,627)",
-              "Optimizar Santander D2W en País Vasco — revisión del proceso de handoff",
-              "Ampliar Wolters Kluwer en Madrid — modelo de bajo volumen / alto ARPU",
-            ],
-          },
-          {
-            label: "90 días",
-            color: "border-emerald-200 bg-emerald-50",
-            header: "text-emerald-700",
-            items: [
-              "Consolidar pipeline M+ en Cataluña — orquestar outbound (87% D2W) → partner",
-              "Plan de partner turístico en Baleares y Canarias (Hospitality 33% MRR)",
-              "Revisar targeting de Inbound en País Vasco y Castilla y León (D2W <65%)",
-              "Publicar playbook regional internal — mejores prácticas de los 5 top CCAAs",
-            ],
-          },
-        ].map((col) => (
-          <div key={col.label} className={cn("rounded-lg border p-4", col.color)}>
-            <p className={cn("text-xs font-bold uppercase tracking-widest mb-3", col.header)}>{col.label}</p>
-            <ul className="space-y-2">
-              {col.items.map((item, i) => (
-                <li key={i} className="flex gap-2 text-xs text-gray-700">
-                  <span className="mt-0.5 shrink-0 h-1.5 w-1.5 rounded-full bg-gray-400 mt-1.5" />
-                  {item}
-                </li>
-              ))}
-            </ul>
-          </div>
-        ))}
-      </div>
-      <div className="rounded-lg border border-gray-200 bg-white px-4 py-2 flex gap-6">
-        <div className="text-[10px] uppercase tracking-widest text-gray-400 shrink-0 self-center">Métricas de éxito</div>
-        <div className="flex gap-6 text-xs">
-          <div><span className="font-semibold">MRR incremental</span> <span className="text-gray-500">+300K€ en 90 días</span></div>
-          <div><span className="font-semibold">D2W nacional</span> <span className="text-gray-500">79.2% → 81%+</span></div>
-          <div><span className="font-semibold">Partners activados</span> <span className="text-gray-500">+4 nuevos acuerdos</span></div>
-        </div>
-      </div>
-      <InsightBox text="La velocidad de ejecución es la variable diferencial. Las regiones de alta oportunidad no esperan." />
+      <InsightBox text="Las mejores oportunidades no son las regiones más grandes — son las que combinan mercado sin tocar con capacidad de conversión probada. Madrid y Cataluña lideran por volumen; País Vasco y Baleares por eficiencia." />
     </div>,
   ];
 
