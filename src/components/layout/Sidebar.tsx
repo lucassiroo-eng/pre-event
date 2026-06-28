@@ -68,12 +68,10 @@ export function Sidebar() {
 
       <nav className="flex-1 space-y-0.5 px-3 py-4">
         {MAIN_NAV.map(renderItem)}
-        {selectedCountry === "es" && !!email && email.endsWith("@factorial.co") && (
-          renderItem({ to: "/strategy", labelKey: "Strategy", icon: Target })
-        )}
-        {selectedCountry === "es" && (
-          renderItem({ to: "/playbook", labelKey: "Playbook", icon: BookOpen })
-        )}
+        {selectedCountry === "es" && !!email && email.endsWith("@factorial.co") && (<>
+          {renderItem({ to: "/strategy", labelKey: "Strategy", icon: Target })}
+          {renderItem({ to: "/playbook", labelKey: "Playbook", icon: BookOpen })}
+        </>)}
       </nav>
 
       {isAdmin && (
