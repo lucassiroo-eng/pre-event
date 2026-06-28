@@ -676,43 +676,85 @@ export function computePlaybook(
     const archetype = computeArchetype(provenances, totalMrr);
 
     // ── Strategy text ────────────────────────────────────────────────────────
-    const topProv      = provenances[0];
-    const partnerMrr   = provenances
-      .filter((p) => ["Channel Partners", "Santander", "Telefónica"].includes(p.label))
-      .reduce((s, p) => s + p.mrr, 0);
+    const topProv    = provenances[0];
+    const partnerProvs = provenances.filter((p) =>
+      ["Channel Partners", "Santander", "Telefónica"].includes(p.label));
+    const partnerMrr = partnerProvs.reduce((s, p) => s + p.mrr, 0);
     const partnerShare = totalMrr > 0 ? Math.round((partnerMrr / totalMrr) * 100) : 0;
 
-    const leadChannel  = topProv?.label ?? "—";
+    // Canal principal — lead with the decisive number
+    const leadChannel = topProv?.label ?? "—";
+    const topL2w = topProv && topProv.pipeline > 0
+      ? Math.round(topProv.active / topProv.pipeline * 1000) / 10 : null;
+    const secondProv = provenances[1];
     const leadChannelDetail = topProv
-      ? `${topProv.label} lidera con ${topProv.mrrShare}% del MRR (${fmtN(topProv.arpu)} ARPU, D2W ${topProv.d2w ?? "—"}%). ${topProv.active} clientes activos.`
+      ? `${topProv.label}: ${topProv.mrrShare}% MRR · ${fmtN(topProv.arpu)} ARPU · L2W ${topL2w ?? "—"}% · ${topProv.active} clientes.` +
+        (secondProv ? ` 2º: ${secondProv.label} (${secondProv.mrrShare}% MRR, ${fmtN(secondProv.arpu)} ARPU).` : "")
       : "Sin canal dominante identificado.";
 
-    const partnerPlay   = partnerShare >= 20
-      ? `Escalar canal partner (${partnerShare}% del MRR actual — ${partners.slice(0, 2).map((p) => p.name).join(", ")})`
-      : "Activar y prospectar partners locales — baja presencia actual";
-    const partnerDetail = partners.length > 0
-      ? partners.slice(0, 3).map((p) => `${p.name}: ${p.clients} clientes, ${fmtN(p.mrr)} MRR`).join(". ") + "."
-      : "Sin partners activos registrados en esta región.";
+    // Partners — actionable
+    const partnerPlay = partnerShare >= 30
+      ? `Motor clave — ${partnerShare}% del MRR regional`
+      : partnerShare >= 15
+      ? `Creciendo — ${partnerShare}% MRR, escalar`
+      : "Sin activar — oportunidad de captación";
+    const partnerDetail = partnerProvs.length > 0
+      ? partnerProvs.map((p) => `${p.label}: ${p.active} clientes · ${fmtN(p.mrr)} MRR · ARPU ${fmtN(p.arpu)}`).join(". ") + "."
+      : partners.length > 0
+      ? "Presencia baja. Partners registrados: " + partners.slice(0, 3).map((p) => `${p.name} (${p.clients} cl.)`).join(", ") + "."
+      : "Sin partners activos en esta región.";
 
-    const bestSizeArpu = [...sizes].filter((s) => s.active >= 3).sort((a, b) => b.arpu - a.arpu)[0];
-    const sizeFocus    = bestSizeArpu?.label ?? "M (51-200)";
-    const sizeDetail   = sizes.filter((s) => s.active > 0)
-      .map((s) => `${s.label}: ${s.active} activos, ${fmtN(s.arpu)} ARPU, ${s.mrrShare}% MRR`)
-      .join(". ") + ".";
+    // Tamaño — highlight sweet spot (best ARPU × volume balance)
+    const sizesWithData = sizes.filter((s) => s.active >= 5);
+    const topArpuSize  = [...sizesWithData].sort((a, b) => b.arpu - a.arpu)[0];
+    const topVolSize   = [...sizesWithData].sort((a, b) => b.active - a.active)[0];
+    const topMrrSize   = [...sizesWithData].sort((a, b) => b.mrrShare - a.mrrShare)[0];
+    const sizeFocus    = topMrrSize?.label ?? topArpuSize?.label ?? "—";
+    const sizeDetail   = sizesWithData.length > 0
+      ? `Mayor MRR: ${topMrrSize?.label ?? "—"} (${topMrrSize?.mrrShare ?? 0}% · ${fmtN(topMrrSize?.arpu ?? 0)} ARPU). ` +
+        `Mayor ARPU: ${topArpuSize?.label ?? "—"} (${fmtN(topArpuSize?.arpu ?? 0)} · ${topArpuSize?.active ?? 0} clientes). ` +
+        `Mayor volumen: ${topVolSize?.label ?? "—"} (${topVolSize?.active ?? 0} clientes).`
+      : "Sin datos de segmentación.";
 
+    // ARPU
     const arpuVsNat = natArpu > 0 ? arpu / natArpu : 1;
+    const arpuPct   = Math.round((arpuVsNat - 1) * 100);
     const arpuAssessment = arpuVsNat >= 1.1
-      ? `${fmtN(arpu)} — ${Math.round((arpuVsNat - 1) * 100)}% por encima de la media nacional (${fmtN(natArpu)})`
+      ? `${fmtN(arpu)} (+${arpuPct}% vs nacional)`
       : arpuVsNat <= 0.9
-      ? `${fmtN(arpu)} — ${Math.round((1 - arpuVsNat) * 100)}% por debajo de la media nacional (${fmtN(natArpu)})`
-      : `${fmtN(arpu)} — en línea con la media nacional (${fmtN(natArpu)})`;
+      ? `${fmtN(arpu)} (${arpuPct}% vs nacional)`
+      : `${fmtN(arpu)} (en línea con nacional)`;
+    const arpuDetail = `Nacional: ${fmtN(natArpu)}. ` +
+      (topArpuSize ? `Segmento premium: ${topArpuSize.label} (${fmtN(topArpuSize.arpu)}). ` : "") +
+      (topVolSize && topVolSize.label !== topArpuSize?.label ? `Segmento volumen: ${topVolSize.label} (${fmtN(topVolSize.arpu)}).` : "");
 
-    const d2wDiff = Math.round((d2w - natD2w) * 10) / 10;
-    const conversionAssessment = Math.abs(d2wDiff) < 3
-      ? `D2W ${d2w}% — alineado con la media nacional (${natD2w}%)`
-      : d2wDiff > 0
-      ? `D2W ${d2w}% — ${d2wDiff}pp por encima de la media (${natD2w}%)`
-      : `D2W ${d2w}% — ${Math.abs(d2wDiff)}pp por debajo de la media (${natD2w}%). Revisar proceso de cierre.`;
+    // Conversión — L2W (structural) + D2W (funnel)
+    const hubspotCount = rows.length;
+    const l2wRegion  = hubspotCount > 0 ? Math.round(activeCount / hubspotCount * 1000) / 10 : 0;
+    const natL2w     = 18.6; // national baseline
+    const l2wDiff    = Math.round((l2wRegion - natL2w) * 10) / 10;
+    const d2wDiff    = Math.round((d2w - natD2w) * 10) / 10;
+    const conversionAssessment =
+      `L2W ${l2wRegion}% (${l2wDiff >= 0 ? "+" : ""}${l2wDiff}pp vs nac.) · D2W ${d2w}% (${d2wDiff >= 0 ? "+" : ""}${d2wDiff}pp vs nac.)` +
+      (l2wRegion < natL2w - 2 ? " — revisar conversión estructural." : d2w < natD2w - 4 ? " — revisar cierre." : ".");
+
+    // Industria (nuevo) — top 2 por MRR + mejor L2W con muestra suficiente
+    const sortedByMrr   = [...industries].filter((i) => i.active > 0).sort((a, b) => b.mrr - a.mrr);
+    const sortedByL2w   = [...industries]
+      .filter((i) => (i.pipeline ?? 0) >= 20)
+      .map((i) => ({ ...i, l2w: i.pipeline! > 0 ? i.active / i.pipeline! : 0 }))
+      .sort((a, b) => b.l2w - a.l2w);
+    const topIndMrr1 = sortedByMrr[0];
+    const topIndMrr2 = sortedByMrr[1];
+    const topIndL2w  = sortedByL2w[0];
+    const industryFocus = topIndMrr1?.label ?? "—";
+    const industryDetail = [
+      topIndMrr1 ? `Top MRR: ${topIndMrr1.label} (${fmtN(topIndMrr1.mrr)} · ${topIndMrr1.active} clientes · ${fmtN(topIndMrr1.arpu)} ARPU)` : null,
+      topIndMrr2 ? `2º: ${topIndMrr2.label} (${fmtN(topIndMrr2.mrr)} · ${fmtN(topIndMrr2.arpu)} ARPU)` : null,
+      topIndL2w && topIndL2w.label !== topIndMrr1?.label
+        ? `Mejor L2W: ${topIndL2w.label} (${Math.round(topIndL2w.l2w * 1000) / 10}% · ${topIndL2w.active} clientes)`
+        : null,
+    ].filter(Boolean).join(". ") + ".";
 
     const keyInsights = generateKeyInsights(
       ccaa, activeCount, totalMrr, arpu, d2w, penetration, tam, provenances, sizes, natArpu, natD2w,
@@ -749,7 +791,10 @@ export function computePlaybook(
         sizeFocus,
         sizeDetail,
         arpuAssessment,
+        arpuDetail,
         conversionAssessment,
+        industryFocus,
+        industryDetail,
       },
       keyInsights,
       openQuestions,

@@ -53,7 +53,10 @@ export interface RegionPlaybook {
     sizeFocus: string;
     sizeDetail: string;
     arpuAssessment: string;
+    arpuDetail?: string;
     conversionAssessment: string;
+    industryFocus?: string;
+    industryDetail?: string;
   };
   keyInsights: string[];
   openQuestions: string[];

@@ -9,7 +9,7 @@ import {
   ChevronRight, TrendingUp, TrendingDown, Users, Building2, Handshake,
   Target, AlertCircle, HelpCircle, BarChart3, Zap, ArrowUpRight, Presentation,
   ChevronLeft, Maximize2, Minimize2, Upload, RefreshCw, CheckCircle2, AlertTriangle,
-  Star,
+  Star, Layers,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -440,13 +440,13 @@ function ChannelCrossTable({
       </div>
 
       <div className="overflow-x-auto">
-        <table className="w-full text-[11px]">
+        <table className="w-full text-[11px] table-fixed">
           <thead>
             <tr className="border-b border-border">
-              <th className="py-1.5 pr-3 text-left font-semibold text-muted-foreground w-40"></th>
+              <th className="py-1.5 pr-3 text-left font-semibold text-muted-foreground w-36"></th>
               {channels.map((ch) => (
-                <th key={ch} className="py-1.5 px-2 text-center font-semibold text-muted-foreground whitespace-nowrap">
-                  {ch}
+                <th key={ch} className="py-1.5 px-1 text-center font-semibold text-muted-foreground">
+                  <span className="block truncate">{ch}</span>
                 </th>
               ))}
             </tr>
@@ -521,23 +521,14 @@ function BestPracticesView({
   setSelectedCode: (code: string) => void;
   setView: (v: "region") => void;
 }) {
-  const [filterChannel, setFilterChannel] = useState<string | null>(null);
   const [filterDimension, setFilterDimension] = useState<"all" | "size" | "industry">("all");
-  const [filterCrossOnly, setFilterCrossOnly] = useState(false);
-
-  const allChannels = useMemo(
-    () => [...new Set(bestPractices.map((bp) => bp.channel))].sort(),
-    [bestPractices],
-  );
 
   const filtered = useMemo(() => {
     return bestPractices.filter((bp) => {
-      if (filterChannel && bp.channel !== filterChannel) return false;
       if (filterDimension !== "all" && bp.dimension !== filterDimension) return false;
-      if (filterCrossOnly && !bp.isCrossRegion) return false;
       return true;
     });
-  }, [bestPractices, filterChannel, filterDimension, filterCrossOnly]);
+  }, [bestPractices, filterDimension]);
 
   const crossCount = bestPractices.filter((bp) => bp.isCrossRegion).length;
   const involvedRegions = new Set(bestPractices.flatMap((bp) => bp.codes)).size;
@@ -555,57 +546,21 @@ function BestPracticesView({
         </p>
       </div>
 
-      {/* Filter bar */}
-      <div className="flex flex-wrap items-center gap-2">
-        <div className="flex items-center gap-1 rounded-full border border-border bg-muted/40 p-0.5">
-          {(["all", "size", "industry"] as const).map((d) => (
-            <button
-              key={d}
-              type="button"
-              onClick={() => setFilterDimension(d)}
-              className={cn(
-                "px-3 py-1 rounded-full text-xs font-medium transition-colors",
-                filterDimension === d ? "bg-card shadow-sm text-foreground" : "text-muted-foreground hover:text-foreground",
-              )}
-            >
-              {d === "all" ? "Todos" : d === "size" ? "Tamaño" : "Industria"}
-            </button>
-          ))}
-        </div>
-        <div className="flex flex-wrap gap-1">
+      {/* Filter bar — just Tamaño / Industria */}
+      <div className="flex items-center gap-1 rounded-full border border-border bg-muted/40 p-0.5 w-fit">
+        {(["all", "size", "industry"] as const).map((d) => (
           <button
+            key={d}
             type="button"
-            onClick={() => setFilterChannel(null)}
+            onClick={() => setFilterDimension(d)}
             className={cn(
-              "px-2.5 py-1 rounded-full text-xs border transition-colors",
-              filterChannel === null ? "bg-primary text-primary-foreground border-primary" : "border-border text-muted-foreground hover:text-foreground",
+              "px-3 py-1 rounded-full text-xs font-medium transition-colors",
+              filterDimension === d ? "bg-card shadow-sm text-foreground" : "text-muted-foreground hover:text-foreground",
             )}
           >
-            Todos los canales
+            {d === "all" ? "Todos" : d === "size" ? "Tamaño" : "Industria"}
           </button>
-          {allChannels.map((ch) => (
-            <button
-              key={ch}
-              type="button"
-              onClick={() => setFilterChannel(filterChannel === ch ? null : ch)}
-              className={cn(
-                "px-2.5 py-1 rounded-full text-xs border transition-colors",
-                filterChannel === ch ? "bg-primary text-primary-foreground border-primary" : "border-border text-muted-foreground hover:text-foreground",
-              )}
-            >
-              {ch}
-            </button>
-          ))}
-        </div>
-        <label className="flex items-center gap-1.5 text-xs text-muted-foreground cursor-pointer select-none">
-          <input
-            type="checkbox"
-            checked={filterCrossOnly}
-            onChange={(e) => setFilterCrossOnly(e.target.checked)}
-            className="rounded"
-          />
-          Solo cross-región
-        </label>
+        ))}
       </div>
 
       {/* Cards grid */}
@@ -750,42 +705,11 @@ function RegionDetail({ region, national, bestPractices }: {
               <StrategyCard icon={Zap} title="Canal principal" headline={region.strategy.leadChannel} detail={region.strategy.leadChannelDetail} />
               <StrategyCard icon={Handshake} title="Partners" headline={region.strategy.partnerPlay} detail={region.strategy.partnerDetail} />
               <StrategyCard icon={Building2} title="Tamaño objetivo" headline={region.strategy.sizeFocus} detail={region.strategy.sizeDetail} />
-              <StrategyCard icon={BarChart3} title="ARPU" headline={region.strategy.arpuAssessment} detail="" />
-            </div>
-            <div className="mt-3 rounded-xl border border-border bg-card shadow-sm p-4">
-              <div className="flex items-center gap-2 mb-2">
-                <div className="h-7 w-7 rounded-lg bg-primary/10 flex items-center justify-center">
-                  <ArrowUpRight className="h-3.5 w-3.5 text-primary" />
-                </div>
-                <span className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground/70">Conversión</span>
-              </div>
-              <div className="text-xs text-muted-foreground leading-relaxed">{region.strategy.conversionAssessment}</div>
-            </div>
-          </div>
-
-          {/* Key insights */}
-          <div>
-            <h3 className="text-sm font-semibold text-foreground mb-2 flex items-center gap-2">
-              <AlertCircle className="h-4 w-4 text-amber-500" />
-              Insights clave
-            </h3>
-            <div className="rounded-xl border border-border bg-card shadow-sm px-4 divide-y divide-border/50">
-              {region.keyInsights.map((insight, i) => (
-                <InsightPill key={i} text={insight} />
-              ))}
-            </div>
-          </div>
-
-          {/* Open questions */}
-          <div>
-            <h3 className="text-sm font-semibold text-foreground mb-2 flex items-center gap-2">
-              <HelpCircle className="h-4 w-4 text-blue-500" />
-              Preguntas abiertas
-            </h3>
-            <div className="rounded-xl border border-blue-100 bg-blue-50/30 shadow-sm px-4 divide-y divide-blue-100/50">
-              {region.openQuestions.map((q, i) => (
-                <OpenQuestion key={i} text={q} />
-              ))}
+              <StrategyCard icon={BarChart3} title="ARPU" headline={region.strategy.arpuAssessment} detail={region.strategy.arpuDetail ?? ""} />
+              <StrategyCard icon={ArrowUpRight} title="Conversión" headline={region.strategy.conversionAssessment} detail="" />
+              {region.strategy.industryFocus && (
+                <StrategyCard icon={Layers} title="Industria principal" headline={region.strategy.industryFocus} detail={region.strategy.industryDetail ?? ""} />
+              )}
             </div>
           </div>
 
@@ -2243,7 +2167,6 @@ function SlidesView({ data }: { data: PlaybookLiveData }) {
   );
 }
 
-type PeriodFilter = "all" | "12m" | "6m" | "3m";
 type NavView = "summary" | "slides" | "bestpractices";
 
 // ── Main page ────────────────────────────────────────────────────────────────
@@ -2257,33 +2180,13 @@ export function PlaybookPage() {
   const [selectedCode, setSelectedCode] = useState<string | null>(null);
   const [navView, setNavView] = useState<NavView>("summary");
   const [searchTerm, setSearchTerm] = useState("");
-  const [periodFilter, setPeriodFilter] = useState<PeriodFilter>("all");
   const [importProgress, setImportProgress] = useState<string | null>(null);
   const [importResult, setImportResult] = useState<{ ok: boolean; msg: string } | null>(null);
   const hubspotFileRef = useRef<HTMLInputElement>(null);
   const tamFileRef = useRef<HTMLInputElement>(null);
 
-  const { data: rawData, source, status, rowCount, error, refresh, importHubspotCsv, importTamCsv, rawCompanies, sasorBreakdown } =
+  const { data, source, status, rowCount, error, refresh, importHubspotCsv, importTamCsv } =
     usePlaybookLiveData();
-
-  // Compute sinceDate from periodFilter
-  const sinceDate = useMemo(() => {
-    if (periodFilter === "all") return null;
-    const months = periodFilter === "12m" ? 12 : periodFilter === "6m" ? 6 : 3;
-    const d = new Date();
-    d.setMonth(d.getMonth() - months);
-    return d.toISOString().slice(0, 10); // YYYY-MM-DD
-  }, [periodFilter]);
-
-  // Apply period filter on top of raw companies to produce filtered data
-  const data = useMemo(() => {
-    if (!sinceDate || !rawCompanies.length) return rawData;
-    const filtered = rawCompanies.filter(
-      (c) => c.close_date != null && c.close_date >= sinceDate,
-    );
-    if (!filtered.length) return rawData;
-    return computePlaybook(filtered, sasorBreakdown);
-  }, [rawData, rawCompanies, sasorBreakdown, sinceDate]);
 
   if (country !== "es") {
     navigate("/");
@@ -2309,9 +2212,7 @@ export function PlaybookPage() {
     : REGIONS;
   const sortedRegions = [...filteredRegions].sort((a, b) => b.mrr - a.mrr);
 
-  const periodLabels: Record<PeriodFilter, string> = {
-    all: "Todo", "12m": "12M", "6m": "6M", "3m": "3M",
-  };
+
 
   function handleSetSelectedCode(code: string) {
     setSelectedCode(code);
@@ -2369,9 +2270,7 @@ export function PlaybookPage() {
               {source === "static" && status === "ready" && (
                 <span className="ml-2 text-white/50 text-xs">· datos estáticos</span>
               )}
-              {periodFilter !== "all" && (
-                <span className="ml-2 text-amber-300 text-xs font-medium">· Período: últimos {periodFilter.toUpperCase()}</span>
-              )}
+
             </p>
             {(importProgress || importResult) && (
               <div className="mt-1.5 flex items-center gap-1.5">
@@ -2397,24 +2296,7 @@ export function PlaybookPage() {
                 {error}
               </span>
             )}
-            {/* Period filter */}
-            <div className="flex items-center gap-0.5 rounded-lg bg-white/10 p-0.5">
-              {(["all", "12m", "6m", "3m"] as PeriodFilter[]).map((p) => (
-                <button
-                  key={p}
-                  type="button"
-                  onClick={() => setPeriodFilter(p)}
-                  className={cn(
-                    "px-2.5 py-1 rounded-md text-xs font-medium transition-colors",
-                    periodFilter === p
-                      ? "bg-white text-gray-900"
-                      : "text-white/70 hover:text-white",
-                  )}
-                >
-                  {periodLabels[p]}
-                </button>
-              ))}
-            </div>
+
             <input ref={hubspotFileRef} type="file" accept=".csv" className="hidden" onChange={handleHubspotImport} />
             <input ref={tamFileRef} type="file" accept=".csv" className="hidden" onChange={handleTamImport} />
             <button
