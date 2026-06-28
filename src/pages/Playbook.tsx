@@ -223,6 +223,7 @@ function ProvenanceTable({ provenances }: { provenances: RegionPlaybook["provena
 
 function IndustryTable({ industries }: { industries: RegionPlaybook["industries"] }) {
   const maxMrr = Math.max(...industries.map((i) => i.mrr));
+  const totalMrr = industries.reduce((s, i) => s + i.mrr, 0);
   return (
     <div className="overflow-x-auto">
       <table className="w-full text-xs">
@@ -236,23 +237,29 @@ function IndustryTable({ industries }: { industries: RegionPlaybook["industries"
           </tr>
         </thead>
         <tbody>
-          {industries.map((ind) => (
-            <tr key={ind.label} className="border-b border-border/50 hover:bg-muted/30">
-              <td className="py-2 pr-3 font-medium">{ind.label}</td>
-              <td className="py-2 px-3 text-right tabular-nums">{ind.active}</td>
-              <td className="py-2 px-3 text-right tabular-nums font-medium">{fmtEur(ind.mrr)}</td>
-              <td className={cn("py-2 px-3 text-right tabular-nums font-medium",
-                ind.arpu >= NATIONAL.arpu * 1.5 ? "text-emerald-700" : ind.arpu <= NATIONAL.arpu * 0.7 ? "text-red-600" : ""
-              )}>
-                {fmtEur(ind.arpu)}
-              </td>
-              <td className="py-2 pl-3 w-24">
-                <div className="flex-1 h-2 rounded-full bg-muted overflow-hidden">
-                  <div className="h-full rounded-full bg-primary/40" style={{ width: barWidth(ind.mrr, maxMrr) }} />
-                </div>
-              </td>
-            </tr>
-          ))}
+          {industries.map((ind) => {
+            const share = totalMrr > 0 ? Math.round((ind.mrr / totalMrr) * 100) : 0;
+            return (
+              <tr key={ind.label} className="border-b border-border/50 hover:bg-muted/30">
+                <td className="py-2 pr-3 font-medium">{ind.label}</td>
+                <td className="py-2 px-3 text-right tabular-nums">{ind.active}</td>
+                <td className="py-2 px-3 text-right tabular-nums font-medium">{fmtEur(ind.mrr)}</td>
+                <td className={cn("py-2 px-3 text-right tabular-nums font-medium",
+                  ind.arpu >= NATIONAL.arpu * 1.5 ? "text-emerald-700" : ind.arpu <= NATIONAL.arpu * 0.7 ? "text-red-600" : ""
+                )}>
+                  {fmtEur(ind.arpu)}
+                </td>
+                <td className="py-2 pl-3 w-32">
+                  <div className="flex items-center gap-1.5">
+                    <div className="flex-1 h-2 rounded-full bg-muted overflow-hidden">
+                      <div className="h-full rounded-full bg-primary/40" style={{ width: barWidth(ind.mrr, maxMrr) }} />
+                    </div>
+                    <span className="text-[10px] tabular-nums text-muted-foreground w-7 text-right">{share}%</span>
+                  </div>
+                </td>
+              </tr>
+            );
+          })}
         </tbody>
       </table>
     </div>
@@ -263,6 +270,7 @@ function IndustryTable({ industries }: { industries: RegionPlaybook["industries"
 
 function PartnerTable({ partners }: { partners: RegionPlaybook["partners"] }) {
   const maxMrr = Math.max(...partners.map((p) => p.mrr));
+  const totalMrr = partners.reduce((s, p) => s + p.mrr, 0);
   return (
     <div className="overflow-x-auto">
       <table className="w-full text-xs">
@@ -276,19 +284,25 @@ function PartnerTable({ partners }: { partners: RegionPlaybook["partners"] }) {
           </tr>
         </thead>
         <tbody>
-          {partners.map((p) => (
-            <tr key={p.name} className="border-b border-border/50 hover:bg-muted/30">
-              <td className="py-2 pr-3 font-medium">{p.name}</td>
-              <td className="py-2 px-3 text-right tabular-nums">{p.clients}</td>
-              <td className="py-2 px-3 text-right tabular-nums font-medium">{fmtEur(p.mrr)}</td>
-              <td className="py-2 px-3 text-right tabular-nums">{fmtEur(Math.round(p.mrr / p.clients))}</td>
-              <td className="py-2 pl-3 w-24">
-                <div className="flex-1 h-2 rounded-full bg-muted overflow-hidden">
-                  <div className="h-full rounded-full bg-violet-400/60" style={{ width: barWidth(p.mrr, maxMrr) }} />
-                </div>
-              </td>
-            </tr>
-          ))}
+          {partners.map((p) => {
+            const share = totalMrr > 0 ? Math.round((p.mrr / totalMrr) * 100) : 0;
+            return (
+              <tr key={p.name} className="border-b border-border/50 hover:bg-muted/30">
+                <td className="py-2 pr-3 font-medium">{p.name}</td>
+                <td className="py-2 px-3 text-right tabular-nums">{p.clients}</td>
+                <td className="py-2 px-3 text-right tabular-nums font-medium">{fmtEur(p.mrr)}</td>
+                <td className="py-2 px-3 text-right tabular-nums">{fmtEur(Math.round(p.mrr / p.clients))}</td>
+                <td className="py-2 pl-3 w-32">
+                  <div className="flex items-center gap-1.5">
+                    <div className="flex-1 h-2 rounded-full bg-muted overflow-hidden">
+                      <div className="h-full rounded-full bg-violet-400/60" style={{ width: barWidth(p.mrr, maxMrr) }} />
+                    </div>
+                    <span className="text-[10px] tabular-nums text-muted-foreground w-7 text-right">{share}%</span>
+                  </div>
+                </td>
+              </tr>
+            );
+          })}
         </tbody>
       </table>
     </div>
@@ -600,7 +614,7 @@ export function PlaybookPage() {
   const { email } = useAuth();
   const navigate = useNavigate();
   const country = window.localStorage.getItem("pre-event-country") ?? "";
-  const hasAccess = !!email && STRATEGY_EMAILS.includes(email);
+  const hasAccess = !!email && email.endsWith("@factorial.co");
 
   const [selectedCode, setSelectedCode] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState("");

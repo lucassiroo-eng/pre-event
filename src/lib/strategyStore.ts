@@ -61,11 +61,8 @@ export interface StrategyCompany {
   ccaa: string | null;
 }
 
-export const STRATEGY_EMAILS = [
-  "lucas.siroo@factorial.co",
-  "albert.fernandez@factorial.co",
-  "marc.macia@factorial.co",
-];
+// Strategy tab is open to all *@factorial.co users
+export const STRATEGY_EMAILS: string[] = [];
 
 export async function clearStrategyData(): Promise<void> {
   if (!supa) return;
@@ -259,7 +256,8 @@ export async function importSasorCsv(
   const { resolveCCAA } = await import("./strategyCCAA");
   const { standardIndustry } = await import("./strategyNormalize");
 
-  await supa.from("strategy_sasor").delete().neq("id", 0);
+  const { error: delErr } = await supa.from("strategy_sasor").delete().neq("id", 0);
+  if (delErr) throw new Error(`No se pudo limpiar la tabla TAM: ${delErr.message}`);
 
   // Deduplicate by company_id (SASOR has one row per company already, but just in case)
   const seen = new Set<string>();

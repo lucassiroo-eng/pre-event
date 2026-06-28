@@ -322,7 +322,7 @@ export function StrategyPage() {
     applyCountryTheme("es");
   }, [country, navigate]);
 
-  const hasAccess = !!email && STRATEGY_EMAILS.includes(email);
+  const hasAccess = !!email && email.endsWith("@factorial.co");
 
   const [raw, setRaw] = useState<StrategyCompany[]>([]);
   const [sasorTotal, setSasorTotal] = useState(0);
@@ -612,14 +612,22 @@ export function StrategyPage() {
 
   const handleImportSasor = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]; if (!file) return;
+    e.target.value = "";
     setImporting("sasor"); setImportProgress("Leyendo TAM...");
-    const text = await file.text();
-    const rows = parseCsvText(text);
-    setImportProgress(`${rows.length} empresas...`);
-    const { inserted, errors } = await importSasorCsv(rows, (done, total) => setImportProgress(`${done}/${total}`));
-    setImportProgress(`${inserted} importadas${errors ? `, ${errors} errores` : ""}`);
-    setImporting(null);
-    load();
+    try {
+      const text = await file.text();
+      const rows = parseCsvText(text);
+      setImportProgress(`${rows.length} filas → deduplicando...`);
+      const { inserted, errors } = await importSasorCsv(rows, (done, total) => setImportProgress(`${done}/${total}`));
+      setImportProgress(`${inserted} importadas${errors ? `, ${errors} errores` : ""}`);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      setImportProgress(`Error: ${msg.slice(0, 80)}`);
+      console.error("importSasorCsv failed:", err);
+    } finally {
+      setImporting(null);
+      load();
+    }
   };
 
   const handleCrossEnrich = async () => {
