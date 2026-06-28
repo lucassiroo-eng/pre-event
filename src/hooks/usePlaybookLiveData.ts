@@ -7,7 +7,7 @@
  */
 
 import { useState, useEffect, useCallback, useRef } from "react";
-import { REGIONS as STATIC_REGIONS, NATIONAL as STATIC_NATIONAL } from "@/lib/playbookData";
+import { REGIONS as STATIC_REGIONS, NATIONAL as STATIC_NATIONAL, TAM_BY_SECTOR, TAM_BY_SIZE } from "@/lib/playbookData";
 import {
   fetchStrategyCompanies,
   fetchSasorBreakdown,
@@ -36,8 +36,8 @@ export interface UsePlaybookLiveDataResult {
 const STATIC_DATA: PlaybookLiveData = {
   regions: STATIC_REGIONS,
   national: STATIC_NATIONAL,
-  tamBySector: {},
-  tamBySize: {},
+  tamBySector: TAM_BY_SECTOR,
+  tamBySize: TAM_BY_SIZE,
   bestPractices: [],
 };
 

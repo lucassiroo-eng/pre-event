@@ -563,63 +563,86 @@ function BestPracticesView({
         ))}
       </div>
 
-      {/* Cards grid */}
+      {/* Cards grouped by region */}
       {filtered.length === 0 ? (
         <div className="text-center py-12 text-muted-foreground text-sm">
           No se encontraron mejores prácticas con estos filtros.
         </div>
-      ) : (
-        <div className="space-y-3">
-          {filtered.map((bp) => (
-            <div key={bp.id} className="rounded-xl border border-border bg-card shadow-sm p-4 space-y-2">
-              <div className="flex items-start justify-between gap-2">
-                <div className="font-semibold text-sm text-foreground leading-snug">{bp.headline}</div>
-                {bp.isCrossRegion && (
-                  <span className="shrink-0 text-[10px] px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 border border-amber-200 font-semibold">
-                    Cross-región
-                  </span>
-                )}
-              </div>
-              {/* Region badges */}
-              <div className="flex flex-wrap gap-1">
-                {bp.regions.map((name, i) => (
+      ) : (() => {
+        // Group by region: each region gets all its BPs listed together
+        const regionOrder: string[] = [];
+        const byRegion = new Map<string, { code: string; bps: BestPractice[] }>();
+        for (const bp of filtered) {
+          for (let i = 0; i < bp.regions.length; i++) {
+            const name = bp.regions[i];
+            const code = bp.codes[i] ?? "";
+            if (!byRegion.has(name)) {
+              byRegion.set(name, { code, bps: [] });
+              regionOrder.push(name);
+            }
+            byRegion.get(name)!.bps.push(bp);
+          }
+        }
+        // Sort regions by number of BPs desc
+        regionOrder.sort((a, b) => (byRegion.get(b)?.bps.length ?? 0) - (byRegion.get(a)?.bps.length ?? 0));
+        return (
+          <div className="space-y-4">
+            {regionOrder.map((regionName) => {
+              const { code, bps } = byRegion.get(regionName)!;
+              return (
+                <div key={regionName} className="rounded-xl border border-border bg-card shadow-sm overflow-hidden">
+                  {/* Region header */}
                   <button
-                    key={bp.codes[i] ?? name}
                     type="button"
-                    onClick={() => { setSelectedCode(bp.codes[i] ?? ""); setView("region"); }}
-                    className="text-[10px] px-2 py-0.5 rounded-md bg-primary/10 text-primary hover:bg-primary/20 transition-colors font-medium"
+                    onClick={() => { setSelectedCode(code); setView("region"); }}
+                    className="w-full flex items-center justify-between px-4 py-3 bg-muted/30 hover:bg-muted/50 transition-colors text-left"
                   >
-                    {name}
+                    <span className="text-sm font-semibold text-foreground">{regionName}</span>
+                    <span className="text-[10px] text-muted-foreground font-medium">{bps.length} práctica{bps.length > 1 ? "s" : ""} · ver región →</span>
                   </button>
-                ))}
-              </div>
-              {/* Metrics */}
-              <div className="flex flex-wrap gap-2">
-                <span className="text-[10px] px-2 py-0.5 rounded bg-muted text-foreground/70">
-                  L2W <span className="font-semibold text-foreground">{bp.l2w}%</span>
-                  <span className="text-muted-foreground/50"> (media {bp.regionL2wAvg}%)</span>
-                </span>
-                <span className="text-[10px] px-2 py-0.5 rounded bg-muted text-foreground/70">
-                  ARPU <span className="font-semibold text-foreground">{fmtEur(bp.arpu)}</span>
-                </span>
-                <span className="text-[10px] px-2 py-0.5 rounded bg-muted text-foreground/70">
-                  Pipeline <span className="font-semibold text-foreground">{bp.pipeline}</span>
-                </span>
-                {bp.tamAvailable > 0 && (
-                  <span className="text-[10px] px-2 py-0.5 rounded bg-muted text-foreground/70">
-                    TAM disp. <span className="font-semibold text-foreground">{bp.tamAvailable.toLocaleString()}</span>
-                  </span>
-                )}
-              </div>
-              <p className="text-xs text-muted-foreground leading-relaxed">{bp.insight}</p>
-              <div className="flex items-start gap-1.5">
-                <ArrowUpRight className="h-3 w-3 text-primary mt-0.5 shrink-0" />
-                <p className="text-xs text-foreground/80 leading-relaxed">{bp.recommendation}</p>
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
+                  {/* BP list */}
+                  <div className="divide-y divide-border/60">
+                    {bps.map((bp) => (
+                      <div key={bp.id} className="px-4 py-3 space-y-1.5">
+                        <div className="flex items-start justify-between gap-2">
+                          <span className="text-xs font-semibold text-foreground leading-snug">{bp.headline}</span>
+                          {bp.isCrossRegion && (
+                            <span className="shrink-0 text-[9px] px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-800 border border-amber-200 font-semibold whitespace-nowrap">
+                              Cross-región
+                            </span>
+                          )}
+                        </div>
+                        <div className="flex flex-wrap gap-1.5">
+                          <span className="text-[10px] px-1.5 py-0.5 rounded bg-muted text-foreground/70">
+                            L2W <span className="font-semibold text-foreground">{bp.l2w}%</span>
+                            <span className="text-muted-foreground/50"> (media {bp.regionL2wAvg}%)</span>
+                          </span>
+                          <span className="text-[10px] px-1.5 py-0.5 rounded bg-muted text-foreground/70">
+                            ARPU <span className="font-semibold text-foreground">{fmtEur(bp.arpu)}</span>
+                          </span>
+                          <span className="text-[10px] px-1.5 py-0.5 rounded bg-muted text-foreground/70">
+                            Pipeline <span className="font-semibold text-foreground">{bp.pipeline}</span>
+                          </span>
+                          {bp.tamAvailable > 0 && (
+                            <span className="text-[10px] px-1.5 py-0.5 rounded bg-muted text-foreground/70">
+                              TAM disp. <span className="font-semibold text-foreground">{bp.tamAvailable.toLocaleString()}</span>
+                            </span>
+                          )}
+                        </div>
+                        <p className="text-[11px] text-muted-foreground leading-relaxed">{bp.insight}</p>
+                        <div className="flex items-start gap-1.5">
+                          <ArrowUpRight className="h-3 w-3 text-primary mt-0.5 shrink-0" />
+                          <p className="text-[11px] text-foreground/80 leading-relaxed">{bp.recommendation}</p>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        );
+      })()}
     </div>
   );
 }
@@ -695,21 +718,56 @@ function RegionDetail({ region, national, bestPractices }: {
       {/* Tab content */}
       {activeTab === "overview" && (
         <div className="space-y-6">
-          {/* Strategy recommendations */}
-          <div>
-            <h3 className="text-sm font-semibold text-foreground mb-3 flex items-center gap-2">
+          {/* Strategy narrative */}
+          <div className="rounded-xl border border-border bg-card shadow-sm p-5 space-y-4">
+            <h3 className="text-sm font-semibold text-foreground flex items-center gap-2">
               <Target className="h-4 w-4 text-primary" />
-              Recomendaciones estratégicas
+              Análisis estratégico
             </h3>
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
-              <StrategyCard icon={Zap} title="Canal principal" headline={region.strategy.leadChannel} detail={region.strategy.leadChannelDetail} />
-              <StrategyCard icon={Handshake} title="Partners" headline={region.strategy.partnerPlay} detail={region.strategy.partnerDetail} />
-              <StrategyCard icon={Building2} title="Tamaño objetivo" headline={region.strategy.sizeFocus} detail={region.strategy.sizeDetail} />
-              <StrategyCard icon={BarChart3} title="ARPU" headline={region.strategy.arpuAssessment} detail={region.strategy.arpuDetail ?? ""} />
-              <StrategyCard icon={ArrowUpRight} title="Conversión" headline={region.strategy.conversionAssessment} detail="" />
-              {region.strategy.industryFocus && (
-                <StrategyCard icon={Layers} title="Industria principal" headline={region.strategy.industryFocus} detail={region.strategy.industryDetail ?? ""} />
-              )}
+            {/* Canal */}
+            <div className="space-y-1">
+              <div className="flex items-center gap-1.5">
+                <Zap className="h-3.5 w-3.5 text-primary shrink-0" />
+                <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Canal principal</span>
+              </div>
+              <p className="text-sm text-foreground leading-relaxed pl-5">{region.strategy.leadChannelDetail}</p>
+            </div>
+            {/* Partners */}
+            <div className="space-y-1">
+              <div className="flex items-center gap-1.5">
+                <Handshake className="h-3.5 w-3.5 text-primary shrink-0" />
+                <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Partners — {region.strategy.partnerPlay}</span>
+              </div>
+              <p className="text-sm text-foreground leading-relaxed pl-5">{region.strategy.partnerDetail}</p>
+            </div>
+            {/* Tamaño + ARPU inline */}
+            <div className="space-y-1">
+              <div className="flex items-center gap-1.5">
+                <Building2 className="h-3.5 w-3.5 text-primary shrink-0" />
+                <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Segmentación — foco {region.strategy.sizeFocus}</span>
+              </div>
+              <p className="text-sm text-foreground leading-relaxed pl-5">
+                {region.strategy.sizeDetail}
+                {region.strategy.arpuDetail && (
+                  <> ARPU regional: <span className="font-semibold">{region.strategy.arpuAssessment}</span>. {region.strategy.arpuDetail}</>
+                )}
+              </p>
+            </div>
+            {/* Industria */}
+            {region.strategy.industryFocus && (
+              <div className="space-y-1">
+                <div className="flex items-center gap-1.5">
+                  <Layers className="h-3.5 w-3.5 text-primary shrink-0" />
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Sectores clave</span>
+                </div>
+                <p className="text-sm text-foreground leading-relaxed pl-5">{region.strategy.industryDetail}</p>
+              </div>
+            )}
+            {/* Conversión */}
+            <div className="pt-1 border-t border-border/60">
+              <p className="text-xs text-muted-foreground leading-relaxed">
+                <span className="font-semibold text-foreground">Conversión:</span> {region.strategy.conversionAssessment}
+              </p>
             </div>
           </div>
 
