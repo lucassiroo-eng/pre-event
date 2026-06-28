@@ -94,7 +94,7 @@ function computeSize(empresaSize: number, totalSeats: number): string {
 // ── Channel normalisation (sub-splits Santander / Telefónica from Partners) ──
 
 const CHANNEL_ORDER = [
-  "Channel Partners", "Outbound", "Inbound", "Santander", "Paid", "Telefónica", "Referral", "Others",
+  "Channel Partners", "Outbound", "Inbound", "Santander", "Paid", "Telefónica", "Others",
 ];
 
 function normChannel(provNorm: string, partnerName: string): string {
@@ -108,7 +108,7 @@ function normChannel(provNorm: string, partnerName: string): string {
   if (prov === "Inbound")  return "Inbound";
   if (prov === "Outbound") return "Outbound";
   if (prov === "Paid")     return "Paid";
-  if (prov === "Referral") return "Referral";
+  // Referral → Others (agrupado)
   return "Others";
 }
 

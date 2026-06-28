@@ -381,20 +381,22 @@ function ChannelCrossTable({
   dimLabels: string[];
   dimName: string;
 }) {
+  // Columns = channels sorted by total MRR desc
   const channels = Object.keys(cross).sort((a, b) => {
     const mrrA = Object.values(cross[a]).reduce((s, v) => s + v.mrr, 0);
     const mrrB = Object.values(cross[b]).reduce((s, v) => s + v.mrr, 0);
     return mrrB - mrrA;
   });
-  const activeDims = dimLabels.filter((d) => channels.some((ch) => cross[ch][d]?.pipeline > 0));
+  // Rows = dims (tamaño / industria) filtered to those with any data
+  const activeDims = dimLabels.filter((d) => channels.some((ch) => cross[ch]?.[d]?.pipeline > 0));
   if (!channels.length || !activeDims.length) return null;
 
-  // Per channel, compute min/max ARPU, L2W for color scaling
-  const channelStats = Object.fromEntries(channels.map((ch) => {
-    const cells = activeDims.map((d) => cross[ch][d]).filter(Boolean);
+  // Color scaling per row (comparing channels within the same dim)
+  const dimStats = Object.fromEntries(activeDims.map((d) => {
+    const cells = channels.map((ch) => cross[ch]?.[d]).filter(Boolean) as { active: number; pipeline: number; mrr: number }[];
     const l2ws  = cells.map((c) => c.pipeline > 0 ? c.active / c.pipeline : 0);
     const arpus = cells.filter((c) => c.active > 0).map((c) => c.mrr / c.active);
-    return [ch, {
+    return [d, {
       minL2w: Math.min(...l2ws), maxL2w: Math.max(...l2ws),
       minArpu: Math.min(...arpus, Infinity), maxArpu: Math.max(...arpus, 0),
     }];
@@ -414,34 +416,36 @@ function ChannelCrossTable({
       <table className="w-full text-[11px]">
         <thead>
           <tr className="border-b border-border">
-            <th className="py-1.5 pr-3 text-left font-semibold text-muted-foreground w-32">Canal</th>
-            {activeDims.map((d) => (
-              <th key={d} className="py-1.5 px-2 text-center font-semibold text-muted-foreground whitespace-nowrap max-w-[100px]">
-                <span className="block truncate max-w-[90px] mx-auto">{d.replace(" & ", " &​")}</span>
+            <th className="py-1.5 pr-3 text-left font-semibold text-muted-foreground w-40"></th>
+            {channels.map((ch) => (
+              <th key={ch} className="py-1.5 px-2 text-center font-semibold text-muted-foreground whitespace-nowrap">
+                {ch}
               </th>
             ))}
           </tr>
           <tr className="border-b border-border/40 text-[10px] text-muted-foreground/60">
-            <td className="py-1 pr-3">L2W / ARPU</td>
-            {activeDims.map((d) => <td key={d} className="py-1 px-2 text-center">pen · l2w · arpu</td>)}
+            <td className="py-1 pr-3">pen · l2w · arpu</td>
+            {channels.map((ch) => <td key={ch} className="py-1 px-2 text-center">{ch.slice(0, 3)}</td>)}
           </tr>
         </thead>
         <tbody>
-          {channels.map((ch) => {
-            const stats = channelStats[ch];
+          {activeDims.map((d) => {
+            const stats = dimStats[d];
             return (
-              <tr key={ch} className="border-b border-border/30 hover:bg-muted/20">
-                <td className="py-1.5 pr-3 font-medium text-foreground">{ch}</td>
-                {activeDims.map((d) => {
+              <tr key={d} className="border-b border-border/30 hover:bg-muted/20">
+                <td className="py-1.5 pr-3 font-medium text-foreground truncate max-w-[160px]" title={d}>
+                  {d}
+                </td>
+                {channels.map((ch) => {
                   const cell = cross[ch]?.[d];
                   if (!cell || cell.pipeline === 0) {
-                    return <td key={d} className="py-1.5 px-2 text-center text-muted-foreground/30">—</td>;
+                    return <td key={ch} className="py-1.5 px-2 text-center text-muted-foreground/30">—</td>;
                   }
                   const l2w  = Math.round(cell.active / cell.pipeline * 1000) / 10;
                   const arpu = cell.active > 0 ? Math.round(cell.mrr / cell.active) : 0;
-                  const pen  = cell.pipeline; // raw pipeline count — no TAM cross-data
+                  const pen  = cell.pipeline;
                   return (
-                    <td key={d} className="py-1.5 px-1">
+                    <td key={ch} className="py-1.5 px-1">
                       <div className="flex flex-col gap-0.5 items-center">
                         <span className="text-[10px] text-muted-foreground tabular-nums">{pen}</span>
                         <span className={cn("px-1.5 py-0.5 rounded text-[10px] tabular-nums font-medium w-full text-center",
