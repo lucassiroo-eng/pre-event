@@ -1058,14 +1058,6 @@ function SlidesView() {
     "VC": "Asignar SDR dedicado; medir CAC vs LTV en primeros 60 días.",
   };
 
-  // ── Helper: aggregate provenances for a single region into slide format ───────
-  const regionProvTable = (r: RegionPlaybook) => {
-    const totalMrr = r.provenances.reduce((s, p) => s + p.mrr, 0);
-    const maxMrr = Math.max(...r.provenances.map((p) => p.mrr));
-    const top = [...r.provenances].sort((a, b) => b.mrrShare - a.mrrShare)[0];
-    return { rows: r.provenances, totalMrr, maxMrr, topLabel: top?.label ?? "" };
-  };
-
   // ── Multi-channel deep-dive regions ──────────────────────────────────────────
   const MC_NAMES = ["Cataluña", "Comunidad de Madrid", "Andalucía", "Islas Baleares", "Principado de Asturias"];
   const mcRegions = MC_NAMES.map((name) => REGIONS.find((r) => r.ccaa === name)).filter((r): r is RegionPlaybook => !!r);
@@ -1151,35 +1143,66 @@ function SlidesView() {
         {/* Col 1: Por Canal */}
         <div>
           <p className="text-[10px] uppercase tracking-widest text-gray-400 mb-1.5 font-semibold">Por Canal</p>
+          {/* Stacked MRR bar */}
+          <div className="h-5 rounded-full flex overflow-hidden w-full mb-2">
+            {nationalChannels.map((c, ci) => {
+              const channelColors = ["bg-violet-400", "bg-blue-400", "bg-sky-400", "bg-cyan-400", "bg-teal-400", "bg-slate-300"];
+              return (
+                <div
+                  key={c.label}
+                  className={channelColors[ci % channelColors.length]}
+                  style={{ width: `${c.mrrShare}%` }}
+                  title={`${c.label}: ${c.mrrShare}%`}
+                />
+              );
+            })}
+          </div>
           <table className="w-full text-xs">
             <thead>
               <tr className="border-b border-gray-200 text-left">
                 <th className="py-1 pr-2 font-semibold text-gray-400">Canal</th>
+                <th className="py-1 px-1 font-semibold text-gray-400 text-right">Act.</th>
                 <th className="py-1 px-1 font-semibold text-gray-400 text-right">MRR</th>
                 <th className="py-1 pl-1 font-semibold text-gray-400">%</th>
               </tr>
             </thead>
             <tbody>
-              {nationalChannels.map((c) => (
-                <tr key={c.label} className="border-b border-gray-100">
-                  <td className="py-1 pr-2 truncate max-w-[90px]">{c.label}</td>
-                  <td className="py-1 px-1 text-right tabular-nums font-medium">{fmtEur(c.mrr)}</td>
-                  <td className="py-1 pl-1 w-20">
-                    <div className="flex items-center gap-1">
-                      <div className="flex-1 h-1.5 rounded-full bg-gray-100 overflow-hidden">
-                        <div className="h-full rounded-full bg-violet-500" style={{ width: `${c.mrrShare}%` }} />
+              {nationalChannels.map((c, ci) => {
+                const channelColors = ["bg-violet-400", "bg-blue-400", "bg-sky-400", "bg-cyan-400", "bg-teal-400", "bg-slate-300"];
+                return (
+                  <tr key={c.label} className="border-b border-gray-100">
+                    <td className="py-1 pr-2 truncate max-w-[80px]">{c.label}</td>
+                    <td className="py-1 px-1 text-right tabular-nums text-gray-500">{c.active.toLocaleString()}</td>
+                    <td className="py-1 px-1 text-right tabular-nums font-medium">{fmtEur(c.mrr)}</td>
+                    <td className="py-1 pl-1 w-24">
+                      <div className="flex items-center gap-1">
+                        <div className={cn("h-1.5 rounded-full w-full max-w-[80px]", channelColors[ci % channelColors.length])} style={{ width: `${c.mrrShare}%`, maxWidth: "80px" }} />
+                        <span className="text-[10px] tabular-nums text-gray-400 w-6 text-right">{c.mrrShare}%</span>
                       </div>
-                      <span className="text-[10px] tabular-nums text-gray-400 w-6 text-right">{c.mrrShare}%</span>
-                    </div>
-                  </td>
-                </tr>
-              ))}
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>
         {/* Col 2: Por Industria */}
         <div>
           <p className="text-[10px] uppercase tracking-widest text-gray-400 mb-1.5 font-semibold">Por Industria (top 5)</p>
+          {/* Stacked MRR bar — green palette */}
+          <div className="h-5 rounded-full flex overflow-hidden w-full mb-2">
+            {nationalIndustries.map((ind, ii) => {
+              const indColors = ["bg-emerald-500", "bg-green-400", "bg-teal-400", "bg-lime-400", "bg-green-300", "bg-emerald-200"];
+              return (
+                <div
+                  key={ind.label}
+                  className={indColors[ii % indColors.length]}
+                  style={{ width: `${ind.pct}%` }}
+                  title={`${ind.label}: ${ind.pct}%`}
+                />
+              );
+            })}
+          </div>
           <table className="w-full text-xs">
             <thead>
               <tr className="border-b border-gray-200 text-left">
@@ -1189,26 +1212,41 @@ function SlidesView() {
               </tr>
             </thead>
             <tbody>
-              {nationalIndustries.map((ind) => (
-                <tr key={ind.label} className="border-b border-gray-100">
-                  <td className="py-1 pr-2 truncate max-w-[90px]">{ind.label}</td>
-                  <td className="py-1 px-1 text-right tabular-nums font-medium">{fmtEur(ind.mrr)}</td>
-                  <td className="py-1 pl-1 w-20">
-                    <div className="flex items-center gap-1">
-                      <div className="flex-1 h-1.5 rounded-full bg-gray-100 overflow-hidden">
-                        <div className="h-full rounded-full bg-sky-500" style={{ width: `${ind.pct}%` }} />
+              {nationalIndustries.map((ind, ii) => {
+                const indColors = ["bg-emerald-500", "bg-green-400", "bg-teal-400", "bg-lime-400", "bg-green-300", "bg-emerald-200"];
+                return (
+                  <tr key={ind.label} className="border-b border-gray-100">
+                    <td className="py-1 pr-2 truncate max-w-[90px]">{ind.label}</td>
+                    <td className="py-1 px-1 text-right tabular-nums font-medium">{fmtEur(ind.mrr)}</td>
+                    <td className="py-1 pl-1 w-24">
+                      <div className="flex items-center gap-1">
+                        <div className={cn("h-1.5 rounded-full", indColors[ii % indColors.length])} style={{ width: `${ind.pct}%`, maxWidth: "80px" }} />
+                        <span className="text-[10px] tabular-nums text-gray-400 w-6 text-right">{ind.pct}%</span>
                       </div>
-                      <span className="text-[10px] tabular-nums text-gray-400 w-6 text-right">{ind.pct}%</span>
-                    </div>
-                  </td>
-                </tr>
-              ))}
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>
         {/* Col 3: Por Tamaño */}
         <div>
           <p className="text-[10px] uppercase tracking-widest text-gray-400 mb-1.5 font-semibold">Por Tamaño</p>
+          {/* Stacked MRR bar — amber palette */}
+          <div className="h-5 rounded-full flex overflow-hidden w-full mb-2">
+            {nationalSizes.map((s, si) => {
+              const sizeColors = ["bg-amber-300", "bg-amber-500", "bg-orange-400", "bg-orange-600"];
+              return (
+                <div
+                  key={s.label}
+                  className={sizeColors[si % sizeColors.length]}
+                  style={{ width: `${s.mrrShare}%` }}
+                  title={`${s.label}: ${s.mrrShare}%`}
+                />
+              );
+            })}
+          </div>
           <table className="w-full text-xs">
             <thead>
               <tr className="border-b border-gray-200 text-left">
@@ -1218,20 +1256,21 @@ function SlidesView() {
               </tr>
             </thead>
             <tbody>
-              {nationalSizes.map((s) => (
-                <tr key={s.label} className="border-b border-gray-100">
-                  <td className="py-1 pr-2">{s.label}</td>
-                  <td className="py-1 px-1 text-right tabular-nums font-medium">{fmtEur(s.arpu)}</td>
-                  <td className="py-1 pl-1 w-20">
-                    <div className="flex items-center gap-1">
-                      <div className="flex-1 h-1.5 rounded-full bg-gray-100 overflow-hidden">
-                        <div className="h-full rounded-full bg-emerald-500" style={{ width: `${s.mrrShare}%` }} />
+              {nationalSizes.map((s, si) => {
+                const sizeColors = ["bg-amber-300", "bg-amber-500", "bg-orange-400", "bg-orange-600"];
+                return (
+                  <tr key={s.label} className="border-b border-gray-100">
+                    <td className="py-1 pr-2">{s.label}</td>
+                    <td className="py-1 px-1 text-right tabular-nums font-medium">{fmtEur(s.arpu)}</td>
+                    <td className="py-1 pl-1 w-24">
+                      <div className="flex items-center gap-1">
+                        <div className={cn("h-1.5 rounded-full", sizeColors[si % sizeColors.length])} style={{ width: `${s.mrrShare}%`, maxWidth: "80px" }} />
+                        <span className="text-[10px] tabular-nums text-gray-400 w-6 text-right">{s.mrrShare}%</span>
                       </div>
-                      <span className="text-[10px] tabular-nums text-gray-400 w-6 text-right">{s.mrrShare}%</span>
-                    </div>
-                  </td>
-                </tr>
-              ))}
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>
@@ -1243,7 +1282,7 @@ function SlidesView() {
     <div key="s3" className="flex flex-col h-full p-8 gap-4 bg-white">
       <div>
         <h2 className="text-xl font-bold text-gray-900 mb-0.5">El Dilema de la Oportunidad: Volumen vs. Conversión</h2>
-        <p className="text-xs text-gray-400">Cada región enfrenta un problema distinto — top 10 por TAM sin cubrir</p>
+        <p className="text-xs text-gray-400">Cada región enfrenta un problema distinto — volumen = empresas en pipeline / TAM</p>
       </div>
       <div className="flex-1 min-h-0">
         <table className="w-full text-xs">
@@ -1253,13 +1292,21 @@ function SlidesView() {
               <th className="py-2 px-2 font-semibold text-gray-500 text-right">TAM total</th>
               <th className="py-2 px-2 font-semibold text-gray-500 text-right">Penetración</th>
               <th className="py-2 px-2 font-semibold text-gray-500 text-right">Sin cubrir</th>
+              <th className="py-2 px-2 font-semibold text-gray-500 text-right">Pipeline/TAM</th>
               <th className="py-2 px-2 font-semibold text-gray-500 text-right">D2W</th>
               <th className="py-2 px-2 font-semibold text-gray-500">Diagnóstico</th>
             </tr>
           </thead>
           <tbody>
             {untappedTop10.map((r) => {
-              const diag = r.penetration < 5
+              const pipelineTamRatio = r.tam > 0 ? r.hubspot / r.tam : 0;
+              const pipelineTamPct = (pipelineTamRatio * 100).toFixed(1) + "%";
+              const pipelineTamColor = pipelineTamRatio < 0.15
+                ? "text-red-600 font-semibold"
+                : pipelineTamRatio < 0.25
+                ? "text-amber-600 font-semibold"
+                : "text-emerald-700 font-semibold";
+              const diag = pipelineTamRatio < 0.20
                 ? { label: "Problema de volumen", cls: "bg-red-100 text-red-700" }
                 : r.d2w < 75
                 ? { label: "Problema de conversión", cls: "bg-amber-100 text-amber-700" }
@@ -1272,6 +1319,9 @@ function SlidesView() {
                     {r.penetration}%
                   </td>
                   <td className="py-1.5 px-2 text-right tabular-nums font-semibold">{r.untapped.toLocaleString()}</td>
+                  <td className={cn("py-1.5 px-2 text-right tabular-nums", pipelineTamColor)}>
+                    {pipelineTamPct}
+                  </td>
                   <td className={cn("py-1.5 px-2 text-right tabular-nums font-semibold",
                     r.d2w >= 80 ? "text-emerald-700" : r.d2w >= 70 ? "text-amber-700" : "text-red-600",
                   )}>
@@ -1298,24 +1348,38 @@ function SlidesView() {
       <div className="flex-1 min-h-0 flex flex-col gap-1.5 justify-center">
         {regionsByMrr.slice(0, 10).map((r, i) => {
           const pct = Math.round((r.mrr / NATIONAL.mrr) * 100 * 10) / 10;
+          const barPct = Math.min(100, Math.round((r.mrr / regionsByMrr[0].mrr) * 100));
           const barColor = r.archetype === "partner-led"
             ? "bg-violet-500" : r.archetype === "outbound-responsive"
             ? "bg-sky-500" : "bg-emerald-500";
+          const isLong = barPct > 25;
           return (
-            <div key={r.code} className="flex items-center gap-3">
-              <div className="w-40 text-xs text-gray-700 font-medium truncate shrink-0">{r.ccaa}</div>
-              <div className="flex-1 h-5 rounded bg-gray-100 overflow-hidden relative">
-                <div
-                  className={cn("h-full rounded", barColor)}
-                  style={{ width: barWidth(r.mrr, regionsByMrr[0].mrr) }}
-                />
-              </div>
-              <div className="w-32 text-xs tabular-nums text-gray-600 shrink-0">
-                {fmtEur(r.mrr)} <span className="text-gray-400">({pct}%)</span>
-              </div>
-              {i === 4 && (
-                <div className="text-[10px] font-bold text-red-600 bg-red-50 px-2 py-0.5 rounded shrink-0">← 55%</div>
+            <div key={r.code}>
+              {i === 5 && (
+                <div className="border-t border-dashed border-gray-300 my-1.5" />
               )}
+              <div className="flex items-center gap-3">
+                <div className="w-40 text-xs text-gray-700 font-medium truncate shrink-0">{r.ccaa}</div>
+                <div className="flex-1 h-7 rounded bg-gray-100 overflow-hidden relative">
+                  <div
+                    className={cn("h-full rounded relative", barColor)}
+                    style={{ width: `${barPct}%` }}
+                  >
+                    {isLong && (
+                      <span className="absolute right-2 top-1/2 -translate-y-1/2 text-white text-xs font-semibold whitespace-nowrap">
+                        {fmtEur(r.mrr)}
+                      </span>
+                    )}
+                  </div>
+                </div>
+                <div className="w-32 text-xs tabular-nums shrink-0 flex items-center gap-1">
+                  {!isLong && <span className="text-gray-700 font-medium">{fmtEur(r.mrr)}</span>}
+                  <span className="text-gray-400">({pct}%)</span>
+                </div>
+                {i === 4 && (
+                  <div className="text-[10px] font-bold text-red-600 bg-red-50 px-2 py-0.5 rounded shrink-0">← 55%</div>
+                )}
+              </div>
             </div>
           );
         })}
@@ -1387,7 +1451,7 @@ function SlidesView() {
     </div>,
 
     // ── Slide 6 — Deep Dive: Partner-Led ──────────────────────────────────────
-    <div key="s6" className="flex flex-col h-full p-8 gap-4 bg-violet-50">
+    <div key="s6" className="flex flex-col h-full p-8 gap-4 bg-white">
       <div>
         <h2 className="text-xl font-bold text-violet-900 mb-0.5">Arquetipo 1: Partner-Led · {partnerLedData.regions.length} Regiones</h2>
         <p className="text-xs text-violet-600/70">Canal partner domina (&gt;35% MRR) — el canal directo es secundario</p>
@@ -1437,7 +1501,7 @@ function SlidesView() {
     </div>,
 
     // ── Slide 7 — Deep Dive: Outbound-Responsive ──────────────────────────────
-    <div key="s7" className="flex flex-col h-full p-8 gap-4 bg-sky-50">
+    <div key="s7" className="flex flex-col h-full p-8 gap-4 bg-white">
       <div>
         <h2 className="text-xl font-bold text-sky-900 mb-0.5">Arquetipo 2: Outbound-Responsive · {outboundData.regions.length} Regiones</h2>
         <p className="text-xs text-sky-600/70">SDR outbound primero — estos mercados convierten bien cuando se los busca proactivamente</p>
@@ -1491,7 +1555,7 @@ function SlidesView() {
     </div>,
 
     // ── Slide 8 — Multi-Channel Core: Introducción ────────────────────────────
-    <div key="s8" className="flex flex-col h-full p-8 gap-4 bg-emerald-50">
+    <div key="s8" className="flex flex-col h-full p-8 gap-4 bg-white">
       <div>
         <h2 className="text-xl font-bold text-emerald-900 mb-0.5">Arquetipo 3: Multi-Channel Core · El Núcleo del Crecimiento</h2>
         <p className="text-xs text-emerald-600/70">{multiChannelData.regions.length} regiones · {fmtEur(multiChannelData.totalMrr)} MRR · 65% del negocio total</p>
@@ -1542,114 +1606,117 @@ function SlidesView() {
     </div>,
 
     // ── Slides 9-13 — Zoom por región Multi-Channel ────────────────────────────
-    ...mcRegions.map((r, idx) => {
-      const { rows, maxMrr, topLabel } = regionProvTable(r);
+    ...mcRegions.map((r) => {
       const actionable = mcActionable[r.ccaa] ?? "";
+      // Top 4 provenances by mrrShare for matrix columns
+      const top4Provs = [...r.provenances].sort((a, b) => b.mrrShare - a.mrrShare).slice(0, 4);
       return (
         <div key={`mc-${r.code}`} className="flex flex-col h-full p-8 gap-4 bg-white">
           <div>
             <h2 className="text-xl font-bold text-gray-900 mb-0.5">{r.ccaa} — Análisis Multichannel</h2>
             <p className="text-xs text-gray-400">{r.active.toLocaleString()} clientes · {fmtEur(r.mrr)} MRR · {r.penetration}% penetración</p>
           </div>
-          <div className="flex gap-4 flex-1 min-h-0">
-            {/* Left 45% */}
-            <div className="w-[43%] shrink-0 flex flex-col gap-3">
-              <div className="grid grid-cols-3 gap-2">
-                <div className="rounded-lg border border-gray-200 bg-gray-50 p-2 text-center">
-                  <div className="text-[10px] text-gray-400 uppercase tracking-widest">ARPU</div>
-                  <div className={cn("text-base font-bold tabular-nums", kpiColor(r.arpu, NATIONAL.arpu, true))}>
-                    {fmtEur(r.arpu)}
-                  </div>
-                </div>
-                <div className="rounded-lg border border-gray-200 bg-gray-50 p-2 text-center">
-                  <div className="text-[10px] text-gray-400 uppercase tracking-widest">D2W</div>
-                  <div className={cn("text-base font-bold tabular-nums", kpiColor(r.d2w, NATIONAL.d2w, true))}>
-                    {r.d2w}%
-                  </div>
-                </div>
-                <div className="rounded-lg border border-gray-200 bg-gray-50 p-2 text-center">
-                  <div className="text-[10px] text-gray-400 uppercase tracking-widest">Pen.</div>
-                  <div className={cn("text-base font-bold tabular-nums", penColorClass(r.penetration))}>
-                    {r.penetration}%
-                  </div>
-                </div>
-              </div>
-              <div>
-                <p className="text-[10px] uppercase tracking-widest text-gray-400 mb-1 font-semibold">Por tamaño</p>
-                <table className="w-full text-xs">
-                  <thead>
-                    <tr className="border-b border-gray-200 text-left">
-                      <th className="py-1 pr-1 font-semibold text-gray-400">Seg.</th>
-                      <th className="py-1 px-1 font-semibold text-gray-400 text-right">Act.</th>
-                      <th className="py-1 px-1 font-semibold text-gray-400 text-right">MRR</th>
-                      <th className="py-1 px-1 font-semibold text-gray-400 text-right">ARPU</th>
-                      <th className="py-1 pl-1 font-semibold text-gray-400 text-right">D2W</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {r.sizes.map((s) => (
-                      <tr key={s.label} className="border-b border-gray-100">
-                        <td className="py-1 pr-1">{s.label}</td>
-                        <td className="py-1 px-1 text-right tabular-nums">{s.active.toLocaleString()}</td>
-                        <td className="py-1 px-1 text-right tabular-nums font-medium">{fmtEur(s.mrr)}</td>
-                        <td className="py-1 px-1 text-right tabular-nums">{fmtEur(s.arpu)}</td>
-                        <td className={cn("py-1 pl-1 text-right tabular-nums",
-                          s.d2w === null ? "text-gray-400" : s.d2w >= 80 ? "text-emerald-700" : s.d2w >= 65 ? "text-amber-700" : "text-red-600",
-                        )}>
-                          {s.d2w !== null ? `${s.d2w}%` : "—"}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+          {/* KPI pills */}
+          <div className="grid grid-cols-3 gap-2">
+            <div className="rounded-lg border border-gray-200 bg-gray-50 p-2 text-center">
+              <div className="text-[10px] text-gray-400 uppercase tracking-widest">ARPU</div>
+              <div className={cn("text-base font-bold tabular-nums", kpiColor(r.arpu, NATIONAL.arpu, true))}>
+                {fmtEur(r.arpu)}
               </div>
             </div>
-            {/* Right 55% */}
-            <div className="flex-1 min-w-0">
-              <p className="text-[10px] uppercase tracking-widest text-gray-400 mb-1 font-semibold">Canales</p>
+            <div className="rounded-lg border border-gray-200 bg-gray-50 p-2 text-center">
+              <div className="text-[10px] text-gray-400 uppercase tracking-widest">D2W</div>
+              <div className={cn("text-base font-bold tabular-nums", kpiColor(r.d2w, NATIONAL.d2w, true))}>
+                {r.d2w}%
+              </div>
+            </div>
+            <div className="rounded-lg border border-gray-200 bg-gray-50 p-2 text-center">
+              <div className="text-[10px] text-gray-400 uppercase tracking-widest">Pen.</div>
+              <div className={cn("text-base font-bold tabular-nums", penColorClass(r.penetration))}>
+                {r.penetration}%
+              </div>
+            </div>
+          </div>
+          {/* Two-panel layout */}
+          <div className="flex gap-4 flex-1 min-h-0">
+            {/* Left 40%: sizes table */}
+            <div className="w-[40%] shrink-0 flex flex-col gap-2">
+              <p className="text-[10px] uppercase tracking-widest text-gray-400 font-semibold">Por tamaño</p>
               <table className="w-full text-xs">
                 <thead>
                   <tr className="border-b border-gray-200 text-left">
-                    <th className="py-1.5 pr-2 font-semibold text-gray-400">Canal</th>
-                    <th className="py-1.5 px-1 font-semibold text-gray-400 text-right">Act.</th>
-                    <th className="py-1.5 px-1 font-semibold text-gray-400 text-right">MRR</th>
-                    <th className="py-1.5 px-1 font-semibold text-gray-400 text-right">% local</th>
-                    <th className="py-1.5 px-1 font-semibold text-gray-400 text-right">ARPU</th>
-                    <th className="py-1.5 pl-1 font-semibold text-gray-400 text-right">D2W</th>
+                    <th className="py-1 pr-1 font-semibold text-gray-400">Seg.</th>
+                    <th className="py-1 px-1 font-semibold text-gray-400 text-right">Act.</th>
+                    <th className="py-1 px-1 font-semibold text-gray-400 text-right">MRR</th>
+                    <th className="py-1 px-1 font-semibold text-gray-400 text-right">ARPU</th>
+                    <th className="py-1 pl-1 font-semibold text-gray-400 text-right">D2W</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {rows.map((p) => (
-                    <tr key={p.label} className={cn(
-                      "border-b border-gray-100",
-                      p.label === topLabel ? "bg-emerald-50" : "hover:bg-gray-50",
-                    )}>
-                      <td className="py-1.5 pr-2 font-medium">{p.label}</td>
-                      <td className="py-1.5 px-1 text-right tabular-nums">{p.active.toLocaleString()}</td>
-                      <td className="py-1.5 px-1 text-right tabular-nums font-medium">{fmtEur(p.mrr)}</td>
-                      <td className="py-1.5 px-1 text-right tabular-nums">
-                        <div className="flex items-center justify-end gap-1">
-                          <div className="w-10 h-1.5 rounded-full bg-gray-100 overflow-hidden">
-                            <div className="h-full rounded-full bg-emerald-500" style={{ width: barWidth(p.mrr, maxMrr) }} />
-                          </div>
-                          <span>{p.mrrShare}%</span>
-                        </div>
-                      </td>
-                      <td className="py-1.5 px-1 text-right tabular-nums">{fmtEur(p.arpu)}</td>
-                      <td className={cn("py-1.5 pl-1 text-right tabular-nums font-medium",
-                        p.d2w === null ? "text-gray-400" : p.d2w >= 80 ? "text-emerald-700" : p.d2w >= 65 ? "text-amber-700" : "text-red-600",
+                  {r.sizes.map((s) => (
+                    <tr key={s.label} className="border-b border-gray-100">
+                      <td className="py-1 pr-1">{s.label}</td>
+                      <td className="py-1 px-1 text-right tabular-nums">{s.active.toLocaleString()}</td>
+                      <td className="py-1 px-1 text-right tabular-nums font-medium">{fmtEur(s.mrr)}</td>
+                      <td className="py-1 px-1 text-right tabular-nums">{fmtEur(s.arpu)}</td>
+                      <td className={cn("py-1 pl-1 text-right tabular-nums",
+                        s.d2w === null ? "text-gray-400" : s.d2w >= 80 ? "text-emerald-700" : s.d2w >= 65 ? "text-amber-700" : "text-red-600",
                       )}>
-                        {p.d2w !== null ? `${p.d2w}%` : "—"}
+                        {s.d2w !== null ? `${s.d2w}%` : "—"}
                       </td>
                     </tr>
                   ))}
                 </tbody>
               </table>
             </div>
+            {/* Right 60%: Tamaño × Canal matrix */}
+            <div className="flex-1 min-w-0 flex flex-col gap-2">
+              <p className="text-[10px] uppercase tracking-widest text-gray-400 font-semibold">Tamaño × Canal (top 4 canales)</p>
+              <div className="overflow-x-auto">
+                <table className="w-full text-xs border-collapse">
+                  <thead>
+                    <tr>
+                      <th className="border border-gray-100 bg-gray-50 p-2 text-[10px] font-semibold text-gray-500 text-left">Seg.</th>
+                      {top4Provs.map((p) => (
+                        <th key={p.label} className="border border-gray-100 bg-gray-50 p-2 text-[10px] font-semibold text-gray-500 text-center">
+                          {p.label}
+                        </th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {r.sizes.map((s) => (
+                      <tr key={s.label}>
+                        <td className="border border-gray-100 bg-gray-50 p-2 text-xs font-medium text-gray-700">{s.label}</td>
+                        {top4Provs.map((p) => {
+                          const prov = r.provenances.find((pv) => pv.label === p.label);
+                          const provArpu = prov ? fmtEur(prov.arpu) : "—";
+                          const provD2w = prov?.d2w ?? null;
+                          const d2wColor = provD2w === null
+                            ? "text-gray-400"
+                            : provD2w >= 80
+                            ? "text-emerald-700"
+                            : provD2w >= 70
+                            ? "text-amber-600"
+                            : "text-red-600";
+                          return (
+                            <td key={p.label} className="border border-gray-100 p-2 text-center">
+                              <div className="text-xs font-semibold text-gray-800 tabular-nums">{provArpu}</div>
+                              <div className={cn("text-[10px] tabular-nums font-medium", d2wColor)}>
+                                {provD2w !== null ? `${provD2w}%` : "—"}
+                              </div>
+                            </td>
+                          );
+                        })}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              <p className="text-[9px] text-gray-400 italic">ARPU y D2W por canal (datos por segmento de tamaño disponibles en columna izquierda)</p>
+            </div>
           </div>
           <InsightBox actionable={!!actionable} text={actionable || `Analizar oportunidades de crecimiento en ${r.ccaa}.`} />
-          {/* suppress unused warning */}
-          {idx >= 0 && null}
         </div>
       );
     }),
