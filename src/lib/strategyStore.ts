@@ -360,11 +360,10 @@ export async function importSasorCsv(
 
     const { error } = await supa.from("strategy_sasor").insert(batch);
     if (error) {
-      console.error("sasor batch insert", error.message);
-      errors += batch.length;
-    } else {
-      inserted += batch.length;
+      // Throw on first batch so the real Supabase error is visible to the user
+      throw new Error(`Supabase insert error: ${error.message} (code: ${error.code})`);
     }
+    inserted += batch.length;
     onProgress?.(i + batch.length, deduped.length);
   }
 
