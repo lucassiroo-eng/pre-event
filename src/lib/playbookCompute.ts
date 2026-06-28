@@ -120,16 +120,17 @@ const CHANNEL_ORDER = [
 ];
 
 function normChannel(provNorm: string, partnerName: string): string {
-  const prov = (provNorm ?? "").trim();
-  if (prov === "Partners" || prov === "Partner") {
-    const pn = (partnerName ?? "").toLowerCase();
+  const pn = (partnerName ?? "").trim().toLowerCase();
+  if (pn) {
     if (pn.includes("santander")) return "Santander";
     if (pn.includes("telefon") || pn.includes("movistar")) return "Telefónica";
     return "Channel Partners";
   }
+  const prov = (provNorm ?? "").trim();
   if (prov === "Inbound")  return "Inbound";
   if (prov === "Outbound") return "Outbound";
   if (prov === "Paid")     return "Paid";
+  if (prov === "Partners" || prov === "Partner") return "Channel Partners";
   return "Others";
 }
 
