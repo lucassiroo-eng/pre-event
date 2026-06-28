@@ -340,8 +340,10 @@ function computeBestPractices(regions: RegionPlaybook[]): BestPractice[] {
     segment: string;
     l2w: number;
     regionL2wAvg: number;
+    l2wUplift: number;
     arpu: number;
     regionArpuAvg: number;
+    arpuUplift: number;
     pipeline: number;
     active: number;
     mrr: number;
@@ -399,8 +401,10 @@ function computeBestPractices(regions: RegionPlaybook[]): BestPractice[] {
             segment: seg,
             l2w: Math.round(l2w * 1000) / 10,
             regionL2wAvg: Math.round(chL2wAvg * 1000) / 10,
+            l2wUplift,
             arpu: Math.round(arpu),
             regionArpuAvg: Math.round(chArpuAvg),
+            arpuUplift,
             pipeline: cell.pipeline,
             active: cell.active,
             mrr: cell.mrr,
@@ -452,14 +456,33 @@ function computeBestPractices(regions: RegionPlaybook[]): BestPractice[] {
     const isCrossRegion = entries.length >= 3;
     for (const e of entries) {
       const tamStr = e.tamAvailable > 0 ? ` TAM disponible: ${e.tamAvailable.toLocaleString()} empresas sin tocar.` : "";
-      const l2wStr = `${e.l2w}%`;
-      const avgStr = `${e.regionL2wAvg}%`;
       const dimLabel = e.dimension === "size" ? "tamaño" : "sector";
       const crossLabel = isCrossRegion ? " (patrón cross-región)" : "";
 
-      const headline = `${e.channel} × ${e.segment} — conversión excepcional${crossLabel}`;
-      const insight =
-        `L2W del ${l2wStr} (vs ${avgStr} media canal) con ${e.pipeline} leads. MRR ${fmtN(e.mrr)}, ARPU ${fmtN(e.arpu)}.`;
+      // Determine which metric(s) actually triggered the qualification
+      const l2wExceptional  = e.l2wUplift  >= 1.3;
+      const arpuExceptional = e.arpuUplift >= 1.3;
+      const qualifier = l2wExceptional && arpuExceptional
+        ? "conversión y ARPU excepcionales"
+        : l2wExceptional
+        ? "conversión excepcional"
+        : "ARPU excepcional";
+
+      const headline = `${e.channel} × ${e.segment} — ${qualifier}${crossLabel}`;
+
+      // Insight: lead with the exceptional metric, show the other as context
+      const insightParts: string[] = [];
+      if (l2wExceptional) {
+        insightParts.push(`L2W ${e.l2w}% (vs ${e.regionL2wAvg}% media canal)`);
+      }
+      if (arpuExceptional) {
+        insightParts.push(`ARPU ${fmtN(e.arpu)} (vs ${fmtN(e.regionArpuAvg)} media canal)`);
+      }
+      insightParts.push(`${e.pipeline} leads`);
+      insightParts.push(`MRR ${fmtN(e.mrr)}`);
+      if (!arpuExceptional) insightParts.push(`ARPU ${fmtN(e.arpu)}`);
+      const insight = insightParts.join(" · ") + ".";
+
       const recommendation = e.tamAvailable > 0
         ? `Doblar volumen en este ${dimLabel}.${tamStr}`
         : `Reforzar presencia en este ${dimLabel} — buen retorno demostrado.`;
