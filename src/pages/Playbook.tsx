@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useMemo, useState, useRef, useEffect, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/lib/auth";
 import { STRATEGY_EMAILS } from "@/lib/strategyStore";
@@ -6,7 +6,7 @@ import { REGIONS, NATIONAL, type RegionPlaybook } from "@/lib/playbookData";
 import {
   ChevronRight, TrendingUp, TrendingDown, Users, Building2, Handshake,
   Target, AlertCircle, HelpCircle, BarChart3, Zap, ArrowUpRight, Presentation,
-  ChevronLeft,
+  ChevronLeft, Maximize2, Minimize2,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -794,11 +794,12 @@ function InsightBox({ text, actionable = false }: { text: string; actionable?: b
   );
 }
 
-function SlideNav({ slide, total, onPrev, onNext }: {
+function SlideNav({ slide, total, onPrev, onNext, isFullscreen, onToggleFullscreen }: {
   slide: number; total: number; onPrev: () => void; onNext: () => void;
+  isFullscreen: boolean; onToggleFullscreen: () => void;
 }) {
   return (
-    <div className="flex items-center justify-between px-8 py-4 border-t border-gray-100 shrink-0">
+    <div className="flex items-center justify-between px-8 py-4 border-t border-gray-100 shrink-0 bg-white">
       <button
         type="button"
         onClick={onPrev}
@@ -830,6 +831,14 @@ function SlideNav({ slide, total, onPrev, onNext }: {
       >
         Siguiente
         <ChevronRight className="h-3.5 w-3.5" />
+      </button>
+      <button
+        type="button"
+        onClick={onToggleFullscreen}
+        title={isFullscreen ? "Salir de pantalla completa" : "Pantalla completa"}
+        className="p-1.5 rounded border border-gray-200 text-gray-500 hover:bg-gray-50 hover:text-gray-800 transition-colors"
+      >
+        {isFullscreen ? <Minimize2 className="h-3.5 w-3.5" /> : <Maximize2 className="h-3.5 w-3.5" />}
       </button>
     </div>
   );
@@ -1761,8 +1770,37 @@ function SlidesView() {
     </div>,
   ];
 
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [isFullscreen, setIsFullscreen] = useState(false);
+
+  useEffect(() => {
+    const handler = () => setIsFullscreen(!!document.fullscreenElement);
+    document.addEventListener("fullscreenchange", handler);
+    return () => document.removeEventListener("fullscreenchange", handler);
+  }, []);
+
+  const toggleFullscreen = useCallback(() => {
+    if (!document.fullscreenElement) {
+      containerRef.current?.requestFullscreen();
+    } else {
+      document.exitFullscreen();
+    }
+  }, []);
+
+  // Keyboard navigation
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === "ArrowRight" || e.key === "ArrowDown") setSlide((s) => Math.min(TOTAL - 1, s + 1));
+      if (e.key === "ArrowLeft" || e.key === "ArrowUp") setSlide((s) => Math.max(0, s - 1));
+      if (e.key === "f" || e.key === "F") toggleFullscreen();
+      if (e.key === "Escape" && document.fullscreenElement) document.exitFullscreen();
+    };
+    document.addEventListener("keydown", handler);
+    return () => document.removeEventListener("keydown", handler);
+  }, [toggleFullscreen]);
+
   return (
-    <div className="flex flex-col h-full">
+    <div ref={containerRef} className="flex flex-col h-full bg-white">
       <div className="min-h-0 flex-1 overflow-hidden bg-white border border-gray-100 rounded-lg">
         {slides[slide]}
       </div>
@@ -1771,6 +1809,8 @@ function SlidesView() {
         total={TOTAL}
         onPrev={() => setSlide((s) => Math.max(0, s - 1))}
         onNext={() => setSlide((s) => Math.min(TOTAL - 1, s + 1))}
+        isFullscreen={isFullscreen}
+        onToggleFullscreen={toggleFullscreen}
       />
     </div>
   );
