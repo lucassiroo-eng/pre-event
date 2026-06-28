@@ -663,28 +663,28 @@ function SummaryView() {
               <thead>
                 <tr className="border-b border-border text-left">
                   <th className="py-2 pr-2 font-semibold text-muted-foreground">Industria</th>
-                  <th className="py-2 px-2 font-semibold text-muted-foreground">Arquetipo dominante</th>
                   <th className="py-2 px-2 font-semibold text-muted-foreground text-right">Activos</th>
                   <th className="py-2 px-2 font-semibold text-muted-foreground text-right">MRR</th>
                   <th className="py-2 px-2 font-semibold text-muted-foreground text-right">ARPU</th>
-                  <th className="py-2 pl-2 font-semibold text-muted-foreground text-right">% MRR nac.</th>
+                  <th className="py-2 px-2 font-semibold text-muted-foreground text-right">D2W</th>
+                  <th className="py-2 px-2 font-semibold text-muted-foreground text-right">TAM</th>
+                  <th className="py-2 px-2 font-semibold text-muted-foreground text-right">Pen.</th>
+                  <th className="py-2 pl-2 font-semibold text-muted-foreground text-right">€/TAM</th>
                 </tr>
               </thead>
               <tbody>
                 {byIndustry.map((row) => (
                   <tr key={row.label} className="border-b border-border/50 hover:bg-muted/30">
                     <td className="py-2 pr-2 font-medium">{row.label}</td>
-                    <td className="py-2 px-2">
-                      <span className={cn("text-[10px] px-1.5 py-0.5 rounded border font-medium whitespace-nowrap", archetypeColor(row.archetype))}>
-                        {archetypeLabel(row.archetype)}
-                      </span>
-                    </td>
                     <td className="py-2 px-2 text-right tabular-nums">{row.active.toLocaleString()}</td>
                     <td className="py-2 px-2 text-right tabular-nums font-medium">{fmtEur(row.mrr)}</td>
                     <td className={cn("py-2 px-2 text-right tabular-nums font-medium",
                       row.arpu >= NATIONAL.arpu * 1.1 ? "text-emerald-700" : row.arpu <= NATIONAL.arpu * 0.85 ? "text-red-600" : ""
                     )}>{fmtEur(row.arpu)}</td>
-                    <td className="py-2 pl-2 text-right tabular-nums text-muted-foreground">{row.mrrPct}%</td>
+                    <td className="py-2 px-2 text-right tabular-nums text-muted-foreground/40">—</td>
+                    <td className="py-2 px-2 text-right tabular-nums text-muted-foreground/40">—</td>
+                    <td className="py-2 px-2 text-right tabular-nums text-muted-foreground/40">—</td>
+                    <td className="py-2 pl-2 text-right tabular-nums text-muted-foreground/40">—</td>
                   </tr>
                 ))}
               </tbody>
@@ -696,25 +696,19 @@ function SummaryView() {
               <thead>
                 <tr className="border-b border-border text-left">
                   <th className="py-2 pr-2 font-semibold text-muted-foreground">Tamaño</th>
-                  <th className="py-2 px-2 font-semibold text-muted-foreground">Arquetipo dominante</th>
-                  <th className="py-2 px-2 font-semibold text-muted-foreground text-right">Pipeline</th>
                   <th className="py-2 px-2 font-semibold text-muted-foreground text-right">Activos</th>
                   <th className="py-2 px-2 font-semibold text-muted-foreground text-right">MRR</th>
                   <th className="py-2 px-2 font-semibold text-muted-foreground text-right">ARPU</th>
                   <th className="py-2 px-2 font-semibold text-muted-foreground text-right">D2W</th>
-                  <th className="py-2 pl-2 font-semibold text-muted-foreground text-right">% MRR nac.</th>
+                  <th className="py-2 px-2 font-semibold text-muted-foreground text-right">TAM</th>
+                  <th className="py-2 px-2 font-semibold text-muted-foreground text-right">Pen.</th>
+                  <th className="py-2 pl-2 font-semibold text-muted-foreground text-right">€/TAM</th>
                 </tr>
               </thead>
               <tbody>
                 {bySize.map((row) => (
                   <tr key={row.label} className="border-b border-border/50 hover:bg-muted/30">
                     <td className="py-2 pr-2 font-medium">{row.label}</td>
-                    <td className="py-2 px-2">
-                      <span className={cn("text-[10px] px-1.5 py-0.5 rounded border font-medium whitespace-nowrap", archetypeColor(row.archetype))}>
-                        {archetypeLabel(row.archetype)}
-                      </span>
-                    </td>
-                    <td className="py-2 px-2 text-right tabular-nums text-muted-foreground">{row.pipeline.toLocaleString()}</td>
                     <td className="py-2 px-2 text-right tabular-nums">{row.active.toLocaleString()}</td>
                     <td className="py-2 px-2 text-right tabular-nums font-medium">{fmtEur(row.mrr)}</td>
                     <td className={cn("py-2 px-2 text-right tabular-nums font-medium",
@@ -723,7 +717,9 @@ function SummaryView() {
                     <td className={cn("py-2 px-2 text-right tabular-nums font-medium",
                       row.d2w !== null && row.d2w >= NATIONAL.d2w ? "text-emerald-700" : row.d2w !== null && row.d2w <= NATIONAL.d2w - 5 ? "text-red-600" : ""
                     )}>{row.d2w !== null ? `${row.d2w}%` : "—"}</td>
-                    <td className="py-2 pl-2 text-right tabular-nums text-muted-foreground">{row.mrrPct}%</td>
+                    <td className="py-2 px-2 text-right tabular-nums text-muted-foreground/40">—</td>
+                    <td className="py-2 px-2 text-right tabular-nums text-muted-foreground/40">—</td>
+                    <td className="py-2 pl-2 text-right tabular-nums text-muted-foreground/40">—</td>
                   </tr>
                 ))}
               </tbody>
