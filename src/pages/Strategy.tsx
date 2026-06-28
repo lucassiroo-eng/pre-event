@@ -61,7 +61,7 @@ interface PivotCell {
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
-const SEGMENT_ORDER = ["S (1-50)", "M (51-200)", "L (201-500)", "XL (500+)", "Unknown", "Others"];
+const SEGMENT_ORDER = ["XS (1-19)", "S (20-50)", "M (51-200)", "L (201-500)", "XL (500+)", "Unknown", "Others"];
 
 const FILTER_KEYS: { key: keyof NormRow; label: string }[] = [
   { key: "_ccaa", label: "Región" },
@@ -91,7 +91,8 @@ const CROSS_METRICS: { key: PivotMetric; label: string }[] = [
 function sizeSegment(empresaSize: number, seats: number): string {
   const n = empresaSize > 0 ? empresaSize : seats;
   if (!n || n <= 0) return "Unknown";
-  if (n <= 50) return "S (1-50)";
+  if (n <= 19)  return "XS (1-19)";
+  if (n <= 50)  return "S (20-50)";
   if (n <= 200) return "M (51-200)";
   if (n <= 500) return "L (201-500)";
   return "XL (500+)";

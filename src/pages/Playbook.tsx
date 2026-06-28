@@ -551,7 +551,7 @@ function SummaryView() {
   }, []);
 
   const nationalSizes = useMemo(() => {
-    const ORDER = ["S (1-50)", "M (51-200)", "L (201-500)", "XL (500+)"];
+    const ORDER = ["XS (1-19)", "S (20-50)", "M (51-200)", "L (201-500)", "XL (500+)"];
     const map = new Map<string, { active: number; mrr: number; won: number; demos: number }>();
     for (const r of REGIONS) {
       for (const s of r.sizes) {
@@ -911,7 +911,7 @@ function SlidesView() {
 
   // ── Aggregated size data ─────────────────────────────────────────────────────
   const nationalSizes = useMemo(() => {
-    const ORDER = ["S (1-50)", "M (51-200)", "L (201-500)", "XL (500+)"];
+    const ORDER = ["XS (1-19)", "S (20-50)", "M (51-200)", "L (201-500)", "XL (500+)"];
     const map = new Map<string, { active: number; mrr: number; d2wNum: number; d2wDen: number }>();
     for (const r of REGIONS) {
       for (const s of r.sizes) {

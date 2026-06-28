@@ -296,7 +296,8 @@ export async function importSasorCsv(
 
       // Compute size segment
       let size_segment = "Unknown";
-      if (employees >= 1   && employees <= 50)  size_segment = "S (1-50)";
+      if (employees >= 1   && employees <= 19)  size_segment = "XS (1-19)";
+      else if (employees >= 20  && employees <= 50)  size_segment = "S (20-50)";
       else if (employees >= 51  && employees <= 200) size_segment = "M (51-200)";
       else if (employees >= 201 && employees <= 500) size_segment = "L (201-500)";
       else if (employees > 500)                      size_segment = "XL (500+)";

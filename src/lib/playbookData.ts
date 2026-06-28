@@ -87,7 +87,7 @@ export const REGIONS: RegionPlaybook[] = [
     penetration: 10.3,
     mrrPerTam: 69.5,
     sizes: [
-      { label: "S (1-50)", pipeline: 6175, active: 1315, mrr: 474534, arpu: 361, d2w: 90, mrrShare: 36 },
+      { label: "S (20-50)", pipeline: 6175, active: 1315, mrr: 474534, arpu: 361, d2w: 90, mrrShare: 36 },
       { label: "M (51-200)", pipeline: 1190, active: 394, mrr: 421420, arpu: 1070, d2w: 75, mrrShare: 32 },
       { label: "L (201-500)", pipeline: 566, active: 135, mrr: 283476, arpu: 2100, d2w: 71, mrrShare: 21 },
       { label: "XL (500+)", pipeline: 379, active: 59, mrr: 132396, arpu: 2244, d2w: 55, mrrShare: 10 },
@@ -153,7 +153,7 @@ export const REGIONS: RegionPlaybook[] = [
     penetration: 8.5,
     mrrPerTam: 68.0,
     sizes: [
-      { label: "S (1-50)", pipeline: 4848, active: 922, mrr: 355421, arpu: 385, d2w: 88, mrrShare: 30 },
+      { label: "S (20-50)", pipeline: 4848, active: 922, mrr: 355421, arpu: 385, d2w: 88, mrrShare: 30 },
       { label: "M (51-200)", pipeline: 1105, active: 352, mrr: 392183, arpu: 1114, d2w: 73, mrrShare: 33 },
       { label: "L (201-500)", pipeline: 539, active: 99, mrr: 234794, arpu: 2372, d2w: 58, mrrShare: 20 },
       { label: "XL (500+)", pipeline: 475, active: 61, mrr: 188820, arpu: 3095, d2w: 53, mrrShare: 16 },
@@ -219,7 +219,7 @@ export const REGIONS: RegionPlaybook[] = [
     penetration: 5.5,
     mrrPerTam: 37.0,
     sizes: [
-      { label: "S (1-50)", pipeline: 2941, active: 438, mrr: 155379, arpu: 355, d2w: 82, mrrShare: 36 },
+      { label: "S (20-50)", pipeline: 2941, active: 438, mrr: 155379, arpu: 355, d2w: 82, mrrShare: 36 },
       { label: "M (51-200)", pipeline: 527, active: 131, mrr: 157521, arpu: 1202, d2w: 68, mrrShare: 36 },
       { label: "L (201-500)", pipeline: 270, active: 33, mrr: 70603, arpu: 2139, d2w: 49, mrrShare: 16 },
       { label: "XL (500+)", pipeline: 182, active: 29, mrr: 46103, arpu: 1590, d2w: 54, mrrShare: 11 },
@@ -285,7 +285,7 @@ export const REGIONS: RegionPlaybook[] = [
     penetration: 5.4,
     mrrPerTam: 44.7,
     sizes: [
-      { label: "S (1-50)", pipeline: 2308, active: 336, mrr: 129709, arpu: 386, d2w: 77, mrrShare: 33 },
+      { label: "S (20-50)", pipeline: 2308, active: 336, mrr: 129709, arpu: 386, d2w: 77, mrrShare: 33 },
       { label: "M (51-200)", pipeline: 415, active: 98, mrr: 166897, arpu: 1703, d2w: 62, mrrShare: 43 },
       { label: "L (201-500)", pipeline: 181, active: 22, mrr: 79884, arpu: 3631, d2w: 48, mrrShare: 20 },
       { label: "XL (500+)", pipeline: 111, active: 9, mrr: 12691, arpu: 1410, d2w: 38, mrrShare: 3 },
@@ -351,7 +351,7 @@ export const REGIONS: RegionPlaybook[] = [
     penetration: 7.7,
     mrrPerTam: 73.5,
     sizes: [
-      { label: "S (1-50)", pipeline: 1171, active: 222, mrr: 74983, arpu: 338, d2w: 82, mrrShare: 23 },
+      { label: "S (20-50)", pipeline: 1171, active: 222, mrr: 74983, arpu: 338, d2w: 82, mrrShare: 23 },
       { label: "M (51-200)", pipeline: 232, active: 68, mrr: 88419, arpu: 1300, d2w: 70, mrrShare: 27 },
       { label: "L (201-500)", pipeline: 104, active: 24, mrr: 60998, arpu: 2542, d2w: 80, mrrShare: 19 },
       { label: "XL (500+)", pipeline: 121, active: 19, mrr: 100381, arpu: 5283, d2w: 57, mrrShare: 31 },
@@ -417,7 +417,7 @@ export const REGIONS: RegionPlaybook[] = [
     penetration: 6.0,
     mrrPerTam: 40.2,
     sizes: [
-      { label: "S (1-50)", pipeline: 842, active: 154, mrr: 51608, arpu: 335, d2w: 87, mrrShare: 33 },
+      { label: "S (20-50)", pipeline: 842, active: 154, mrr: 51608, arpu: 335, d2w: 87, mrrShare: 33 },
       { label: "M (51-200)", pipeline: 173, active: 49, mrr: 47845, arpu: 976, d2w: 81, mrrShare: 30 },
       { label: "L (201-500)", pipeline: 85, active: 14, mrr: 28267, arpu: 2019, d2w: 65, mrrShare: 18 },
       { label: "XL (500+)", pipeline: 68, active: 13, mrr: 30047, arpu: 2311, d2w: 67, mrrShare: 19 },
@@ -482,7 +482,7 @@ export const REGIONS: RegionPlaybook[] = [
     penetration: 4.4,
     mrrPerTam: 27.8,
     sizes: [
-      { label: "S (1-50)", pipeline: 1021, active: 149, mrr: 48134, arpu: 323, d2w: 81, mrrShare: 33 },
+      { label: "S (20-50)", pipeline: 1021, active: 149, mrr: 48134, arpu: 323, d2w: 81, mrrShare: 33 },
       { label: "M (51-200)", pipeline: 195, active: 47, mrr: 58935, arpu: 1254, d2w: 72, mrrShare: 40 },
       { label: "L (201-500)", pipeline: 110, active: 19, mrr: 26019, arpu: 1369, d2w: 62, mrrShare: 18 },
       { label: "XL (500+)", pipeline: 94, active: 9, mrr: 13197, arpu: 1466, d2w: 43, mrrShare: 9 },
@@ -547,7 +547,7 @@ export const REGIONS: RegionPlaybook[] = [
     penetration: 4.7,
     mrrPerTam: 28.3,
     sizes: [
-      { label: "S (1-50)", pipeline: 1965, active: 151, mrr: 50877, arpu: 337, d2w: 78, mrrShare: 37 },
+      { label: "S (20-50)", pipeline: 1965, active: 151, mrr: 50877, arpu: 337, d2w: 78, mrrShare: 37 },
       { label: "M (51-200)", pipeline: 194, active: 50, mrr: 68152, arpu: 1363, d2w: 84, mrrShare: 50 },
       { label: "L (201-500)", pipeline: 99, active: 9, mrr: 8436, arpu: 937, d2w: 38, mrrShare: 6 },
       { label: "XL (500+)", pipeline: 77, active: 8, mrr: 7587, arpu: 948, d2w: 44, mrrShare: 6 },
@@ -612,7 +612,7 @@ export const REGIONS: RegionPlaybook[] = [
     penetration: 4.9,
     mrrPerTam: 44.2,
     sizes: [
-      { label: "S (1-50)", pipeline: 513, active: 83, mrr: 38257, arpu: 461, d2w: 70, mrrShare: 31 },
+      { label: "S (20-50)", pipeline: 513, active: 83, mrr: 38257, arpu: 461, d2w: 70, mrrShare: 31 },
       { label: "M (51-200)", pipeline: 116, active: 32, mrr: 31082, arpu: 971, d2w: 59, mrrShare: 26 },
       { label: "L (201-500)", pipeline: 56, active: 11, mrr: 39760, arpu: 3615, d2w: 57, mrrShare: 33 },
       { label: "XL (500+)", pipeline: 37, active: 7, mrr: 12561, arpu: 1794, d2w: 40, mrrShare: 10 },
@@ -676,7 +676,7 @@ export const REGIONS: RegionPlaybook[] = [
     penetration: 5.7,
     mrrPerTam: 39.6,
     sizes: [
-      { label: "S (1-50)", pipeline: 592, active: 111, mrr: 44397, arpu: 400, d2w: 79, mrrShare: 38 },
+      { label: "S (20-50)", pipeline: 592, active: 111, mrr: 44397, arpu: 400, d2w: 79, mrrShare: 38 },
       { label: "M (51-200)", pipeline: 116, active: 38, mrr: 44423, arpu: 1169, d2w: 66, mrrShare: 38 },
       { label: "L (201-500)", pipeline: 56, active: 12, mrr: 16884, arpu: 1407, d2w: 46, mrrShare: 14 },
       { label: "XL (500+)", pipeline: 39, active: 6, mrr: 10486, arpu: 1748, d2w: 44, mrrShare: 9 },
@@ -741,7 +741,7 @@ export const REGIONS: RegionPlaybook[] = [
     penetration: 4.5,
     mrrPerTam: 25.5,
     sizes: [
-      { label: "S (1-50)", pipeline: 711, active: 117, mrr: 43036, arpu: 368, d2w: 85, mrrShare: 40 },
+      { label: "S (20-50)", pipeline: 711, active: 117, mrr: 43036, arpu: 368, d2w: 85, mrrShare: 40 },
       { label: "M (51-200)", pipeline: 150, active: 45, mrr: 36835, arpu: 819, d2w: 74, mrrShare: 34 },
       { label: "L (201-500)", pipeline: 68, active: 11, mrr: 16649, arpu: 1514, d2w: 62, mrrShare: 15 },
       { label: "XL (500+)", pipeline: 49, active: 9, mrr: 10458, arpu: 1162, d2w: 69, mrrShare: 10 },
@@ -806,7 +806,7 @@ export const REGIONS: RegionPlaybook[] = [
     penetration: 7.9,
     mrrPerTam: 46.8,
     sizes: [
-      { label: "S (1-50)", pipeline: 581, active: 118, mrr: 44552, arpu: 378, d2w: 90, mrrShare: 46 },
+      { label: "S (20-50)", pipeline: 581, active: 118, mrr: 44552, arpu: 378, d2w: 90, mrrShare: 46 },
       { label: "M (51-200)", pipeline: 114, active: 28, mrr: 30068, arpu: 1074, d2w: 84, mrrShare: 31 },
       { label: "L (201-500)", pipeline: 64, active: 7, mrr: 14361, arpu: 2052, d2w: 55, mrrShare: 15 },
       { label: "XL (500+)", pipeline: 35, active: 4, mrr: 6421, arpu: 1605, d2w: 33, mrrShare: 7 },
@@ -869,7 +869,7 @@ export const REGIONS: RegionPlaybook[] = [
     penetration: 6.0,
     mrrPerTam: 50.1,
     sizes: [
-      { label: "S (1-50)", pipeline: 607, active: 61, mrr: 22400, arpu: 367, d2w: 87, mrrShare: 25 },
+      { label: "S (20-50)", pipeline: 607, active: 61, mrr: 22400, arpu: 367, d2w: 87, mrrShare: 25 },
       { label: "M (51-200)", pipeline: 108, active: 20, mrr: 29957, arpu: 1498, d2w: 72, mrrShare: 33 },
       { label: "L (201-500)", pipeline: 72, active: 11, mrr: 25364, arpu: 2306, d2w: 68, mrrShare: 28 },
       { label: "XL (500+)", pipeline: 66, active: 10, mrr: 11082, arpu: 1108, d2w: 69, mrrShare: 12 },
@@ -934,7 +934,7 @@ export const REGIONS: RegionPlaybook[] = [
     penetration: 5.7,
     mrrPerTam: 62.0,
     sizes: [
-      { label: "S (1-50)", pipeline: 215, active: 35, mrr: 21431, arpu: 612, d2w: 82, mrrShare: 32 },
+      { label: "S (20-50)", pipeline: 215, active: 35, mrr: 21431, arpu: 612, d2w: 82, mrrShare: 32 },
       { label: "M (51-200)", pipeline: 56, active: 20, mrr: 29394, arpu: 1470, d2w: 90, mrrShare: 44 },
       { label: "L (201-500)", pipeline: 19, active: 2, mrr: 1830, arpu: 915, d2w: 43, mrrShare: 3 },
       { label: "XL (500+)", pipeline: 16, active: 4, mrr: 14136, arpu: 3534, d2w: null, mrrShare: 21 },
@@ -999,7 +999,7 @@ export const REGIONS: RegionPlaybook[] = [
     penetration: 5.1,
     mrrPerTam: 22.3,
     sizes: [
-      { label: "S (1-50)", pipeline: 423, active: 44, mrr: 14015, arpu: 319, d2w: 70, mrrShare: 47 },
+      { label: "S (20-50)", pipeline: 423, active: 44, mrr: 14015, arpu: 319, d2w: 70, mrrShare: 47 },
       { label: "M (51-200)", pipeline: 61, active: 16, mrr: 11340, arpu: 709, d2w: 67, mrrShare: 38 },
       { label: "L (201-500)", pipeline: 29, active: 2, mrr: 631, arpu: 316, d2w: 43, mrrShare: 2 },
       { label: "XL (500+)", pipeline: 24, active: 4, mrr: 3478, arpu: 870, d2w: 43, mrrShare: 12 },
@@ -1061,7 +1061,7 @@ export const REGIONS: RegionPlaybook[] = [
     penetration: 5.2,
     mrrPerTam: 28.1,
     sizes: [
-      { label: "S (1-50)", pipeline: 126, active: 34, mrr: 14167, arpu: 417, d2w: 87, mrrShare: 58 },
+      { label: "S (20-50)", pipeline: 126, active: 34, mrr: 14167, arpu: 417, d2w: 87, mrrShare: 58 },
       { label: "M (51-200)", pipeline: 30, active: 9, mrr: 9968, arpu: 1108, d2w: 100, mrrShare: 41 },
       { label: "L (201-500)", pipeline: 10, active: 0, mrr: 0, arpu: 0, d2w: null, mrrShare: 0 },
       { label: "XL (500+)", pipeline: 6, active: 0, mrr: 0, arpu: 0, d2w: null, mrrShare: 0 },
@@ -1123,7 +1123,7 @@ export const REGIONS: RegionPlaybook[] = [
     penetration: 3.3,
     mrrPerTam: 26.8,
     sizes: [
-      { label: "S (1-50)", pipeline: 87, active: 9, mrr: 6866, arpu: 763, d2w: 68, mrrShare: 43 },
+      { label: "S (20-50)", pipeline: 87, active: 9, mrr: 6866, arpu: 763, d2w: 68, mrrShare: 43 },
       { label: "M (51-200)", pipeline: 20, active: 6, mrr: 5641, arpu: 940, d2w: 80, mrrShare: 35 },
       { label: "L (201-500)", pipeline: 9, active: 2, mrr: 232, arpu: 116, d2w: null, mrrShare: 1 },
       { label: "XL (500+)", pipeline: 9, active: 2, mrr: 3183, arpu: 1591, d2w: null, mrrShare: 20 },
