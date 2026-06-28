@@ -98,15 +98,13 @@ const CHANNEL_ORDER = [
 ];
 
 function normChannel(provNorm: string, partnerName: string): string {
-  // Partner name takes priority — if a partner is associated, it's a partner deal
-  const pn = (partnerName ?? "").trim().toLowerCase();
-  if (pn) {
+  const prov = (provNorm ?? "").trim();
+  if (prov === "Partners" || prov === "Partner") {
+    const pn = (partnerName ?? "").toLowerCase();
     if (pn.includes("santander")) return "Santander";
     if (pn.includes("telefon") || pn.includes("movistar")) return "Telefónica";
     return "Channel Partners";
   }
-  const prov = (provNorm ?? "").trim();
-  if (prov === "Partners" || prov === "Partner") return "Channel Partners";
   if (prov === "Inbound")  return "Inbound";
   if (prov === "Outbound") return "Outbound";
   if (prov === "Paid")     return "Paid";
