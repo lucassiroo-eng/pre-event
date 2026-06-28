@@ -155,13 +155,19 @@ function computeArchetype(
   totalMrr: number,
 ): RegionPlaybook["archetype"] {
   if (totalMrr === 0) return "multi-channel";
+
+  // Partner-led: Channel Partners + Santander + Telefónica > 45% MRR combined
   const partnerMrr = provs
     .filter((p) => ["Channel Partners", "Santander", "Telefónica"].includes(p.label))
     .reduce((s, p) => s + p.mrr, 0);
-  const partnerShare = (partnerMrr / totalMrr) * 100;
-  if (partnerShare >= 35) return "partner-led";
-  const outboundD2w = provs.find((p) => p.label === "Outbound")?.d2w ?? 0;
-  if (outboundD2w >= 82 && partnerShare < 25) return "outbound-responsive";
+  if (partnerMrr / totalMrr > 0.45) return "partner-led";
+
+  // Outbound-responsive: outbound MRR > inbound MRR AND outbound is top-2 channel by MRR
+  const outboundMrr = provs.find((p) => p.label === "Outbound")?.mrr ?? 0;
+  const inboundMrr  = provs.find((p) => p.label === "Inbound")?.mrr  ?? 0;
+  const top2 = [...provs].sort((a, b) => b.mrr - a.mrr).slice(0, 2).map((p) => p.label);
+  if (outboundMrr > inboundMrr && top2.includes("Outbound")) return "outbound-responsive";
+
   return "multi-channel";
 }
 
