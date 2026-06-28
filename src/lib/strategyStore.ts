@@ -355,7 +355,7 @@ export async function importSasorCsv(
       if (!byCcaaBySector[ccaa]) byCcaaBySector[ccaa] = {};
       byCcaaBySector[ccaa][sector] = (byCcaaBySector[ccaa][sector] ?? 0) + 1;
 
-      return { hubspot_company_id: hubspotId, company_name: name, sector, size_segment, ccaa, employees, city };
+      return { hubspot_company_id: hubspotId, company_name: name, sector, size_segment, ccaa, employees };
     });
 
     const { error } = await supa.from("strategy_sasor").insert(batch);
