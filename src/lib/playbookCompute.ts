@@ -113,24 +113,27 @@ function computeSize(empresaSize: number, totalSeats: number): string {
   return "XL (500+)";
 }
 
-// ── Channel normalisation (sub-splits Santander / Telefónica from Partners) ──
+// ── Channel normalisation ────────────────────────────────────────────────────
+// Only deal_provenance (provenance_norm) = "Partners" counts as partner-sourced.
+// Partner name sub-splits Santander / Telefónica / Channel Partners within that.
+// Companies with a partner on invoice/deal but sourced via Outbound/Inbound/Paid
+// are classified by their actual provenance, not as partner deals.
 
 const CHANNEL_ORDER = [
   "Channel Partners", "Outbound", "Inbound", "Santander", "Paid", "Telefónica", "Others",
 ];
 
 function normChannel(provNorm: string, partnerName: string): string {
-  const pn = (partnerName ?? "").trim().toLowerCase();
-  if (pn) {
-    if (pn.includes("santander")) return "Santander";
-    if (pn.includes("telefon") || pn.includes("movistar")) return "Telefónica";
-    return "Channel Partners";
-  }
   const prov = (provNorm ?? "").trim();
   if (prov === "Inbound")  return "Inbound";
   if (prov === "Outbound") return "Outbound";
   if (prov === "Paid")     return "Paid";
-  if (prov === "Partners" || prov === "Partner") return "Channel Partners";
+  if (prov === "Partners" || prov === "Partner") {
+    const pn = (partnerName ?? "").trim().toLowerCase();
+    if (pn.includes("santander")) return "Santander";
+    if (pn.includes("telefon") || pn.includes("movistar")) return "Telefónica";
+    return "Channel Partners";
+  }
   return "Others";
 }
 
