@@ -902,7 +902,7 @@ function RegionDetail({ region, national, bestPractices }: {
 
 function SummaryView({ data }: { data: PlaybookLiveData }) {
   const { regions: REGIONS, national: NATIONAL } = data;
-  const [summaryTab, setSummaryTab] = useState<"ccaa" | "industria" | "tamaño">("ccaa");
+  const [summaryTab, setSummaryTab] = useState<"ccaa" | "canales" | "industria" | "tamaño" | "partners">("ccaa");
   const sorted = useMemo(() => [...REGIONS].sort((a, b) => b.mrr - a.mrr), [REGIONS]);
 
   const nationalIndustries = useMemo(() => {
@@ -952,10 +952,87 @@ function SummaryView({ data }: { data: PlaybookLiveData }) {
       .sort((a, b) => (ORDER.indexOf(a.label) ?? 99) - (ORDER.indexOf(b.label) ?? 99));
   }, [REGIONS]);
 
+  const nationalProvenances = useMemo(() => {
+    const map = new Map<string, { active: number; pipeline: number; mrr: number }>();
+    for (const r of REGIONS) {
+      for (const p of r.provenances) {
+        const g = map.get(p.label) ?? { active: 0, pipeline: 0, mrr: 0 };
+        g.active += p.active;
+        g.pipeline += p.pipeline;
+        g.mrr += p.mrr;
+        map.set(p.label, g);
+      }
+    }
+    const totalMrr = [...map.values()].reduce((s, g) => s + g.mrr, 0);
+    return [...map.entries()]
+      .map(([label, g]) => ({
+        label,
+        active: g.active,
+        pipeline: g.pipeline,
+        mrr: g.mrr,
+        arpu: g.active > 0 ? Math.round(g.mrr / g.active) : 0,
+        mrrShare: totalMrr > 0 ? Math.round((g.mrr / totalMrr) * 1000) / 10 : 0,
+        d2w: null as number | null,
+      }))
+      .sort((a, b) => b.mrr - a.mrr);
+  }, [REGIONS]);
+
+  const nationalPartners = useMemo(() => {
+    const map = new Map<string, { clients: number; mrr: number }>();
+    for (const r of REGIONS) {
+      for (const p of r.partners) {
+        const g = map.get(p.name) ?? { clients: 0, mrr: 0 };
+        g.clients += p.clients;
+        g.mrr += p.mrr;
+        map.set(p.name, g);
+      }
+    }
+    return [...map.entries()]
+      .map(([name, g]) => ({ name, clients: g.clients, mrr: g.mrr }))
+      .sort((a, b) => b.mrr - a.mrr)
+      .slice(0, 20);
+  }, [REGIONS]);
+
+  const nationalChannelSizeCross = useMemo(() => {
+    const cross: Record<string, Record<string, { active: number; pipeline: number; mrr: number }>> = {};
+    for (const r of REGIONS) {
+      if (!r.channelSizeCross) continue;
+      for (const [ch, dims] of Object.entries(r.channelSizeCross)) {
+        if (!cross[ch]) cross[ch] = {};
+        for (const [dim, cell] of Object.entries(dims)) {
+          if (!cross[ch][dim]) cross[ch][dim] = { active: 0, pipeline: 0, mrr: 0 };
+          cross[ch][dim].active += cell.active;
+          cross[ch][dim].pipeline += cell.pipeline;
+          cross[ch][dim].mrr += cell.mrr;
+        }
+      }
+    }
+    return cross;
+  }, [REGIONS]);
+
+  const nationalChannelIndustryCross = useMemo(() => {
+    const cross: Record<string, Record<string, { active: number; pipeline: number; mrr: number }>> = {};
+    for (const r of REGIONS) {
+      if (!r.channelIndustryCross) continue;
+      for (const [ch, dims] of Object.entries(r.channelIndustryCross)) {
+        if (!cross[ch]) cross[ch] = {};
+        for (const [dim, cell] of Object.entries(dims)) {
+          if (!cross[ch][dim]) cross[ch][dim] = { active: 0, pipeline: 0, mrr: 0 };
+          cross[ch][dim].active += cell.active;
+          cross[ch][dim].pipeline += cell.pipeline;
+          cross[ch][dim].mrr += cell.mrr;
+        }
+      }
+    }
+    return cross;
+  }, [REGIONS]);
+
   const SUMMARY_TABS = [
     { key: "ccaa" as const, label: "CCAA" },
+    { key: "canales" as const, label: "Canales" },
     { key: "industria" as const, label: "Industria" },
     { key: "tamaño" as const, label: "Tamaño" },
+    { key: "partners" as const, label: "Partners" },
   ];
 
   return (
@@ -1181,6 +1258,36 @@ function SummaryView({ data }: { data: PlaybookLiveData }) {
                 })()}
               </tfoot>
             </table>
+          )}
+
+          {summaryTab === "canales" && (
+            <div className="space-y-4">
+              <ProvenanceTable provenances={nationalProvenances} />
+              {Object.keys(nationalChannelSizeCross).length > 0 && (
+                <div className="pt-4 border-t border-border">
+                  <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-3">Canal x Tamaño</h3>
+                  <ChannelCrossTable
+                    cross={nationalChannelSizeCross}
+                    dimLabels={["XS (1-19)", "S (20-50)", "M (51-200)", "L (201-500)", "XL (500+)"]}
+                    dimName="Tamaño"
+                  />
+                </div>
+              )}
+              {Object.keys(nationalChannelIndustryCross).length > 0 && (
+                <div className="pt-4 border-t border-border">
+                  <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-3">Canal x Industria</h3>
+                  <ChannelCrossTable
+                    cross={nationalChannelIndustryCross}
+                    dimLabels={["Tecnología & Software","Industria & Manufactura","Construcción & Inmobiliaria","Agroalimentario","Hostelería & Turismo","Salud","Distribución & Retail","Transporte & Logística","Servicios Profesionales","Educación & Formación","Energía & Medioambiente","Otros Servicios"]}
+                    dimName="Industria"
+                  />
+                </div>
+              )}
+            </div>
+          )}
+
+          {summaryTab === "partners" && (
+            <PartnerTable partners={nationalPartners} />
           )}
         </div>
       </div>
