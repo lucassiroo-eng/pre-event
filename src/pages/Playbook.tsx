@@ -1298,6 +1298,18 @@ function SummaryView({ data }: { data: PlaybookLiveData }) {
           const regions = REGIONS.filter((r) => r.archetype === arch);
           const totalMrr = regions.reduce((s, r) => s + r.mrr, 0);
           const totalActive = regions.reduce((s, r) => s + r.active, 0);
+          const provMap = new Map<string, { mrr: number; active: number }>();
+          for (const r of regions) {
+            for (const p of r.provenances) {
+              const g = provMap.get(p.label) ?? { mrr: 0, active: 0 };
+              g.mrr += p.mrr;
+              g.active += p.active;
+              provMap.set(p.label, g);
+            }
+          }
+          const provRows = [...provMap.entries()]
+            .map(([label, g]) => ({ label, mrr: g.mrr, active: g.active, pct: totalMrr > 0 ? Math.round(g.mrr / totalMrr * 1000) / 10 : 0 }))
+            .sort((a, b) => b.mrr - a.mrr);
           return (
             <div key={arch} className={cn("rounded-xl border shadow-sm p-4", archetypeColor(arch))}>
               <div className="text-xs font-bold uppercase tracking-wider mb-1">{archetypeLabel(arch)}</div>
@@ -1308,6 +1320,24 @@ function SummaryView({ data }: { data: PlaybookLiveData }) {
               <div className="text-[11px] mt-2.5 leading-relaxed font-medium opacity-90 italic">
                 {archetypeTagline(arch)}
               </div>
+              <table className="w-full text-[10px] mt-3 border-t border-current/15 pt-1">
+                <thead>
+                  <tr className="text-left opacity-60">
+                    <th className="py-1 pr-1 font-semibold">Canal</th>
+                    <th className="py-1 px-1 font-semibold text-right">MRR</th>
+                    <th className="py-1 pl-1 font-semibold text-right">%</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {provRows.map((p) => (
+                    <tr key={p.label} className="border-t border-current/10">
+                      <td className="py-0.5 pr-1">{p.label}</td>
+                      <td className="py-0.5 px-1 text-right tabular-nums font-medium">{fmtEur(p.mrr)}</td>
+                      <td className="py-0.5 pl-1 text-right tabular-nums opacity-70">{p.pct}%</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
               <div className="text-[10px] mt-2 leading-relaxed opacity-60">
                 {regions.map((r) => r.ccaa).join(", ")}
               </div>
