@@ -1022,7 +1022,7 @@ export const REGIONS: RegionPlaybook[] = [
   {
     ccaa: "Comunidad de Madrid",
     code: "MD",
-    archetype: "partner-led",
+    archetype: "multi-channel",
     tam: 18900,
     hubspot: 6990,
     active: 1437,
@@ -1935,7 +1935,7 @@ export const REGIONS: RegionPlaybook[] = [
   {
     ccaa: "Andalucía",
     code: "AN",
-    archetype: "multi-channel",
+    archetype: "partner-led",
     tam: 11643,
     hubspot: 3953,
     active: 624,
@@ -2842,7 +2842,7 @@ export const REGIONS: RegionPlaybook[] = [
   {
     ccaa: "Comunidad Valenciana",
     code: "VC",
-    archetype: "outbound-responsive",
+    archetype: "partner-led",
     tam: 9930,
     hubspot: 3042,
     active: 467,
@@ -8859,7 +8859,7 @@ export const REGIONS: RegionPlaybook[] = [
   {
     ccaa: "Castilla-La Mancha",
     code: "CM",
-    archetype: "partner-led",
+    archetype: "outbound-responsive",
     tam: 2766,
     hubspot: 990,
     active: 186,
@@ -10491,7 +10491,7 @@ export const REGIONS: RegionPlaybook[] = [
   {
     ccaa: "Extremadura",
     code: "EX",
-    archetype: "outbound-responsive",
+    archetype: "multi-channel",
     tam: 1144,
     hubspot: 849,
     active: 100,
@@ -11287,7 +11287,7 @@ export const REGIONS: RegionPlaybook[] = [
   {
     ccaa: "Comunidad Foral de Navarra",
     code: "NC",
-    archetype: "partner-led",
+    archetype: "outbound-responsive",
     tam: 1369,
     hubspot: 315,
     active: 62,

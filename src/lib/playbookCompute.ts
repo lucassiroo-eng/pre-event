@@ -152,27 +152,44 @@ function resolveFlags(c: StrategyCompany): { isActive: boolean; isWon: boolean; 
   return { isActive, isWon, hasDemo };
 }
 
-// ── Archetype classification ─────────────────────────────────────────────────
+// ── Archetype classification (date-weighted) ────────────────────────────────
+//
+// Uses a blended channel mix: older deals × 1 + recent deals × 2.
+// "Recent" = deals closed in the last 12 months (excluding current month).
+// This captures partner-channel momentum — regions where partners are
+// growing fast get classified as partner-led even if all-time share is modest.
 
-function computeArchetype(
-  provs: RegionPlaybook["provenances"],
-  totalMrr: number,
+const PARTNER_LABELS = new Set(["Channel Partners", "Santander", "Telefónica"]);
+
+function computeArchetypeWeighted(
+  rows: { channel: string; isActive: boolean; cmrr: number; closeDate: number | null }[],
 ): RegionPlaybook["archetype"] {
-  if (totalMrr === 0) return "multi-channel";
+  const now = Date.now();
+  const TWELVE_MONTHS = 365 * 24 * 3600 * 1000;
+  const cutoff = now - TWELVE_MONTHS;
 
-  // Partner-led: Channel Partners + Santander + Telefónica > 20% MRR combined
-  // (threshold lowered from 45% after provenance correction: only deal_provenance=Partners
-  // counts as partner-sourced, which drops partner MRR shares significantly)
-  const partnerMrr = provs
-    .filter((p) => ["Channel Partners", "Santander", "Telefónica"].includes(p.label))
-    .reduce((s, p) => s + p.mrr, 0);
-  if (partnerMrr / totalMrr > 0.20) return "partner-led";
+  const blend = new Map<string, number>();
+  let blendTotal = 0;
 
-  // Outbound-responsive: outbound MRR > inbound MRR AND outbound is top-2 channel by MRR
-  const outboundMrr = provs.find((p) => p.label === "Outbound")?.mrr ?? 0;
-  const inboundMrr  = provs.find((p) => p.label === "Inbound")?.mrr  ?? 0;
-  const top2 = [...provs].sort((a, b) => b.mrr - a.mrr).slice(0, 2).map((p) => p.label);
-  if (outboundMrr > inboundMrr && top2.includes("Outbound")) return "outbound-responsive";
+  for (const r of rows) {
+    if (!r.isActive || r.cmrr <= 0) continue;
+    const weight = (r.closeDate && r.closeDate >= cutoff) ? 2 : 1;
+    const prev = blend.get(r.channel) ?? 0;
+    blend.set(r.channel, prev + r.cmrr * weight);
+    blendTotal += r.cmrr * weight;
+  }
+
+  if (blendTotal === 0) return "multi-channel";
+
+  let partnerMrr = 0;
+  for (const [ch, mrr] of blend) {
+    if (PARTNER_LABELS.has(ch)) partnerMrr += mrr;
+  }
+  if (partnerMrr / blendTotal > 0.25) return "partner-led";
+
+  const obMrr = blend.get("Outbound") ?? 0;
+  const ibMrr = blend.get("Inbound") ?? 0;
+  if (obMrr > ibMrr) return "outbound-responsive";
 
   return "multi-channel";
 }
@@ -550,6 +567,7 @@ export function computePlaybook(
     isWon: boolean;
     hasDemo: boolean;
     cmrr: number;
+    closeDate: number | null;
   };
 
   const normed: NormRow[] = rows.map((c) => {
@@ -558,6 +576,8 @@ export function computePlaybook(
     const channel = normChannel(c.provenance_norm ?? c.provenance ?? "", c.partner_object_name ?? "");
     const size = computeSize(c.empresa_size ?? 0, c.total_seats ?? 0);
     const sector = hubspotToSector(c.industria ?? "");
+    const dateStr = c.deal_closed_date || (c.close_date ?? "") || "";
+    const closeDate = dateStr ? new Date(dateStr).getTime() : null;
     return {
       ccaa,
       channel,
@@ -568,6 +588,7 @@ export function computePlaybook(
       isWon,
       hasDemo,
       cmrr: isActive ? (c.cmrr ?? 0) : 0,
+      closeDate: closeDate && !isNaN(closeDate) ? closeDate : null,
     };
   });
 
@@ -711,8 +732,8 @@ export function computePlaybook(
       chIndCross[r.channel][r.sector] = ic;
     }
 
-    // ── Archetype ────────────────────────────────────────────────────────────
-    const archetype = computeArchetype(provenances, totalMrr);
+    // ── Archetype (date-weighted) ──────────────────────────────────────────
+    const archetype = computeArchetypeWeighted(rows);
 
     // ── Strategy text ────────────────────────────────────────────────────────
     const topProv    = provenances[0];
