@@ -227,7 +227,7 @@ export async function importStrategyCsv(
         has_demo: parseBool(r.has_demo),
         is_won: parseBool(r.is_won),
         is_active_client: parseBool(r.is_active_client),
-        provenance_norm: r.deal_provenance ?? r.provenance_norm ?? null,
+        provenance_norm: r.deal_provenance || r.provenance_norm || r.provenance || null,
         size_segment: r.size_segment ?? null,
         ccaa: r.ccaa ?? null,
         // Preserve enrichment from previous imports/GitHub Actions runs
