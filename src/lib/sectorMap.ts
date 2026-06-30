@@ -188,6 +188,14 @@ const HUBSPOT_MAP: Record<string, Sector> = {
   PHILANTHROPY:                        "Otros Servicios",
   INDIVIDUAL_FAMILY_SERVICES:          "Otros Servicios",
   EXECUTIVE_OFFICE:                    "Otros Servicios",
+  FUND_RAISING:                        "Otros Servicios",
+  GOVERNMENT_RELATIONS:                "Otros Servicios",
+  THINK_TANKS:                         "Otros Servicios",
+  PUBLIC_POLICY:                       "Otros Servicios",
+  INTERNATIONAL_TRADE_AND_DEVELOPMENT: "Servicios Profesionales",
+  PROGRAM_DEVELOPMENT:                 "Tecnología & Software",
+  MILITARY:                            "Otros Servicios",
+  LAW_ENFORCEMENT:                     "Otros Servicios",
 };
 
 // Free-text / display-name variants (what HubSpot sometimes sends as readable strings)
@@ -222,6 +230,19 @@ const FREETEXT_MAP: Record<string, Sector> = {
   "Oil & Energy":             "Energía & Medioambiente",
   "Renewables":               "Energía & Medioambiente",
   "Environmental Services":   "Energía & Medioambiente",
+  // Grouped / translated names from SQL industry columns
+  "Industrial & Manufacturing":       "Industria & Manufactura",
+  "Professional Services":            "Servicios Profesionales",
+  "Technology & Telecommunications":  "Tecnología & Software",
+  "Health & Pharma":                  "Salud",
+  "Energy & Utilities":               "Energía & Medioambiente",
+  "Public & Non-Profit Sectors":      "Otros Servicios",
+  "Financial Services":               "Otros Servicios",
+  "Agriculture":                      "Agroalimentario",
+  "Manufacturing":                    "Industria & Manufactura",
+  "Energy":                           "Energía & Medioambiente",
+  "Transportation":                   "Transporte & Logística",
+  "Research":                         "Educación & Formación",
   // Sector names themselves (already normalized — pass-through)
   "Tecnología & Software":    "Tecnología & Software",
   "Industria & Manufactura":  "Industria & Manufactura",
