@@ -39,6 +39,7 @@ const STATIC_DATA: PlaybookLiveData = {
   tamBySector: TAM_BY_SECTOR,
   tamBySize: TAM_BY_SIZE,
   bestPractices: [],
+  normedRows: [],
 };
 
 function parseCsvText(text: string): Record<string, string>[] {

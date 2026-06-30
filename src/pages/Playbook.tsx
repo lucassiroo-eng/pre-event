@@ -4,6 +4,7 @@ import { useAuth } from "@/lib/auth";
 import { REGIONS as STATIC_REGIONS, NATIONAL as STATIC_NATIONAL, TAM_BY_SECTOR, TAM_BY_SIZE, type RegionPlaybook } from "@/lib/playbookData";
 import { SECTORS } from "@/lib/sectorMap";
 import { type BestPractice, type PlaybookLiveData, type NormedRow } from "@/lib/playbookCompute";
+import { usePlaybookLiveData } from "@/hooks/usePlaybookLiveData";
 import {
   ChevronRight, TrendingUp, TrendingDown, Users, Building2, Handshake,
   Target, AlertCircle, HelpCircle, BarChart3, Zap, ArrowUpRight, Presentation,
@@ -950,10 +951,11 @@ function FilterChips({ items, excluded, toggle, label }: {
 
 function SummaryView({ data }: { data: PlaybookLiveData }) {
   const { regions: REGIONS, national: NATIONAL, normedRows } = data;
-  const [summaryTab, setSummaryTab] = useState<"ccaa" | "industria" | "tamaño" | "canal" | "partners">("ccaa");
+  const [summaryTab, setSummaryTab] = useState<"ccaa" | "industria" | "tamaño" | "canal">("ccaa");
   const sorted = useMemo(() => [...REGIONS].sort((a, b) => b.mrr - a.mrr), [REGIONS]);
 
   const SIZE_ORDER = ["XS (1-19)", "S (20-50)", "M (51-200)", "L (201-500)", "XL (500+)"];
+  const canFilter = normedRows.length > 0;
   const [excludedSizes, setExcludedSizes] = useState<Set<string>>(new Set());
   const [excludedIndustries, setExcludedIndustries] = useState<Set<string>>(new Set());
 
@@ -983,68 +985,125 @@ function SummaryView({ data }: { data: PlaybookLiveData }) {
   }, [normedRows, excludedSizes, excludedIndustries, hasFilters]);
 
   const nationalIndustries = useMemo(() => {
+    if (canFilter) {
+      const map = new Map<string, { active: number; pipeline: number; mrr: number }>(
+        SECTORS.map((s) => [s, { active: 0, pipeline: 0, mrr: 0 }]),
+      );
+      for (const r of filtered) {
+        const g = map.get(r.sector) ?? { active: 0, pipeline: 0, mrr: 0 };
+        g.pipeline++;
+        if (r.isActive) { g.active++; g.mrr += r.cmrr; }
+        map.set(r.sector, g);
+      }
+      return [...map.entries()]
+        .map(([label, g]) => ({
+          label, active: g.active, pipeline: g.pipeline, mrr: g.mrr,
+          arpu: g.active > 0 ? Math.round(g.mrr / g.active) : 0,
+          l2w: g.pipeline > 0 ? Math.round(g.active / g.pipeline * 1000) / 10 : null as number | null,
+        }))
+        .sort((a, b) => b.mrr - a.mrr);
+    }
     const map = new Map<string, { active: number; pipeline: number; mrr: number }>(
       SECTORS.map((s) => [s, { active: 0, pipeline: 0, mrr: 0 }]),
     );
-    for (const r of filtered) {
-      const g = map.get(r.sector) ?? { active: 0, pipeline: 0, mrr: 0 };
-      g.pipeline++;
-      if (r.isActive) { g.active++; g.mrr += r.cmrr; }
-      map.set(r.sector, g);
+    for (const reg of REGIONS) {
+      for (const ind of reg.industries) {
+        const g = map.get(ind.label) ?? { active: 0, pipeline: 0, mrr: 0 };
+        g.active += ind.active;
+        g.pipeline += ind.pipeline ?? 0;
+        g.mrr += ind.mrr;
+        map.set(ind.label, g);
+      }
     }
     return [...map.entries()]
       .map(([label, g]) => ({
         label, active: g.active, pipeline: g.pipeline, mrr: g.mrr,
         arpu: g.active > 0 ? Math.round(g.mrr / g.active) : 0,
-        l2w: g.pipeline > 0 ? Math.round(g.active / g.pipeline * 1000) / 10 : null,
+        l2w: g.pipeline > 0 ? Math.round(g.active / g.pipeline * 1000) / 10 : null as number | null,
       }))
       .sort((a, b) => b.mrr - a.mrr);
-  }, [filtered]);
+  }, [canFilter, filtered, REGIONS]);
 
   const nationalSizes = useMemo(() => {
+    if (canFilter) {
+      const map = new Map<string, { active: number; pipeline: number; mrr: number }>();
+      for (const r of filtered) {
+        const g = map.get(r.size) ?? { active: 0, pipeline: 0, mrr: 0 };
+        g.pipeline++;
+        if (r.isActive) { g.active++; g.mrr += r.cmrr; }
+        map.set(r.size, g);
+      }
+      return [...map.entries()]
+        .map(([label, g]) => ({
+          label, active: g.active, pipeline: g.pipeline, mrr: g.mrr,
+          arpu: g.active > 0 ? Math.round(g.mrr / g.active) : 0,
+          l2w: g.pipeline > 0 ? Math.round(g.active / g.pipeline * 1000) / 10 : null as number | null,
+        }))
+        .filter((r) => r.active > 0 || r.pipeline > 0)
+        .sort((a, b) => (SIZE_ORDER.indexOf(a.label) ?? 99) - (SIZE_ORDER.indexOf(b.label) ?? 99));
+    }
     const map = new Map<string, { active: number; pipeline: number; mrr: number }>();
-    for (const r of filtered) {
-      const g = map.get(r.size) ?? { active: 0, pipeline: 0, mrr: 0 };
-      g.pipeline++;
-      if (r.isActive) { g.active++; g.mrr += r.cmrr; }
-      map.set(r.size, g);
+    for (const reg of REGIONS) {
+      for (const s of reg.sizes) {
+        const g = map.get(s.label) ?? { active: 0, pipeline: 0, mrr: 0 };
+        g.active += s.active;
+        g.pipeline += s.pipeline;
+        g.mrr += s.mrr;
+        map.set(s.label, g);
+      }
     }
     return [...map.entries()]
       .map(([label, g]) => ({
-        label,
-        active:   g.active,
-        pipeline: g.pipeline,
-        mrr:      g.mrr,
-        arpu:     g.active > 0 ? Math.round(g.mrr / g.active) : 0,
-        l2w:      g.pipeline > 0 ? Math.round(g.active / g.pipeline * 1000) / 10 : null,
+        label, active: g.active, pipeline: g.pipeline, mrr: g.mrr,
+        arpu: g.active > 0 ? Math.round(g.mrr / g.active) : 0,
+        l2w: g.pipeline > 0 ? Math.round(g.active / g.pipeline * 1000) / 10 : null as number | null,
       }))
       .filter((r) => r.active > 0 || r.pipeline > 0)
       .sort((a, b) => (SIZE_ORDER.indexOf(a.label) ?? 99) - (SIZE_ORDER.indexOf(b.label) ?? 99));
-  }, [filtered]);
+  }, [canFilter, filtered, REGIONS]);
 
   const nationalChannels = useMemo(() => {
     const KNOWN = ["Santander", "Telefónica", "Channel Partners", "Inbound", "Outbound", "Paid"];
+    if (canFilter) {
+      const map = new Map<string, { active: number; pipeline: number; mrr: number }>();
+      for (const r of filtered) {
+        const key = KNOWN.includes(r.channel) ? r.channel : "Otros";
+        const g = map.get(key) ?? { active: 0, pipeline: 0, mrr: 0 };
+        g.pipeline++;
+        if (r.isActive) { g.active++; g.mrr += r.cmrr; }
+        map.set(key, g);
+      }
+      const totalMrr = [...map.values()].reduce((s, g) => s + g.mrr, 0);
+      return [...map.entries()]
+        .map(([label, g]) => ({
+          label, active: g.active, pipeline: g.pipeline, mrr: g.mrr,
+          mrrShare: totalMrr > 0 ? Math.round((g.mrr / totalMrr) * 100) : 0,
+          arpu: g.active > 0 ? Math.round(g.mrr / g.active) : 0,
+          l2w: g.pipeline > 0 ? Math.round(g.active / g.pipeline * 1000) / 10 : null as number | null,
+        }))
+        .sort((a, b) => b.mrr - a.mrr);
+    }
     const map = new Map<string, { active: number; pipeline: number; mrr: number }>();
-    for (const r of filtered) {
-      const key = KNOWN.includes(r.channel) ? r.channel : "Otros";
-      const g = map.get(key) ?? { active: 0, pipeline: 0, mrr: 0 };
-      g.pipeline++;
-      if (r.isActive) { g.active++; g.mrr += r.cmrr; }
-      map.set(key, g);
+    for (const reg of REGIONS) {
+      for (const p of reg.provenances) {
+        const key = KNOWN.includes(p.label) ? p.label : "Otros";
+        const g = map.get(key) ?? { active: 0, pipeline: 0, mrr: 0 };
+        g.active += p.active;
+        g.pipeline += p.pipeline;
+        g.mrr += p.mrr;
+        map.set(key, g);
+      }
     }
     const totalMrr = [...map.values()].reduce((s, g) => s + g.mrr, 0);
     return [...map.entries()]
       .map(([label, g]) => ({
-        label,
-        active: g.active,
-        pipeline: g.pipeline,
-        mrr: g.mrr,
+        label, active: g.active, pipeline: g.pipeline, mrr: g.mrr,
         mrrShare: totalMrr > 0 ? Math.round((g.mrr / totalMrr) * 100) : 0,
         arpu: g.active > 0 ? Math.round(g.mrr / g.active) : 0,
-        l2w: g.pipeline > 0 ? Math.round(g.active / g.pipeline * 1000) / 10 : null,
+        l2w: g.pipeline > 0 ? Math.round(g.active / g.pipeline * 1000) / 10 : null as number | null,
       }))
       .sort((a, b) => b.mrr - a.mrr);
-  }, [filtered]);
+  }, [canFilter, filtered, REGIONS]);
 
   const SUMMARY_TABS = [
     { key: "ccaa" as const, label: "CCAA" },
@@ -1082,7 +1141,7 @@ function SummaryView({ data }: { data: PlaybookLiveData }) {
           </div>
         </div>
 
-        {summaryTab !== "ccaa" && (
+        {canFilter && summaryTab !== "ccaa" && (
           <div className="flex flex-col gap-2 mb-3">
             {summaryTab !== "tamaño" && (
               <FilterChips items={SIZE_ORDER} excluded={excludedSizes} toggle={toggleSize} label="Tamaño" />
@@ -2514,13 +2573,7 @@ export function PlaybookPage() {
   const [selectedCode, setSelectedCode] = useState<string | null>(null);
   const [navView, setNavView] = useState<NavView>("summary");
   const [searchTerm, setSearchTerm] = useState("");
-  const data: PlaybookLiveData = {
-    regions: STATIC_REGIONS,
-    national: STATIC_NATIONAL,
-    tamBySector: TAM_BY_SECTOR,
-    tamBySize: TAM_BY_SIZE,
-    bestPractices: [],
-  };
+  const { data } = usePlaybookLiveData();
 
   if (country !== "es") {
     navigate("/");
