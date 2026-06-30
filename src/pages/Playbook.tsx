@@ -1,14 +1,13 @@
 import { useMemo, useState, useRef, useEffect, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/lib/auth";
-import { type RegionPlaybook } from "@/lib/playbookData";
+import { REGIONS as STATIC_REGIONS, NATIONAL as STATIC_NATIONAL, TAM_BY_SECTOR, TAM_BY_SIZE, type RegionPlaybook } from "@/lib/playbookData";
 import { SECTORS } from "@/lib/sectorMap";
-import { usePlaybookLiveData } from "@/hooks/usePlaybookLiveData";
-import { computePlaybook, type PlaybookLiveData, type BestPractice } from "@/lib/playbookCompute";
+import { type BestPractice, type PlaybookLiveData } from "@/lib/playbookCompute";
 import {
   ChevronRight, TrendingUp, TrendingDown, Users, Building2, Handshake,
   Target, AlertCircle, HelpCircle, BarChart3, Zap, ArrowUpRight, Presentation,
-  ChevronLeft, Maximize2, Minimize2, Upload, RefreshCw, CheckCircle2, AlertTriangle,
+  ChevronLeft, Maximize2, Minimize2,
   Star, Layers,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -2457,13 +2456,13 @@ export function PlaybookPage() {
   const [selectedCode, setSelectedCode] = useState<string | null>(null);
   const [navView, setNavView] = useState<NavView>("summary");
   const [searchTerm, setSearchTerm] = useState("");
-  const [importProgress, setImportProgress] = useState<string | null>(null);
-  const [importResult, setImportResult] = useState<{ ok: boolean; msg: string } | null>(null);
-  const hubspotFileRef = useRef<HTMLInputElement>(null);
-  const tamFileRef = useRef<HTMLInputElement>(null);
-
-  const { data, source, status, rowCount, error, refresh, importHubspotCsv, importTamCsv } =
-    usePlaybookLiveData();
+  const data: PlaybookLiveData = {
+    regions: STATIC_REGIONS,
+    national: STATIC_NATIONAL,
+    tamBySector: TAM_BY_SECTOR,
+    tamBySize: TAM_BY_SIZE,
+    bestPractices: [],
+  };
 
   if (country !== "es") {
     navigate("/");
@@ -2496,42 +2495,6 @@ export function PlaybookPage() {
     setNavView("summary");
   }
 
-  async function handleHubspotImport(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    setImportProgress("Subiendo HubSpot CSV…");
-    setImportResult(null);
-    try {
-      const result = await importHubspotCsv(file, (done, total) =>
-        setImportProgress(`HubSpot: ${done}/${total} filas`),
-      );
-      setImportResult({ ok: true, msg: `HubSpot: ${result.inserted} registros importados${result.errors ? ` (${result.errors} errores)` : ""}.` });
-    } catch (err) {
-      setImportResult({ ok: false, msg: err instanceof Error ? err.message : "Error importando HubSpot CSV" });
-    } finally {
-      setImportProgress(null);
-      if (hubspotFileRef.current) hubspotFileRef.current.value = "";
-    }
-  }
-
-  async function handleTamImport(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    setImportProgress("Subiendo TAM CSV…");
-    setImportResult(null);
-    try {
-      const result = await importTamCsv(file, (done, total) =>
-        setImportProgress(`TAM: ${done}/${total} filas`),
-      );
-      setImportResult({ ok: true, msg: `TAM: ${result.inserted} registros importados${result.errors ? ` (${result.errors} errores)` : ""}.` });
-    } catch (err) {
-      setImportResult({ ok: false, msg: err instanceof Error ? err.message : "Error importando TAM CSV" });
-    } finally {
-      setImportProgress(null);
-      if (tamFileRef.current) tamFileRef.current.value = "";
-    }
-  }
-
   return (
     <div className="min-h-screen">
       {/* Header */}
@@ -2541,68 +2504,7 @@ export function PlaybookPage() {
             <h1 className="text-xl font-bold text-white">The Spanish Playbook</h1>
             <p className="text-sm text-white/70 mt-0.5">
               Estrategia por región · {REGIONS.length} CCAAs · {NATIONAL.active.toLocaleString()} clientes · {fmtEur(NATIONAL.mrr)} MRR
-              {source === "live" && rowCount > 0 && (
-                <span className="ml-2 text-white/50 text-xs">· {rowCount.toLocaleString()} deals en vivo</span>
-              )}
-              {source === "static" && status === "ready" && (
-                <span className="ml-2 text-white/50 text-xs">· datos estáticos</span>
-              )}
-
             </p>
-            {(importProgress || importResult) && (
-              <div className="mt-1.5 flex items-center gap-1.5">
-                {importProgress && (
-                  <span className="text-xs text-white/80 flex items-center gap-1">
-                    <RefreshCw className="h-3 w-3 animate-spin" />
-                    {importProgress}
-                  </span>
-                )}
-                {!importProgress && importResult && (
-                  <span className={cn("text-xs flex items-center gap-1", importResult.ok ? "text-green-300" : "text-red-300")}>
-                    {importResult.ok ? <CheckCircle2 className="h-3 w-3" /> : <AlertTriangle className="h-3 w-3" />}
-                    {importResult.msg}
-                  </span>
-                )}
-              </div>
-            )}
-          </div>
-          <div className="flex items-center gap-2 shrink-0 flex-wrap justify-end">
-            {error && (
-              <span className="text-xs text-red-300 flex items-center gap-1">
-                <AlertTriangle className="h-3 w-3" />
-                {error}
-              </span>
-            )}
-
-            <input ref={hubspotFileRef} type="file" accept=".csv" className="hidden" onChange={handleHubspotImport} />
-            <input ref={tamFileRef} type="file" accept=".csv" className="hidden" onChange={handleTamImport} />
-            <button
-              type="button"
-              disabled={!!importProgress}
-              onClick={() => hubspotFileRef.current?.click()}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white/15 hover:bg-white/25 text-white text-xs font-medium transition-colors disabled:opacity-50"
-            >
-              <Upload className="h-3 w-3" />
-              HubSpot CSV
-            </button>
-            <button
-              type="button"
-              disabled={!!importProgress}
-              onClick={() => tamFileRef.current?.click()}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white/15 hover:bg-white/25 text-white text-xs font-medium transition-colors disabled:opacity-50"
-            >
-              <Upload className="h-3 w-3" />
-              TAM CSV
-            </button>
-            <button
-              type="button"
-              disabled={status === "loading"}
-              onClick={refresh}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white/15 hover:bg-white/25 text-white text-xs font-medium transition-colors disabled:opacity-50"
-              title="Recargar desde Supabase"
-            >
-              <RefreshCw className={cn("h-3 w-3", status === "loading" && "animate-spin")} />
-            </button>
           </div>
         </div>
       </header>
@@ -2681,12 +2583,7 @@ export function PlaybookPage() {
 
         {/* Right panel — detail */}
         <div className={cn("flex-1 min-w-0", navView === "slides" ? "p-4 flex flex-col h-[calc(100vh-8rem)]" : "p-6")}>
-          {status === "loading" && !data.regions.length ? (
-            <div className="flex items-center justify-center h-64 text-muted-foreground text-sm">
-              <RefreshCw className="h-4 w-4 animate-spin mr-2" />
-              Cargando datos…
-            </div>
-          ) : navView === "slides" ? (
+          {navView === "slides" ? (
             <SlidesView data={data} />
           ) : navView === "bestpractices" && selectedCode === null ? (
             <BestPracticesView

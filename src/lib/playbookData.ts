@@ -21,20 +21,26 @@ export interface RegionPlaybook {
   sizes: {
     label: string;
     pipeline: number;
+    demos: number;
     active: number;
+    won: number;
     mrr: number;
     arpu: number;
     d2w: number | null;
+    l2w: number;
     mrrShare: number;
   }[];
   provenances: {
     label: string;
     pipeline: number;
+    demos: number;
     active: number;
+    won: number;
     mrr: number;
     mrrShare: number;
     arpu: number;
     d2w: number | null;
+    l2w: number;
   }[];
   industries: {
     label: string;
