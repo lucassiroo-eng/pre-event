@@ -41,12 +41,26 @@ export interface BestPractice {
   recommendation: string;
 }
 
+export interface NormedRow {
+  ccaa: string;
+  channel: string;
+  size: string;
+  sector: string;
+  partnerName: string;
+  isActive: boolean;
+  isWon: boolean;
+  hasDemo: boolean;
+  cmrr: number;
+  closeDate: number | null;
+}
+
 export interface PlaybookLiveData {
   regions: RegionPlaybook[];
   national: NationalStats;
   tamBySector: Record<string, number>;
   tamBySize: Record<string, number>;
   bestPractices: BestPractice[];
+  normedRows: NormedRow[];
 }
 
 // ── CCAA normalisation ───────────────────────────────────────────────────────
@@ -640,21 +654,7 @@ export function computePlaybook(
     return isSpain;
   });
 
-  // Normalise each row: resolve ccaa, flags, channel, size
-  type NormRow = {
-    ccaa: string;
-    channel: string;
-    size: string;
-    sector: string;
-    partnerName: string;
-    isActive: boolean;
-    isWon: boolean;
-    hasDemo: boolean;
-    cmrr: number;
-    closeDate: number | null;
-  };
-
-  const normed: NormRow[] = rows.map((c) => {
+  const normed: NormedRow[] = rows.map((c) => {
     const { isActive, isWon, hasDemo } = resolveFlags(c);
     const ccaa = normCcaa(c.ccaa ?? "", c.ciudad_enriched ?? c.ciudad ?? "");
     const channel = normChannel(c.provenance_norm ?? c.provenance ?? "", c.partner_object_name ?? "");
@@ -677,7 +677,7 @@ export function computePlaybook(
   });
 
   // Group by CCAA (drop empty/unresolved)
-  const byRegion = new Map<string, NormRow[]>();
+  const byRegion = new Map<string, NormedRow[]>();
   for (const r of normed) {
     if (!r.ccaa) continue;
     const arr = byRegion.get(r.ccaa) ?? [];
@@ -1071,6 +1071,7 @@ export function computePlaybook(
     tamBySector: breakdown?.bySector ?? {},
     tamBySize:   breakdown?.bySize ?? {},
     bestPractices,
+    normedRows: allResolved,
     national: {
       tam:             natTamTotal,
       hubspot:         allResolved.length,

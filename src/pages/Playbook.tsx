@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/lib/auth";
 import { REGIONS as STATIC_REGIONS, NATIONAL as STATIC_NATIONAL, TAM_BY_SECTOR, TAM_BY_SIZE, type RegionPlaybook } from "@/lib/playbookData";
 import { SECTORS } from "@/lib/sectorMap";
-import { type BestPractice, type PlaybookLiveData } from "@/lib/playbookCompute";
+import { type BestPractice, type PlaybookLiveData, type NormedRow } from "@/lib/playbookCompute";
 import {
   ChevronRight, TrendingUp, TrendingDown, Users, Building2, Handshake,
   Target, AlertCircle, HelpCircle, BarChart3, Zap, ArrowUpRight, Presentation,
@@ -920,23 +920,77 @@ function RegionDetail({ region, national, bestPractices }: {
 
 // ── Summary table ────────────────────────────────────────────────────────────
 
+function FilterChips({ items, excluded, toggle, label }: {
+  items: string[];
+  excluded: Set<string>;
+  toggle: (v: string) => void;
+  label: string;
+}) {
+  return (
+    <div className="flex flex-wrap items-center gap-1.5">
+      <span className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider mr-1">{label}</span>
+      {items.map((v) => (
+        <button
+          key={v}
+          type="button"
+          onClick={() => toggle(v)}
+          className={cn(
+            "px-2 py-0.5 rounded-full text-[10px] font-medium border transition-colors",
+            excluded.has(v)
+              ? "bg-muted/60 text-muted-foreground/50 border-border/50 line-through"
+              : "bg-card text-foreground border-border hover:bg-muted/50",
+          )}
+        >
+          {v}
+        </button>
+      ))}
+    </div>
+  );
+}
+
 function SummaryView({ data }: { data: PlaybookLiveData }) {
-  const { regions: REGIONS, national: NATIONAL } = data;
-  const [summaryTab, setSummaryTab] = useState<"ccaa" | "industria" | "tamaño" | "canal">("ccaa");
+  const { regions: REGIONS, national: NATIONAL, normedRows } = data;
+  const [summaryTab, setSummaryTab] = useState<"ccaa" | "industria" | "tamaño" | "canal" | "partners">("ccaa");
   const sorted = useMemo(() => [...REGIONS].sort((a, b) => b.mrr - a.mrr), [REGIONS]);
+
+  const SIZE_ORDER = ["XS (1-19)", "S (20-50)", "M (51-200)", "L (201-500)", "XL (500+)"];
+  const [excludedSizes, setExcludedSizes] = useState<Set<string>>(new Set());
+  const [excludedIndustries, setExcludedIndustries] = useState<Set<string>>(new Set());
+
+  const toggleSize = useCallback((v: string) => {
+    setExcludedSizes((prev) => {
+      const next = new Set(prev);
+      next.has(v) ? next.delete(v) : next.add(v);
+      return next;
+    });
+  }, []);
+
+  const toggleIndustry = useCallback((v: string) => {
+    setExcludedIndustries((prev) => {
+      const next = new Set(prev);
+      next.has(v) ? next.delete(v) : next.add(v);
+      return next;
+    });
+  }, []);
+
+  const hasFilters = excludedSizes.size > 0 || excludedIndustries.size > 0;
+
+  const filtered = useMemo(() => {
+    if (!hasFilters) return normedRows;
+    return normedRows.filter((r) =>
+      !excludedSizes.has(r.size) && !excludedIndustries.has(r.sector)
+    );
+  }, [normedRows, excludedSizes, excludedIndustries, hasFilters]);
 
   const nationalIndustries = useMemo(() => {
     const map = new Map<string, { active: number; pipeline: number; mrr: number }>(
       SECTORS.map((s) => [s, { active: 0, pipeline: 0, mrr: 0 }]),
     );
-    for (const r of REGIONS) {
-      for (const ind of r.industries) {
-        const g = map.get(ind.label) ?? { active: 0, pipeline: 0, mrr: 0 };
-        g.active  += ind.active;
-        g.pipeline += ind.pipeline ?? 0;
-        g.mrr     += ind.mrr;
-        map.set(ind.label, g);
-      }
+    for (const r of filtered) {
+      const g = map.get(r.sector) ?? { active: 0, pipeline: 0, mrr: 0 };
+      g.pipeline++;
+      if (r.isActive) { g.active++; g.mrr += r.cmrr; }
+      map.set(r.sector, g);
     }
     return [...map.entries()]
       .map(([label, g]) => ({
@@ -945,19 +999,15 @@ function SummaryView({ data }: { data: PlaybookLiveData }) {
         l2w: g.pipeline > 0 ? Math.round(g.active / g.pipeline * 1000) / 10 : null,
       }))
       .sort((a, b) => b.mrr - a.mrr);
-  }, [REGIONS]);
+  }, [filtered]);
 
   const nationalSizes = useMemo(() => {
-    const ORDER = ["XS (1-19)", "S (20-50)", "M (51-200)", "L (201-500)", "XL (500+)"];
     const map = new Map<string, { active: number; pipeline: number; mrr: number }>();
-    for (const r of REGIONS) {
-      for (const s of r.sizes) {
-        const g = map.get(s.label) ?? { active: 0, pipeline: 0, mrr: 0 };
-        g.active   += s.active;
-        g.pipeline += s.pipeline;
-        g.mrr      += s.mrr;
-        map.set(s.label, g);
-      }
+    for (const r of filtered) {
+      const g = map.get(r.size) ?? { active: 0, pipeline: 0, mrr: 0 };
+      g.pipeline++;
+      if (r.isActive) { g.active++; g.mrr += r.cmrr; }
+      map.set(r.size, g);
     }
     return [...map.entries()]
       .map(([label, g]) => ({
@@ -968,22 +1018,19 @@ function SummaryView({ data }: { data: PlaybookLiveData }) {
         arpu:     g.active > 0 ? Math.round(g.mrr / g.active) : 0,
         l2w:      g.pipeline > 0 ? Math.round(g.active / g.pipeline * 1000) / 10 : null,
       }))
-      .filter((r) => r.active > 0)
-      .sort((a, b) => (ORDER.indexOf(a.label) ?? 99) - (ORDER.indexOf(b.label) ?? 99));
-  }, [REGIONS]);
+      .filter((r) => r.active > 0 || r.pipeline > 0)
+      .sort((a, b) => (SIZE_ORDER.indexOf(a.label) ?? 99) - (SIZE_ORDER.indexOf(b.label) ?? 99));
+  }, [filtered]);
 
   const nationalChannels = useMemo(() => {
     const KNOWN = ["Santander", "Telefónica", "Channel Partners", "Inbound", "Outbound", "Paid"];
     const map = new Map<string, { active: number; pipeline: number; mrr: number }>();
-    for (const r of REGIONS) {
-      for (const p of r.provenances) {
-        const key = KNOWN.includes(p.label) ? p.label : "Otros";
-        const g = map.get(key) ?? { active: 0, pipeline: 0, mrr: 0 };
-        g.active += p.active;
-        g.pipeline += p.pipeline;
-        g.mrr += p.mrr;
-        map.set(key, g);
-      }
+    for (const r of filtered) {
+      const key = KNOWN.includes(r.channel) ? r.channel : "Otros";
+      const g = map.get(key) ?? { active: 0, pipeline: 0, mrr: 0 };
+      g.pipeline++;
+      if (r.isActive) { g.active++; g.mrr += r.cmrr; }
+      map.set(key, g);
     }
     const totalMrr = [...map.values()].reduce((s, g) => s + g.mrr, 0);
     return [...map.entries()]
@@ -997,7 +1044,7 @@ function SummaryView({ data }: { data: PlaybookLiveData }) {
         l2w: g.pipeline > 0 ? Math.round(g.active / g.pipeline * 1000) / 10 : null,
       }))
       .sort((a, b) => b.mrr - a.mrr);
-  }, [REGIONS]);
+  }, [filtered]);
 
   const SUMMARY_TABS = [
     { key: "ccaa" as const, label: "CCAA" },
@@ -1034,6 +1081,17 @@ function SummaryView({ data }: { data: PlaybookLiveData }) {
             ))}
           </div>
         </div>
+
+        {summaryTab !== "ccaa" && (
+          <div className="flex flex-col gap-2 mb-3">
+            {summaryTab !== "tamaño" && (
+              <FilterChips items={SIZE_ORDER} excluded={excludedSizes} toggle={toggleSize} label="Tamaño" />
+            )}
+            {summaryTab !== "industria" && (
+              <FilterChips items={[...SECTORS]} excluded={excludedIndustries} toggle={toggleIndustry} label="Industria" />
+            )}
+          </div>
+        )}
 
         <div className="overflow-x-auto">
           {summaryTab === "ccaa" && (
