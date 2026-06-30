@@ -769,6 +769,27 @@ function RegionDetail({ region, national, bestPractices }: {
                 <span className="font-semibold text-foreground">Conversión:</span> {region.strategy.conversionAssessment}
               </p>
             </div>
+
+            {/* Conclusión estratégica → Accionable */}
+            {region.strategy.conclusion && (
+              <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 space-y-3">
+                <span className="text-[10px] font-bold uppercase tracking-wider text-amber-700">Conclusión estratégica</span>
+                <p className="text-sm text-amber-900 leading-relaxed">{region.strategy.conclusion}</p>
+                {region.strategy.topActions && region.strategy.topActions.length > 0 && (
+                  <div className="pt-2 border-t border-amber-200 space-y-2">
+                    <span className="text-[10px] font-bold uppercase tracking-wider text-amber-700">Accionable</span>
+                    <ol className="mt-2 space-y-2">
+                      {region.strategy.topActions.map((action, i) => (
+                        <li key={i} className="flex gap-2.5 text-sm text-amber-900 leading-relaxed">
+                          <span className="shrink-0 mt-0.5 w-5 h-5 rounded-full bg-amber-200 text-amber-800 flex items-center justify-center text-[11px] font-bold">{i + 1}</span>
+                          <span>{action}</span>
+                        </li>
+                      ))}
+                    </ol>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
 
           {/* Best practices for this region */}
@@ -902,7 +923,7 @@ function RegionDetail({ region, national, bestPractices }: {
 
 function SummaryView({ data }: { data: PlaybookLiveData }) {
   const { regions: REGIONS, national: NATIONAL } = data;
-  const [summaryTab, setSummaryTab] = useState<"ccaa" | "canales" | "industria" | "tamaño" | "partners">("ccaa");
+  const [summaryTab, setSummaryTab] = useState<"ccaa" | "industria" | "tamaño" | "canal">("ccaa");
   const sorted = useMemo(() => [...REGIONS].sort((a, b) => b.mrr - a.mrr), [REGIONS]);
 
   const nationalIndustries = useMemo(() => {
@@ -952,15 +973,17 @@ function SummaryView({ data }: { data: PlaybookLiveData }) {
       .sort((a, b) => (ORDER.indexOf(a.label) ?? 99) - (ORDER.indexOf(b.label) ?? 99));
   }, [REGIONS]);
 
-  const nationalProvenances = useMemo(() => {
+  const nationalChannels = useMemo(() => {
+    const KNOWN = ["Santander", "Telefónica", "Channel Partners", "Inbound", "Outbound", "Paid"];
     const map = new Map<string, { active: number; pipeline: number; mrr: number }>();
     for (const r of REGIONS) {
       for (const p of r.provenances) {
-        const g = map.get(p.label) ?? { active: 0, pipeline: 0, mrr: 0 };
+        const key = KNOWN.includes(p.label) ? p.label : "Otros";
+        const g = map.get(key) ?? { active: 0, pipeline: 0, mrr: 0 };
         g.active += p.active;
         g.pipeline += p.pipeline;
         g.mrr += p.mrr;
-        map.set(p.label, g);
+        map.set(key, g);
       }
     }
     const totalMrr = [...map.values()].reduce((s, g) => s + g.mrr, 0);
@@ -970,69 +993,18 @@ function SummaryView({ data }: { data: PlaybookLiveData }) {
         active: g.active,
         pipeline: g.pipeline,
         mrr: g.mrr,
+        mrrShare: totalMrr > 0 ? Math.round((g.mrr / totalMrr) * 100) : 0,
         arpu: g.active > 0 ? Math.round(g.mrr / g.active) : 0,
-        mrrShare: totalMrr > 0 ? Math.round((g.mrr / totalMrr) * 1000) / 10 : 0,
-        d2w: null as number | null,
+        l2w: g.pipeline > 0 ? Math.round(g.active / g.pipeline * 1000) / 10 : null,
       }))
       .sort((a, b) => b.mrr - a.mrr);
   }, [REGIONS]);
 
-  const nationalPartners = useMemo(() => {
-    const map = new Map<string, { clients: number; mrr: number }>();
-    for (const r of REGIONS) {
-      for (const p of r.partners) {
-        const g = map.get(p.name) ?? { clients: 0, mrr: 0 };
-        g.clients += p.clients;
-        g.mrr += p.mrr;
-        map.set(p.name, g);
-      }
-    }
-    return [...map.entries()]
-      .map(([name, g]) => ({ name, clients: g.clients, mrr: g.mrr }))
-      .sort((a, b) => b.mrr - a.mrr)
-      .slice(0, 20);
-  }, [REGIONS]);
-
-  const nationalChannelSizeCross = useMemo(() => {
-    const cross: Record<string, Record<string, { active: number; pipeline: number; mrr: number }>> = {};
-    for (const r of REGIONS) {
-      if (!r.channelSizeCross) continue;
-      for (const [ch, dims] of Object.entries(r.channelSizeCross)) {
-        if (!cross[ch]) cross[ch] = {};
-        for (const [dim, cell] of Object.entries(dims)) {
-          if (!cross[ch][dim]) cross[ch][dim] = { active: 0, pipeline: 0, mrr: 0 };
-          cross[ch][dim].active += cell.active;
-          cross[ch][dim].pipeline += cell.pipeline;
-          cross[ch][dim].mrr += cell.mrr;
-        }
-      }
-    }
-    return cross;
-  }, [REGIONS]);
-
-  const nationalChannelIndustryCross = useMemo(() => {
-    const cross: Record<string, Record<string, { active: number; pipeline: number; mrr: number }>> = {};
-    for (const r of REGIONS) {
-      if (!r.channelIndustryCross) continue;
-      for (const [ch, dims] of Object.entries(r.channelIndustryCross)) {
-        if (!cross[ch]) cross[ch] = {};
-        for (const [dim, cell] of Object.entries(dims)) {
-          if (!cross[ch][dim]) cross[ch][dim] = { active: 0, pipeline: 0, mrr: 0 };
-          cross[ch][dim].active += cell.active;
-          cross[ch][dim].pipeline += cell.pipeline;
-          cross[ch][dim].mrr += cell.mrr;
-        }
-      }
-    }
-    return cross;
-  }, [REGIONS]);
-
   const SUMMARY_TABS = [
     { key: "ccaa" as const, label: "CCAA" },
-    { key: "canales" as const, label: "Canales" },
+    { key: "canal" as const, label: "Canal" },
     { key: "industria" as const, label: "Industria" },
     { key: "tamaño" as const, label: "Tamaño" },
-    { key: "partners" as const, label: "Partners" },
   ];
 
   return (
@@ -1128,6 +1100,69 @@ function SummaryView({ data }: { data: PlaybookLiveData }) {
               </tfoot>
             </table>
           )}
+
+          {summaryTab === "canal" && (() => {
+            const maxMrr = Math.max(...nationalChannels.map((c) => c.mrr), 1);
+            const totalMrrCh = nationalChannels.reduce((s, c) => s + c.mrr, 0);
+            const totalActiveCh = nationalChannels.reduce((s, c) => s + c.active, 0);
+            const totalPipelineCh = nationalChannels.reduce((s, c) => s + c.pipeline, 0);
+            return (
+              <table className="w-full text-xs">
+                <thead>
+                  <tr className="border-b border-border text-left">
+                    <th className="py-2 pr-3 font-semibold text-muted-foreground">Canal</th>
+                    <th className="py-2 px-3 font-semibold text-muted-foreground text-right">Leads</th>
+                    <th className="py-2 px-3 font-semibold text-muted-foreground text-right">Clientes</th>
+                    <th className="py-2 px-3 font-semibold text-muted-foreground text-right">MRR</th>
+                    <th className="py-2 px-3 font-semibold text-muted-foreground text-right">ARPU</th>
+                    <th className="py-2 px-3 font-semibold text-muted-foreground text-right">L2W</th>
+                    <th className="py-2 pl-3 font-semibold text-muted-foreground">% MRR</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {nationalChannels.map((c) => (
+                    <tr key={c.label} className="border-b border-border/50 hover:bg-muted/30">
+                      <td className="py-2 pr-3 font-medium">{c.label}</td>
+                      <td className="py-2 px-3 text-right tabular-nums">{c.pipeline.toLocaleString()}</td>
+                      <td className="py-2 px-3 text-right tabular-nums">{c.active.toLocaleString()}</td>
+                      <td className="py-2 px-3 text-right tabular-nums font-medium">{fmtEur(c.mrr)}</td>
+                      <td className={cn("py-2 px-3 text-right tabular-nums font-medium",
+                        c.arpu >= NATIONAL.arpu * 1.1 ? "text-emerald-700" : c.arpu <= NATIONAL.arpu * 0.85 ? "text-red-600" : ""
+                      )}>
+                        {fmtEur(c.arpu)}
+                      </td>
+                      <td className={cn("py-2 px-3 text-right tabular-nums font-medium",
+                        c.l2w === null ? "text-muted-foreground/40" : c.l2w >= 20 ? "text-emerald-700" : c.l2w >= 12 ? "text-amber-700" : "text-red-600"
+                      )}>
+                        {c.l2w !== null ? `${c.l2w}%` : "—"}
+                      </td>
+                      <td className="py-2 pl-3 w-28">
+                        <div className="flex items-center gap-2">
+                          <div className="flex-1 h-2 rounded-full bg-muted overflow-hidden">
+                            <div className="h-full rounded-full bg-primary/60" style={{ width: barWidth(c.mrr, maxMrr) }} />
+                          </div>
+                          <span className="text-[10px] tabular-nums text-muted-foreground w-7 text-right">{c.mrrShare}%</span>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+                <tfoot>
+                  <tr className="border-t-2 border-border bg-muted/20">
+                    <td className="py-2 pr-3 font-bold text-foreground">Total</td>
+                    <td className="py-2 px-3 text-right tabular-nums font-bold text-foreground">{totalPipelineCh.toLocaleString()}</td>
+                    <td className="py-2 px-3 text-right tabular-nums font-bold text-foreground">{totalActiveCh.toLocaleString()}</td>
+                    <td className="py-2 px-3 text-right tabular-nums font-bold text-foreground">{fmtEur(totalMrrCh)}</td>
+                    <td className="py-2 px-3 text-right tabular-nums font-bold text-foreground">{fmtEur(NATIONAL.arpu)}</td>
+                    <td className="py-2 px-3 text-right tabular-nums font-bold text-foreground">
+                      {totalPipelineCh > 0 ? `${Math.round(totalActiveCh / totalPipelineCh * 1000) / 10}%` : "—"}
+                    </td>
+                    <td className="py-2 pl-3 font-bold text-foreground">100%</td>
+                  </tr>
+                </tfoot>
+              </table>
+            );
+          })()}
 
           {summaryTab === "industria" && (
             <table className="w-full text-xs">
@@ -1259,36 +1294,6 @@ function SummaryView({ data }: { data: PlaybookLiveData }) {
               </tfoot>
             </table>
           )}
-
-          {summaryTab === "canales" && (
-            <div className="space-y-4">
-              <ProvenanceTable provenances={nationalProvenances} />
-              {Object.keys(nationalChannelSizeCross).length > 0 && (
-                <div className="pt-4 border-t border-border">
-                  <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-3">Canal x Tamaño</h3>
-                  <ChannelCrossTable
-                    cross={nationalChannelSizeCross}
-                    dimLabels={["XS (1-19)", "S (20-50)", "M (51-200)", "L (201-500)", "XL (500+)"]}
-                    dimName="Tamaño"
-                  />
-                </div>
-              )}
-              {Object.keys(nationalChannelIndustryCross).length > 0 && (
-                <div className="pt-4 border-t border-border">
-                  <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-3">Canal x Industria</h3>
-                  <ChannelCrossTable
-                    cross={nationalChannelIndustryCross}
-                    dimLabels={["Tecnología & Software","Industria & Manufactura","Construcción & Inmobiliaria","Agroalimentario","Hostelería & Turismo","Salud","Distribución & Retail","Transporte & Logística","Servicios Profesionales","Educación & Formación","Energía & Medioambiente","Otros Servicios"]}
-                    dimName="Industria"
-                  />
-                </div>
-              )}
-            </div>
-          )}
-
-          {summaryTab === "partners" && (
-            <PartnerTable partners={nationalPartners} />
-          )}
         </div>
       </div>
 
@@ -1298,18 +1303,6 @@ function SummaryView({ data }: { data: PlaybookLiveData }) {
           const regions = REGIONS.filter((r) => r.archetype === arch);
           const totalMrr = regions.reduce((s, r) => s + r.mrr, 0);
           const totalActive = regions.reduce((s, r) => s + r.active, 0);
-          const provMap = new Map<string, { mrr: number; active: number }>();
-          for (const r of regions) {
-            for (const p of r.provenances) {
-              const g = provMap.get(p.label) ?? { mrr: 0, active: 0 };
-              g.mrr += p.mrr;
-              g.active += p.active;
-              provMap.set(p.label, g);
-            }
-          }
-          const provRows = [...provMap.entries()]
-            .map(([label, g]) => ({ label, mrr: g.mrr, active: g.active, pct: totalMrr > 0 ? Math.round(g.mrr / totalMrr * 1000) / 10 : 0 }))
-            .sort((a, b) => b.mrr - a.mrr);
           return (
             <div key={arch} className={cn("rounded-xl border shadow-sm p-4", archetypeColor(arch))}>
               <div className="text-xs font-bold uppercase tracking-wider mb-1">{archetypeLabel(arch)}</div>
@@ -1320,24 +1313,6 @@ function SummaryView({ data }: { data: PlaybookLiveData }) {
               <div className="text-[11px] mt-2.5 leading-relaxed font-medium opacity-90 italic">
                 {archetypeTagline(arch)}
               </div>
-              <table className="w-full text-[10px] mt-3 border-t border-current/15 pt-1">
-                <thead>
-                  <tr className="text-left opacity-60">
-                    <th className="py-1 pr-1 font-semibold">Canal</th>
-                    <th className="py-1 px-1 font-semibold text-right">MRR</th>
-                    <th className="py-1 pl-1 font-semibold text-right">%</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {provRows.map((p) => (
-                    <tr key={p.label} className="border-t border-current/10">
-                      <td className="py-0.5 pr-1">{p.label}</td>
-                      <td className="py-0.5 px-1 text-right tabular-nums font-medium">{fmtEur(p.mrr)}</td>
-                      <td className="py-0.5 pl-1 text-right tabular-nums opacity-70">{p.pct}%</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
               <div className="text-[10px] mt-2 leading-relaxed opacity-60">
                 {regions.map((r) => r.ccaa).join(", ")}
               </div>
