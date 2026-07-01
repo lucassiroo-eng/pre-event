@@ -389,10 +389,10 @@ function generateStrategyConclusion(
   const partnerChs    = provenances.filter(p => ["Santander","Telefónica","Channel Partners"].includes(p.label));
   const directChs     = provenances.filter(p => ["Inbound","Outbound"].includes(p.label));
   const bestPartnerCh = partnerChs.length ? [...partnerChs].sort((a, b) => b.arpu - a.arpu)[0] : null;
-  const worstDirectCh = directChs.length  ? [...directChs].sort((a, b) => a.d2w - b.d2w)[0]   : null;
+  const worstDirectCh = directChs.length  ? [...directChs].sort((a, b) => (a.d2w ?? 0) - (b.d2w ?? 0))[0]   : null;
   const topConc       = topPartner && totalMrr > 0 ? Math.round(topPartner.mrr / totalMrr * 100) : 0;
 
-  const isConcentrated      = topConc >= 25 && (topPartner?.active ?? 0) >= 10;
+  const isConcentrated      = topConc >= 25 && (topPartner?.clients ?? 0) >= 10;
   const isConversionProblem = d2w < natD2w - 5;
   const isVolumeProblem     = penetration < natPen - 1.5 && d2w >= natD2w - 3;
   const isMatureMrktHighArpu = penetration >= natPen + 1.5 && arpu >= natArpu * 1.1;
@@ -410,11 +410,11 @@ function generateStrategyConclusion(
     actions.push(`Establecer relación directa Factorial con los ${Math.min(10, Math.round(riskMrr / (arpu || 1)))} clientes más grandes de ${topPartner!.name}. Si el socio sale, la retención del cliente no puede depender de él.`);
     if (untapped > 200) actions.push(`Con ${untapped.toLocaleString()} empresas sin tocar y la conversión funcionando, hay margen real de crecimiento — pero exige diversificar el canal, no aumentar la exposición al socio actual.`);
   } else if (isConversionProblem) {
-    const worstCh     = worstDirectCh ?? [...provenances].sort((a, b) => a.d2w - b.d2w)[0];
+    const worstCh     = worstDirectCh ?? [...provenances].sort((a, b) => (a.d2w ?? 0) - (b.d2w ?? 0))[0];
     const lostDeals   = worstCh ? Math.round(worstCh.active * ((natD2w - d2w) / 100)) : 0;
-    conclusion = `El mercado existe y quiere comprar — el ARPU de €${arpu.toLocaleString()} lo confirma. El problema está en el funnel: la tasa de cierre es ${Math.round(natD2w - d2w)}pp por debajo de la media nacional${worstCh ? `, sobre todo en ${worstCh.label} (${worstCh.d2w.toFixed(1)}%)` : ""}. No es un problema de producto ni de mercado — es de ICP o de ejecución de ventas. Contratar más SDRs sin corregir esto amplifica el problema, no lo resuelve.`;
+    conclusion = `El mercado existe y quiere comprar — el ARPU de €${arpu.toLocaleString()} lo confirma. El problema está en el funnel: la tasa de cierre es ${Math.round(natD2w - d2w)}pp por debajo de la media nacional${worstCh ? `, sobre todo en ${worstCh.label} (${(worstCh.d2w ?? 0).toFixed(1)}%)` : ""}. No es un problema de producto ni de mercado — es de ICP o de ejecución de ventas. Contratar más SDRs sin corregir esto amplifica el problema, no lo resuelve.`;
     if (worstCh) actions.push(`Redefinir el ICP de ${worstCh.label} inmediatamente: subir el criterio mínimo a 50+ empleados y sectores con ARPU probado. El efecto matemático de subir la L2W al benchmark nacional es +${lostDeals} clientes activos con el mismo pipeline actual — sin contratar nadie.`);
-    if (bestPartnerCh && bestPartnerCh.d2w > d2w + 8) actions.push(`${bestPartnerCh.label} convierte al ${bestPartnerCh.d2w.toFixed(1)}% — ${Math.round(bestPartnerCh.d2w - d2w)}pp sobre el promedio regional. Redirigir pipeline hacia este canal es el camino de menor resistencia para mejorar la conversión a corto plazo.`);
+    if (bestPartnerCh && (bestPartnerCh.d2w ?? 0) > d2w + 8) actions.push(`${bestPartnerCh.label} convierte al ${(bestPartnerCh.d2w ?? 0).toFixed(1)}% — ${Math.round((bestPartnerCh.d2w ?? 0) - d2w)}pp sobre el promedio regional. Redirigir pipeline hacia este canal es el camino de menor resistencia para mejorar la conversión a corto plazo.`);
     actions.push(`Revisar los últimos 20 deals perdidos y clasificarlos por razón de pérdida. Si el patrón es precio, el problema es posicionamiento. Si es fit, el problema es ICP. La acción es diferente en cada caso.`);
   } else if (isVolumeProblem) {
     const mrrUpside = Math.round(untapped * (penetration / 100) * arpu);
@@ -428,16 +428,16 @@ function generateStrategyConclusion(
     actions.push(`Mapear los clusters industriales o municipios con mayor densidad de empresas elegibles sin tocar en el TAM — y abrir allí primero en vez de dispersar el esfuerzo geográficamente.`);
   } else if (isMatureMrktHighArpu) {
     conclusion = `Mercado maduro con ${penetration}% de penetración — por encima de la media nacional — y ARPU de €${arpu.toLocaleString()} que supera el benchmark. El crecimiento extensivo (más pipeline, más SDRs) tiene retornos decrecientes. La palanca ahora es crecimiento intensivo: socios que lleguen a enterprise, expansión de módulos en clientes actuales y upsell estructurado.`;
-    if (topPartner) actions.push(`Escalar el modelo de ${topPartner.name}: sus ${topPartner.active} clientes a €${topPartner.arpu.toLocaleString()}/cliente prueban que hay empresa grande en este mercado. Buscar 1-2 socios con el mismo perfil de cartera para replicarlo.`);
+    if (topPartner) actions.push(`Escalar el modelo de ${topPartner.name}: sus ${topPartner.clients} clientes a €${topPartner.mrr > 0 && topPartner.clients > 0 ? Math.round(topPartner.mrr / topPartner.clients).toLocaleString() : 0}/cliente prueban que hay empresa grande en este mercado. Buscar 1-2 socios con el mismo perfil de cartera para replicarlo.`);
     const xlSize = sizes.find(s => s.label.includes("500"));
     if (xlSize && xlSize.active < active * 0.05) actions.push(`Solo ${xlSize.active} clientes de 500+ empleados sobre ${active} activos. Una campaña específica para enterprise (500+ empleados) en esta región podría doblar el ARPU medio sin aumentar el volumen de clientes.`);
     actions.push(`Programa de expansión en la base existente: identificar los ${Math.min(20, Math.round(active * 0.15))} clientes con mayor potencial de upsell por módulos no contratados y lanzar una ronda de revisión de cuenta.`);
   } else if (isPartnerDominated && hasArpuGap) {
     const ratio = bestPartnerCh && worstDirectCh ? Math.round(bestPartnerCh.arpu / worstDirectCh.arpu * 10) / 10 : 0;
     conclusion = `Los partners generan el ${Math.round(partnerShare)}% del MRR con un ARPU ${ratio}x superior al canal directo. La diferencia no es fruto de la negociación — es selección de empresa: el canal indirecto llega sistemáticamente a empresas M/L que el SDR no alcanza. En esta región, cada euro de pipeline en partners tiene un ROI estructuralmente más alto que el canal directo.`;
-    if (bestPartnerCh) actions.push(`Maximizar el pipeline de ${bestPartnerCh.label} (€${bestPartnerCh.arpu.toLocaleString()} ARPU, L2W ${bestPartnerCh.d2w.toFixed(1)}%). Este canal ya demuestra que funciona — la palanca es cuántas demos más puede absorber sin degradar la calidad.`);
+    if (bestPartnerCh) actions.push(`Maximizar el pipeline de ${bestPartnerCh.label} (€${bestPartnerCh.arpu.toLocaleString()} ARPU, L2W ${(bestPartnerCh.d2w ?? 0).toFixed(1)}%). Este canal ya demuestra que funciona — la palanca es cuántas demos más puede absorber sin degradar la calidad.`);
     if (partners.length < 5) actions.push(`Solo ${partners.length} socios activos con ${untapped.toLocaleString()} empresas sin tocar. Incorporar ${Math.max(2, 5 - partners.length)} partners nuevos con perfil similar al top actual. Cada nuevo socio con 5+ clientes a este ARPU = +€${Math.round((bestPartnerCh?.arpu ?? arpu) * 5).toLocaleString()}/mes inmediatos.`);
-    if (worstDirectCh && worstDirectCh.d2w < natD2w - 5) actions.push(`${worstDirectCh.label} convierte al ${worstDirectCh.d2w.toFixed(1)}% con ARPU de €${worstDirectCh.arpu.toLocaleString()} — por debajo del umbral de rentabilidad frente al coste del AE. Reducir inversión en este canal y redirigir al co-sell con partners.`);
+    if (worstDirectCh && (worstDirectCh.d2w ?? 0) < natD2w - 5) actions.push(`${worstDirectCh.label} convierte al ${(worstDirectCh.d2w ?? 0).toFixed(1)}% con ARPU de €${worstDirectCh.arpu.toLocaleString()} — por debajo del umbral de rentabilidad frente al coste del AE. Reducir inversión en este canal y redirigir al co-sell con partners.`);
   } else {
     const arpu_vs = arpu >= natArpu * 1.1 ? `un ${Math.round((arpu/natArpu - 1)*100)}% por encima del nacional` : arpu < natArpu * 0.9 ? `un ${Math.round((1 - arpu/natArpu)*100)}% por debajo` : "en línea con el nacional";
     conclusion = `Con ${active} clientes activos (${penetration}% de penetración) y ARPU de €${arpu.toLocaleString()} — ${arpu_vs} — esta región tiene un perfil ${penetration >= natPen ? "maduro" : "en desarrollo"}. El canal líder es ${topProv?.label ?? "mixto"} y la oportunidad más directa es escalar lo que ya funciona en vez de abrir nuevos frentes.`;
@@ -733,10 +733,13 @@ export function computePlaybook(
         return {
           label,
           pipeline: g.all,
+          demos:    g.demos,
           active:   g.active,
+          won:      g.won,
           mrr:      g.mrr,
           arpu:     g.active > 0 ? Math.round(g.mrr / g.active) : 0,
           d2w:      g.demos  > 0 ? Math.round((g.won / g.demos) * 1000) / 10 : null,
+          l2w:      g.all    > 0 ? Math.round((g.active / g.all) * 1000) / 10 : 0,
           mrrShare: totalMrr > 0 ? Math.round((g.mrr / totalMrr) * 100) : 0,
         };
       })
@@ -756,11 +759,14 @@ export function computePlaybook(
       .map(([label, g]) => ({
         label,
         pipeline:  g.all,
+        demos:     g.demos,
         active:    g.active,
+        won:       g.won,
         mrr:       g.mrr,
         mrrShare:  totalMrr > 0 ? Math.round((g.mrr / totalMrr) * 100) : 0,
         arpu:      g.active > 0 ? Math.round(g.mrr / g.active) : 0,
         d2w:       g.demos  > 0 ? Math.round((g.won / g.demos) * 1000) / 10 : null,
+        l2w:       g.all    > 0 ? Math.round((g.active / g.all) * 1000) / 10 : 0,
       }))
       .sort((a, b) => b.mrr - a.mrr);
 
@@ -1028,7 +1034,9 @@ export function computePlaybook(
       demos:       demoCount,
       mrr:         totalMrr,
       arpu,
+      l2d:         rows.length > 0 ? Math.round((demoCount / rows.length) * 1000) / 10 : 0,
       d2w,
+      l2w:         rows.length > 0 ? Math.round((activeCount / rows.length) * 1000) / 10 : 0,
       penetration,
       mrrPerTam:   tam > 0 ? Math.round((totalMrr / tam) * 10) / 10 : 0,
       sizes,
@@ -1080,7 +1088,9 @@ export function computePlaybook(
       demos:           natDemos,
       mrr:             natMrr,
       arpu:            natArpu,
+      l2d:             allResolved.length > 0 ? Math.round((natDemos / allResolved.length) * 1000) / 10 : 0,
       d2w:             natD2w,
+      l2w:             allResolved.length > 0 ? Math.round((natActive / allResolved.length) * 1000) / 10 : 0,
       penetration:     natPen,
       partnerMrrShare: natPartnerShare,
     },
