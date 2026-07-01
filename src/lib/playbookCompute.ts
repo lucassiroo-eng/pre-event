@@ -772,20 +772,27 @@ export function computePlaybook(
       .sort((a, b) => b.mrr - a.mrr);
 
     // ── Industries ───────────────────────────────────────────────────────────
-    const indAgg = new Map<string, { active: number; pipeline: number; mrr: number }>();
-    for (const r of rows) {  // all rows, not just active
-      const g = indAgg.get(r.sector) ?? { active: 0, pipeline: 0, mrr: 0 };
+    const indAgg = new Map<string, { active: number; pipeline: number; demos: number; won: number; mrr: number }>();
+    for (const r of rows) {
+      const g = indAgg.get(r.sector) ?? { active: 0, pipeline: 0, demos: 0, won: 0, mrr: 0 };
       g.pipeline++;
+      if (r.hasDemo) g.demos++;
+      if (r.isWon) g.won++;
       if (r.isActive) { g.active++; g.mrr += r.cmrr; }
       indAgg.set(r.sector, g);
     }
     const industries: RegionPlaybook["industries"] = [...indAgg.entries()]
       .map(([label, g]) => ({
         label,
-        active:   g.active,
         pipeline: g.pipeline,
+        demos:    g.demos,
+        active:   g.active,
+        won:      g.won,
         mrr:      g.mrr,
         arpu:     g.active > 0 ? Math.round(g.mrr / g.active) : 0,
+        d2w:      g.demos > 0 ? Math.round(g.won / g.demos * 1000) / 10 : null,
+        l2w:      g.pipeline > 0 ? Math.round(g.active / g.pipeline * 1000) / 10 : null,
+        l2d:      g.pipeline > 0 ? Math.round(g.demos / g.pipeline * 1000) / 10 : null,
       }))
       .filter((i) => i.active > 0)
       .sort((a, b) => b.mrr - a.mrr)

@@ -436,19 +436,44 @@ def build_region(ccaa):
 
     # ── Industries ────────────────────────────────
     ind_act = defaultdict(list)
+    ind_won = defaultdict(list)
+    ind_demo = defaultdict(list)
+    ind_all = defaultdict(list)
     for r in act_r:
+        ind_act[map_industria(r.get('industria', ''))].append(r)
+    for r in won_r:
+        ind_won[map_industria(r.get('industria', ''))].append(r)
+    for r in all_r:
         label = map_industria(r.get('industria', ''))
-        ind_act[label].append(r)
+        ind_all[label].append(r)
+        if r.get('has_demo', '').strip().lower() == 'true':
+            ind_demo[label].append(r)
 
     industries_all = []
-    for label, rows in ind_act.items():
-        ind_mrr = sum(safe_float(r.get('cmrr', 0)) for r in rows)
-        ind_arpu = ind_mrr / len(rows) if rows else 0
+    all_industries = set(list(ind_act.keys()) + list(ind_all.keys()))
+    for label in sorted(all_industries):
+        i_act = ind_act.get(label, [])
+        i_won = ind_won.get(label, [])
+        i_demo = ind_demo.get(label, [])
+        i_all = ind_all.get(label, [])
+        ind_mrr = sum(safe_float(r.get('cmrr', 0)) for r in i_act)
+        ind_arpu = ind_mrr / len(i_act) if i_act else 0
+        i_pipeline = len(i_all)
+        i_demos = len(i_demo)
+        i_d2w = r1(len(i_won) / i_demos * 100) if i_demos else None
+        i_l2w = r1(len(i_act) / i_pipeline * 100) if i_pipeline else None
+        i_l2d = r1(i_demos / i_pipeline * 100) if i_pipeline else None
         industries_all.append({
             'label': label,
-            'active': len(rows),
+            'pipeline': i_pipeline,
+            'demos': i_demos,
+            'active': len(i_act),
+            'won': len(i_won),
             'mrr': r0(ind_mrr),
             'arpu': r0(ind_arpu),
+            'd2w': i_d2w,
+            'l2w': i_l2w,
+            'l2d': i_l2d,
         })
     industries_all.sort(key=lambda x: -x['mrr'])
 
@@ -647,27 +672,38 @@ export interface RegionPlaybook {
   sizes: {
     label: string;
     pipeline: number;
+    demos: number;
     active: number;
+    won: number;
     mrr: number;
     arpu: number;
     d2w: number | null;
+    l2w: number;
     mrrShare: number;
   }[];
   provenances: {
     label: string;
     pipeline: number;
+    demos: number;
     active: number;
+    won: number;
     mrr: number;
     mrrShare: number;
     arpu: number;
     d2w: number | null;
+    l2w: number;
   }[];
   industries: {
     label: string;
+    pipeline: number;
+    demos: number;
     active: number;
-    pipeline?: number;
+    won: number;
     mrr: number;
     arpu: number;
+    d2w: number | null;
+    l2w: number | null;
+    l2d: number | null;
   }[];
   partners: {
     name: string;
@@ -775,7 +811,6 @@ TAM_BY_SIZE = {
     'S (20-50)': 55923,
     'XL (500+)': 4788,
     'L (201-500)': 5502,
-    'XS (1-19)': 567,
 }
 
 # ──────────────────────────────────────────────
