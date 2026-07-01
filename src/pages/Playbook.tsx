@@ -4,6 +4,7 @@ import { useAuth } from "@/lib/auth";
 import { REGIONS as STATIC_REGIONS, NATIONAL as STATIC_NATIONAL, TAM_BY_SECTOR, TAM_BY_SIZE, type RegionPlaybook } from "@/lib/playbookData";
 import { SECTORS } from "@/lib/sectorMap";
 import { type BestPractice, type PlaybookLiveData, type NormedRow } from "@/lib/playbookCompute";
+import { usePlaybookLiveData } from "@/hooks/usePlaybookLiveData";
 import {
   ChevronRight, TrendingUp, TrendingDown, Users, Building2, Handshake,
   Target, AlertCircle, HelpCircle, BarChart3, Zap, ArrowUpRight, Presentation,
@@ -2615,15 +2616,7 @@ export function PlaybookPage() {
   const [selectedCode, setSelectedCode] = useState<string | null>(null);
   const [navView, setNavView] = useState<NavView>("summary");
   const [searchTerm, setSearchTerm] = useState("");
-  const data: PlaybookLiveData = {
-    regions: STATIC_REGIONS,
-    national: STATIC_NATIONAL,
-    tamBySector: TAM_BY_SECTOR,
-    tamBySize: TAM_BY_SIZE,
-    tamBySizeBySector: {},
-    bestPractices: [],
-    normedRows: [],
-  };
+  const { data } = usePlaybookLiveData();
 
   if (country !== "es") {
     navigate("/");
