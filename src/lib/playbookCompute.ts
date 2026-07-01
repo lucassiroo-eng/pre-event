@@ -687,13 +687,15 @@ export function computePlaybook(
 
   // National aggregates (before per-region loop, so we can reference them in text)
   const allResolved = normed.filter((r) => !!r.ccaa);
-  const natActive = allResolved.filter((r) => r.isActive).length;
-  const natWon    = allResolved.filter((r) => r.isWon).length;
-  const natDemos  = allResolved.filter((r) => r.hasDemo).length;
-  const natMrr    = allResolved.filter((r) => r.isActive).reduce((s, r) => s + r.cmrr, 0);
+  // National aggregates use ALL normed rows (not just CCAA-resolved)
+  // so Canal/Industria/Tamaño tabs show the full pipeline.
+  const natActive = normed.filter((r) => r.isActive).length;
+  const natWon    = normed.filter((r) => r.isWon).length;
+  const natDemos  = normed.filter((r) => r.hasDemo).length;
+  const natMrr    = normed.filter((r) => r.isActive).reduce((s, r) => s + r.cmrr, 0);
   const natArpu   = natActive > 0 ? Math.round(natMrr / natActive) : 0;
   const natD2w    = natDemos  > 0 ? Math.round((natWon / natDemos) * 1000) / 10 : 0;
-  const natPartnerMrr = allResolved
+  const natPartnerMrr = normed
     .filter((r) => r.isActive && ["Channel Partners", "Santander", "Telefónica"].includes(r.channel))
     .reduce((s, r) => s + r.cmrr, 0);
   const natTamTotal = Object.values(tamByCcaa).reduce((s, n) => s + n, 0);
@@ -1087,18 +1089,18 @@ export function computePlaybook(
     tamBySize:   breakdown?.bySize ?? {},
     tamBySizeBySector: breakdown?.bySizeBySector ?? {},
     bestPractices,
-    normedRows: allResolved,
+    normedRows: normed,
     national: {
       tam:             natTamTotal,
-      hubspot:         allResolved.length,
+      hubspot:         normed.length,
       active:          natActive,
       won:             natWon,
       demos:           natDemos,
       mrr:             natMrr,
       arpu:            natArpu,
-      l2d:             allResolved.length > 0 ? Math.round((natDemos / allResolved.length) * 1000) / 10 : 0,
+      l2d:             normed.length > 0 ? Math.round((natDemos / normed.length) * 1000) / 10 : 0,
       d2w:             natD2w,
-      l2w:             allResolved.length > 0 ? Math.round((natActive / allResolved.length) * 1000) / 10 : 0,
+      l2w:             normed.length > 0 ? Math.round((natActive / normed.length) * 1000) / 10 : 0,
       penetration:     natPen,
       partnerMrrShare: natPartnerShare,
     },
