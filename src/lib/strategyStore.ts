@@ -122,7 +122,8 @@ export async function fetchSasorBreakdown(): Promise<SasorBreakdown | null> {
   if (cached?.value) {
     try {
       const parsed = JSON.parse(cached.value) as SasorBreakdown;
-      if (parsed.bySizeBySector && Object.keys(parsed.bySizeBySector).length > 0) return parsed;
+      if (parsed.bySizeBySector && Object.keys(parsed.bySizeBySector).length > 0
+          && parsed.byCcaaBySize && Object.keys(parsed.byCcaaBySize).length > 0) return parsed;
     } catch { /* fall through */ }
   }
 
@@ -132,6 +133,8 @@ export async function fetchSasorBreakdown(): Promise<SasorBreakdown | null> {
   const bySize: Record<string, number> = {};
   const bySector: Record<string, number> = {};
   const bySizeBySector: Record<string, Record<string, number>> = {};
+  const byCcaaBySize: Record<string, Record<string, number>> = {};
+  const byCcaaBySector: Record<string, Record<string, number>> = {};
   let from = 0;
   while (true) {
     const { data, error } = await supa
@@ -148,12 +151,16 @@ export async function fetchSasorBreakdown(): Promise<SasorBreakdown | null> {
       bySector[sec] = (bySector[sec] ?? 0) + 1;
       if (!bySizeBySector[s]) bySizeBySector[s] = {};
       bySizeBySector[s][sec] = (bySizeBySector[s][sec] ?? 0) + 1;
+      if (!byCcaaBySize[c]) byCcaaBySize[c] = {};
+      byCcaaBySize[c][s] = (byCcaaBySize[c][s] ?? 0) + 1;
+      if (!byCcaaBySector[c]) byCcaaBySector[c] = {};
+      byCcaaBySector[c][sec] = (byCcaaBySector[c][sec] ?? 0) + 1;
     }
     if (data.length < PAGE) break;
     from += PAGE;
   }
 
-  const breakdown: SasorBreakdown = { byCcaa, bySize, bySector, byCcaaBySize: {}, byCcaaBySector: {}, bySizeBySector };
+  const breakdown: SasorBreakdown = { byCcaa, bySize, bySector, byCcaaBySize, byCcaaBySector, bySizeBySector };
 
   // Cache it in meta for future loads
   await supa.from("strategy_meta").upsert({
