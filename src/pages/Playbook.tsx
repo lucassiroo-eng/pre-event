@@ -958,6 +958,28 @@ function SummaryView({ data }: { data: PlaybookLiveData }) {
   const canFilter = normedRows.length > 0;
   const [excludedSizes, setExcludedSizes] = useState<Set<string>>(new Set());
   const [excludedIndustries, setExcludedIndustries] = useState<Set<string>>(new Set());
+  const [selectedRegions, setSelectedRegions] = useState<Set<string>>(new Set());
+  const [regionDropOpen, setRegionDropOpen] = useState(false);
+  const regionDropRef = useRef<HTMLDivElement>(null);
+
+  const allRegionNames = useMemo(() => sorted.map((r) => r.ccaa), [sorted]);
+
+  const toggleRegion = useCallback((v: string) => {
+    setSelectedRegions((prev) => {
+      const next = new Set(prev);
+      next.has(v) ? next.delete(v) : next.add(v);
+      return next;
+    });
+  }, []);
+
+  useEffect(() => {
+    if (!regionDropOpen) return;
+    function handleClick(e: MouseEvent) {
+      if (regionDropRef.current && !regionDropRef.current.contains(e.target as Node)) setRegionDropOpen(false);
+    }
+    document.addEventListener("mousedown", handleClick);
+    return () => document.removeEventListener("mousedown", handleClick);
+  }, [regionDropOpen]);
 
   const toggleSize = useCallback((v: string) => {
     setExcludedSizes((prev) => {
@@ -975,14 +997,15 @@ function SummaryView({ data }: { data: PlaybookLiveData }) {
     });
   }, []);
 
-  const hasFilters = excludedSizes.size > 0 || excludedIndustries.size > 0;
+  const hasFilters = excludedSizes.size > 0 || excludedIndustries.size > 0 || selectedRegions.size > 0;
 
   const filtered = useMemo(() => {
     if (!hasFilters) return normedRows;
     return normedRows.filter((r) =>
       !excludedSizes.has(r.size) && !excludedIndustries.has(r.sector)
+      && (selectedRegions.size === 0 || selectedRegions.has(r.ccaa))
     );
-  }, [normedRows, excludedSizes, excludedIndustries, hasFilters]);
+  }, [normedRows, excludedSizes, excludedIndustries, selectedRegions, hasFilters]);
 
   const nationalIndustries = useMemo(() => {
     if (canFilter) {
@@ -1151,13 +1174,10 @@ function SummaryView({ data }: { data: PlaybookLiveData }) {
                 }
                 const fActive = filtered.filter(r => r.isActive).length;
                 const fMrr = filtered.filter(r => r.isActive).reduce((s, r) => s + r.cmrr, 0);
-                const fTam = Object.entries(data.tamBySizeBySector).reduce((total, [size, sectors]) => {
-                  if (excludedSizes.has(size)) return total;
-                  return total + Object.entries(sectors).reduce((st, [sector, count]) => {
-                    if (excludedIndustries.has(sector)) return st;
-                    return st + count;
-                  }, 0);
-                }, 0);
+                const visRegions = selectedRegions.size > 0
+                  ? sorted.filter(r => selectedRegions.has(r.ccaa))
+                  : sorted;
+                const fTam = visRegions.reduce((s, r) => s + r.tam, 0);
                 const fPen = fTam > 0 ? Math.round(fActive / fTam * 1000) / 10 : 0;
                 return `${fActive.toLocaleString()} clientes activos, ${fmtEur(fMrr)} MRR, ${fPen}% penetración sobre ${fTam.toLocaleString()} TAM (filtrado)`;
               })()}
@@ -1182,12 +1202,63 @@ function SummaryView({ data }: { data: PlaybookLiveData }) {
           </div>
         </div>
 
-        {canFilter && summaryTab !== "ccaa" && (
+        {canFilter && (
           <div className="flex flex-col gap-2 mb-3">
-            {summaryTab !== "tamaño" && (
+            <div className="flex flex-wrap items-center gap-1.5">
+              <span className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider mr-1">Región</span>
+              <div className="relative" ref={regionDropRef}>
+                <button
+                  type="button"
+                  onClick={() => setRegionDropOpen((p) => !p)}
+                  className={cn(
+                    "px-2.5 py-1 rounded-full text-[10px] font-medium border transition-colors flex items-center gap-1",
+                    selectedRegions.size > 0
+                      ? "bg-primary/10 text-primary border-primary/30"
+                      : "bg-card text-muted-foreground border-border hover:bg-muted/50",
+                  )}
+                >
+                  {selectedRegions.size === 0
+                    ? "Todas"
+                    : selectedRegions.size === 1
+                      ? [...selectedRegions][0]
+                      : `${selectedRegions.size} regiones`}
+                  <ChevronRight className={cn("h-3 w-3 transition-transform", regionDropOpen && "rotate-90")} />
+                </button>
+                {regionDropOpen && (
+                  <div className="absolute z-50 top-full left-0 mt-1 bg-card border border-border rounded-lg shadow-lg py-1 max-h-64 overflow-y-auto w-56">
+                    {selectedRegions.size > 0 && (
+                      <button
+                        type="button"
+                        onClick={() => setSelectedRegions(new Set())}
+                        className="w-full text-left px-3 py-1.5 text-[11px] text-primary hover:bg-muted/50 font-medium border-b border-border/50 mb-1"
+                      >
+                        Limpiar selección
+                      </button>
+                    )}
+                    {allRegionNames.map((name) => (
+                      <button
+                        key={name}
+                        type="button"
+                        onClick={() => toggleRegion(name)}
+                        className="w-full text-left px-3 py-1.5 text-[11px] hover:bg-muted/50 flex items-center gap-2"
+                      >
+                        <span className={cn(
+                          "h-3.5 w-3.5 rounded border flex items-center justify-center shrink-0",
+                          selectedRegions.has(name) ? "bg-primary border-primary text-primary-foreground" : "border-border",
+                        )}>
+                          {selectedRegions.has(name) && <span className="text-[8px]">✓</span>}
+                        </span>
+                        {name}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+            {summaryTab !== "ccaa" && summaryTab !== "tamaño" && (
               <FilterChips items={SIZE_ORDER} excluded={excludedSizes} toggle={toggleSize} label="Tamaño" />
             )}
-            {summaryTab !== "industria" && (
+            {summaryTab !== "ccaa" && summaryTab !== "industria" && (
               <FilterChips items={[...SECTORS]} excluded={excludedIndustries} toggle={toggleIndustry} label="Industria" />
             )}
           </div>
@@ -1209,7 +1280,7 @@ function SummaryView({ data }: { data: PlaybookLiveData }) {
                 </tr>
               </thead>
               <tbody>
-                {sorted.map((r) => {
+                {sorted.filter((r) => selectedRegions.size === 0 || selectedRegions.has(r.ccaa)).map((r) => {
                   const l2w = r.hubspot > 0 ? Math.round(r.active / r.hubspot * 1000) / 10 : null;
                   return (
                     <tr key={r.code} className="border-b border-border/50 hover:bg-muted/30">
@@ -1242,18 +1313,30 @@ function SummaryView({ data }: { data: PlaybookLiveData }) {
                 })}
               </tbody>
               <tfoot>
-                <tr className="border-t-2 border-border bg-muted/20">
-                  <td className="py-2 pr-2 font-bold text-foreground">Total</td>
-                  <td className="py-2 px-2" />
-                  <td className="py-2 px-2 text-right tabular-nums font-bold text-foreground">{NATIONAL.tam.toLocaleString()}</td>
-                  <td className="py-2 px-2 text-right tabular-nums font-bold text-foreground">{NATIONAL.penetration}%</td>
-                  <td className="py-2 px-2 text-right tabular-nums font-bold text-foreground">{NATIONAL.active.toLocaleString()}</td>
-                  <td className="py-2 px-2 text-right tabular-nums font-bold text-foreground">{fmtEur(NATIONAL.mrr)}</td>
-                  <td className="py-2 px-2 text-right tabular-nums font-bold text-foreground">{fmtEur(NATIONAL.arpu)}</td>
-                  <td className="py-2 pl-2 text-right tabular-nums font-bold text-foreground">
-                    {NATIONAL.hubspot > 0 ? `${Math.round(NATIONAL.active / NATIONAL.hubspot * 1000) / 10}%` : "—"}
-                  </td>
-                </tr>
+                {(() => {
+                  const vis = sorted.filter((r) => selectedRegions.size === 0 || selectedRegions.has(r.ccaa));
+                  const tTam = vis.reduce((s, r) => s + r.tam, 0);
+                  const tActive = vis.reduce((s, r) => s + r.active, 0);
+                  const tMrr = vis.reduce((s, r) => s + r.mrr, 0);
+                  const tArpu = tActive > 0 ? Math.round(tMrr / tActive) : 0;
+                  const tPen = tTam > 0 ? Math.round(tActive / tTam * 1000) / 10 : 0;
+                  const tHubspot = vis.reduce((s, r) => s + r.hubspot, 0);
+                  const tL2w = tHubspot > 0 ? Math.round(tActive / tHubspot * 1000) / 10 : null;
+                  return (
+                    <tr className="border-t-2 border-border bg-muted/20">
+                      <td className="py-2 pr-2 font-bold text-foreground">Total</td>
+                      <td className="py-2 px-2" />
+                      <td className="py-2 px-2 text-right tabular-nums font-bold text-foreground">{tTam.toLocaleString()}</td>
+                      <td className="py-2 px-2 text-right tabular-nums font-bold text-foreground">{tPen}%</td>
+                      <td className="py-2 px-2 text-right tabular-nums font-bold text-foreground">{tActive.toLocaleString()}</td>
+                      <td className="py-2 px-2 text-right tabular-nums font-bold text-foreground">{fmtEur(tMrr)}</td>
+                      <td className="py-2 px-2 text-right tabular-nums font-bold text-foreground">{fmtEur(tArpu)}</td>
+                      <td className="py-2 pl-2 text-right tabular-nums font-bold text-foreground">
+                        {tL2w !== null ? `${tL2w}%` : "—"}
+                      </td>
+                    </tr>
+                  );
+                })()}
               </tfoot>
             </table>
           )}
@@ -1459,7 +1542,7 @@ function SummaryView({ data }: { data: PlaybookLiveData }) {
       {/* Archetype summary — only shown in CCAA view */}
       {summaryTab === "ccaa" && <div className="grid grid-cols-1 lg:grid-cols-3 gap-3">
         {(["partner-led", "outbound-responsive", "multi-channel"] as const).map((arch) => {
-          const regions = REGIONS.filter((r) => r.archetype === arch);
+          const regions = REGIONS.filter((r) => r.archetype === arch && (selectedRegions.size === 0 || selectedRegions.has(r.ccaa)));
           const totalMrr = regions.reduce((s, r) => s + r.mrr, 0);
           const totalActive = regions.reduce((s, r) => s + r.active, 0);
           return (
