@@ -99,13 +99,14 @@ export async function fetchSasorTotal(): Promise<number> {
   return data ? parseInt(data.value, 10) || 0 : 0;
 }
 
-// Breakdown: { byCcaa: { "Cataluña": 12000 }, bySize: { "S (1-50)": 60000 }, bySector, byCcaaBySize, byCcaaBySector }
+// Breakdown: { byCcaa: { "Cataluña": 12000 }, bySize: { "S (1-50)": 60000 }, bySector, byCcaaBySize, byCcaaBySector, bySizeBySector }
 export interface SasorBreakdown {
   byCcaa: Record<string, number>;
   bySize: Record<string, number>;
   bySector: Record<string, number>;
   byCcaaBySize: Record<string, Record<string, number>>;
   byCcaaBySector: Record<string, Record<string, number>>;
+  bySizeBySector: Record<string, Record<string, number>>;
 }
 
 // Try reading precomputed breakdown from meta first; fall back to fetching all rows.
@@ -119,31 +120,40 @@ export async function fetchSasorBreakdown(): Promise<SasorBreakdown | null> {
     .eq("key", "sasor_breakdown")
     .single();
   if (cached?.value) {
-    try { return JSON.parse(cached.value) as SasorBreakdown; } catch { /* fall through */ }
+    try {
+      const parsed = JSON.parse(cached.value) as SasorBreakdown;
+      if (parsed.bySizeBySector && Object.keys(parsed.bySizeBySector).length > 0) return parsed;
+    } catch { /* fall through */ }
   }
 
-  // Fetch all rows (only 2 columns — manageable for 95k rows)
+  // Fetch all rows (3 columns — manageable for 95k rows)
   const PAGE = 1000;
   const byCcaa: Record<string, number> = {};
   const bySize: Record<string, number> = {};
+  const bySector: Record<string, number> = {};
+  const bySizeBySector: Record<string, Record<string, number>> = {};
   let from = 0;
   while (true) {
     const { data, error } = await supa
       .from("strategy_sasor")
-      .select("ccaa, size_segment")
+      .select("ccaa, size_segment, sector")
       .range(from, from + PAGE - 1);
     if (error || !data || data.length === 0) break;
     for (const r of data) {
       const c = r.ccaa || "Others";
       const s = r.size_segment || "Unknown";
+      const sec = r.sector || "Otros Servicios";
       byCcaa[c] = (byCcaa[c] ?? 0) + 1;
       bySize[s] = (bySize[s] ?? 0) + 1;
+      bySector[sec] = (bySector[sec] ?? 0) + 1;
+      if (!bySizeBySector[s]) bySizeBySector[s] = {};
+      bySizeBySector[s][sec] = (bySizeBySector[s][sec] ?? 0) + 1;
     }
     if (data.length < PAGE) break;
     from += PAGE;
   }
 
-  const breakdown: SasorBreakdown = { byCcaa, bySize, bySector: {}, byCcaaBySize: {}, byCcaaBySector: {} };
+  const breakdown: SasorBreakdown = { byCcaa, bySize, bySector, byCcaaBySize: {}, byCcaaBySector: {}, bySizeBySector };
 
   // Cache it in meta for future loads
   await supa.from("strategy_meta").upsert({
@@ -320,6 +330,7 @@ export async function importSasorCsv(
   const bySector: Record<string, number> = {};
   const byCcaaBySize: Record<string, Record<string, number>> = {};
   const byCcaaBySector: Record<string, Record<string, number>> = {};
+  const bySizeBySector: Record<string, Record<string, number>> = {};
 
   let inserted = 0;
   let errors = 0;
@@ -354,6 +365,8 @@ export async function importSasorCsv(
       byCcaaBySize[ccaa][size_segment] = (byCcaaBySize[ccaa][size_segment] ?? 0) + 1;
       if (!byCcaaBySector[ccaa]) byCcaaBySector[ccaa] = {};
       byCcaaBySector[ccaa][sector] = (byCcaaBySector[ccaa][sector] ?? 0) + 1;
+      if (!bySizeBySector[size_segment]) bySizeBySector[size_segment] = {};
+      bySizeBySector[size_segment][sector] = (bySizeBySector[size_segment][sector] ?? 0) + 1;
 
       return { hubspot_company_id: hubspotId, company_name: name, sector, size_segment, ccaa, employees };
     });
@@ -370,7 +383,7 @@ export async function importSasorCsv(
   // Cache breakdown in meta so fetchSasorBreakdown() returns it instantly
   await Promise.all([
     supa.from("strategy_meta").upsert({ key: "sasor_total",     value: String(deduped.length),          updated_at: new Date().toISOString() }),
-    supa.from("strategy_meta").upsert({ key: "sasor_breakdown", value: JSON.stringify({ byCcaa, bySize, bySector, byCcaaBySize, byCcaaBySector }), updated_at: new Date().toISOString() }),
+    supa.from("strategy_meta").upsert({ key: "sasor_breakdown", value: JSON.stringify({ byCcaa, bySize, bySector, byCcaaBySize, byCcaaBySector, bySizeBySector }), updated_at: new Date().toISOString() }),
   ]);
 
   return { inserted, errors };

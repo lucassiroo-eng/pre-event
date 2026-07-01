@@ -38,6 +38,7 @@ const STATIC_DATA: PlaybookLiveData = {
   national: STATIC_NATIONAL,
   tamBySector: TAM_BY_SECTOR,
   tamBySize: TAM_BY_SIZE,
+  tamBySizeBySector: {},
   bestPractices: [],
   normedRows: [],
 };

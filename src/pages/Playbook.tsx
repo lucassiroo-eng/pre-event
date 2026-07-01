@@ -1105,6 +1105,32 @@ function SummaryView({ data }: { data: PlaybookLiveData }) {
       .sort((a, b) => b.mrr - a.mrr);
   }, [canFilter, filtered, REGIONS]);
 
+  const filteredTamBySector = useMemo(() => {
+    if (excludedSizes.size === 0) return data.tamBySector;
+    const result: Record<string, number> = {};
+    for (const [size, sectors] of Object.entries(data.tamBySizeBySector)) {
+      if (excludedSizes.has(size)) continue;
+      for (const [sector, count] of Object.entries(sectors)) {
+        result[sector] = (result[sector] ?? 0) + count;
+      }
+    }
+    return result;
+  }, [data.tamBySector, data.tamBySizeBySector, excludedSizes]);
+
+  const filteredTamBySize = useMemo(() => {
+    if (excludedIndustries.size === 0) return data.tamBySize;
+    const result: Record<string, number> = {};
+    for (const [size, sectors] of Object.entries(data.tamBySizeBySector)) {
+      let total = 0;
+      for (const [sector, count] of Object.entries(sectors)) {
+        if (excludedIndustries.has(sector)) continue;
+        total += count;
+      }
+      if (total > 0) result[size] = total;
+    }
+    return result;
+  }, [data.tamBySize, data.tamBySizeBySector, excludedIndustries]);
+
   const SUMMARY_TABS = [
     { key: "ccaa" as const, label: "CCAA" },
     { key: "canal" as const, label: "Canal" },
@@ -1119,7 +1145,22 @@ function SummaryView({ data }: { data: PlaybookLiveData }) {
           <div>
             <h3 className="text-sm font-semibold text-foreground mb-1">Resumen nacional</h3>
             <p className="text-xs text-muted-foreground">
-              {NATIONAL.active.toLocaleString()} clientes activos, {fmtEur(NATIONAL.mrr)} MRR, {NATIONAL.penetration}% penetración sobre {NATIONAL.tam.toLocaleString()} TAM
+              {(() => {
+                if (!hasFilters) {
+                  return `${NATIONAL.active.toLocaleString()} clientes activos, ${fmtEur(NATIONAL.mrr)} MRR, ${NATIONAL.penetration}% penetración sobre ${NATIONAL.tam.toLocaleString()} TAM`;
+                }
+                const fActive = filtered.filter(r => r.isActive).length;
+                const fMrr = filtered.filter(r => r.isActive).reduce((s, r) => s + r.cmrr, 0);
+                const fTam = Object.entries(data.tamBySizeBySector).reduce((total, [size, sectors]) => {
+                  if (excludedSizes.has(size)) return total;
+                  return total + Object.entries(sectors).reduce((st, [sector, count]) => {
+                    if (excludedIndustries.has(sector)) return st;
+                    return st + count;
+                  }, 0);
+                }, 0);
+                const fPen = fTam > 0 ? Math.round(fActive / fTam * 1000) / 10 : 0;
+                return `${fActive.toLocaleString()} clientes activos, ${fmtEur(fMrr)} MRR, ${fPen}% penetración sobre ${fTam.toLocaleString()} TAM (filtrado)`;
+              })()}
             </p>
           </div>
           <div className="flex items-center gap-0.5 rounded-full border border-border bg-muted/40 p-0.5 shrink-0">
@@ -1296,7 +1337,7 @@ function SummaryView({ data }: { data: PlaybookLiveData }) {
               </thead>
               <tbody>
                 {nationalIndustries.map((ind) => {
-                  const tam = data.tamBySector[ind.label] ?? 0;
+                  const tam = filteredTamBySector[ind.label] ?? 0;
                   const pen = tam > 0 ? Math.round(ind.active / tam * 1000) / 10 : null;
                   return (
                     <tr key={ind.label} className="border-b border-border/50 hover:bg-muted/30">
@@ -1322,18 +1363,19 @@ function SummaryView({ data }: { data: PlaybookLiveData }) {
               </tbody>
               <tfoot>
                 {(() => {
-                  const totalTam = nationalIndustries.reduce((s, ind) => s + (data.tamBySector[ind.label] ?? 0), 0);
+                  const totalTam = nationalIndustries.reduce((s, ind) => s + (filteredTamBySector[ind.label] ?? 0), 0);
                   const totalLeads = nationalIndustries.reduce((s, ind) => s + ind.pipeline, 0);
                   const totalActive = nationalIndustries.reduce((s, ind) => s + ind.active, 0);
                   const totalMrr = nationalIndustries.reduce((s, ind) => s + ind.mrr, 0);
                   const totalArpu = totalActive > 0 ? Math.round(totalMrr / totalActive) : 0;
                   const totalL2w = totalLeads > 0 ? Math.round(totalActive / totalLeads * 1000) / 10 : null;
+                  const totalPen = totalTam > 0 ? Math.round(totalActive / totalTam * 1000) / 10 : null;
                   return (
                     <tr className="border-t-2 border-border bg-muted/20">
                       <td className="py-2 pr-3 font-bold text-foreground">Total</td>
                       <td className="py-2 px-3 text-right tabular-nums font-bold text-foreground">{totalTam > 0 ? totalTam.toLocaleString() : "—"}</td>
                       <td className="py-2 px-3 text-right tabular-nums font-bold text-foreground">{totalLeads.toLocaleString()}</td>
-                      <td className="py-2 px-3 text-right tabular-nums font-bold text-foreground">{NATIONAL.penetration}%</td>
+                      <td className="py-2 px-3 text-right tabular-nums font-bold text-foreground">{totalPen !== null ? `${totalPen}%` : "—"}</td>
                       <td className="py-2 px-3 text-right tabular-nums font-bold text-foreground">{totalActive.toLocaleString()}</td>
                       <td className="py-2 px-3 text-right tabular-nums font-bold text-foreground">{fmtEur(totalMrr)}</td>
                       <td className="py-2 px-3 text-right tabular-nums font-bold text-foreground">{fmtEur(totalArpu)}</td>
@@ -1362,7 +1404,7 @@ function SummaryView({ data }: { data: PlaybookLiveData }) {
               <tbody>
                 {nationalSizes.map((s) => {
                   const isXs = s.label === "XS (1-19)";
-                  const tam = !isXs ? (data.tamBySize[s.label] ?? 0) : 0;
+                  const tam = !isXs ? (filteredTamBySize[s.label] ?? 0) : 0;
                   const pen = !isXs && tam > 0 ? Math.round(s.active / tam * 1000) / 10 : null;
                   return (
                     <tr key={s.label} className="border-b border-border/50 hover:bg-muted/30">
@@ -1388,18 +1430,19 @@ function SummaryView({ data }: { data: PlaybookLiveData }) {
               </tbody>
               <tfoot>
                 {(() => {
-                  const totalTam = nationalSizes.filter(s => s.label !== "XS (1-19)").reduce((s, sz) => s + (data.tamBySize[sz.label] ?? 0), 0);
+                  const totalTam = nationalSizes.filter(s => s.label !== "XS (1-19)").reduce((s, sz) => s + (filteredTamBySize[sz.label] ?? 0), 0);
                   const totalLeads = nationalSizes.reduce((s, sz) => s + sz.pipeline, 0);
                   const totalActive = nationalSizes.reduce((s, sz) => s + sz.active, 0);
                   const totalMrr = nationalSizes.reduce((s, sz) => s + sz.mrr, 0);
                   const totalArpu = totalActive > 0 ? Math.round(totalMrr / totalActive) : 0;
                   const totalL2w = totalLeads > 0 ? Math.round(totalActive / totalLeads * 1000) / 10 : null;
+                  const totalPen = totalTam > 0 ? Math.round(totalActive / totalTam * 1000) / 10 : null;
                   return (
                     <tr className="border-t-2 border-border bg-muted/20">
                       <td className="py-2 pr-3 font-bold text-foreground">Total</td>
                       <td className="py-2 px-3 text-right tabular-nums font-bold text-foreground">{totalTam > 0 ? totalTam.toLocaleString() : "—"}</td>
                       <td className="py-2 px-3 text-right tabular-nums font-bold text-foreground">{totalLeads.toLocaleString()}</td>
-                      <td className="py-2 px-3 text-right tabular-nums font-bold text-foreground">{NATIONAL.penetration}%</td>
+                      <td className="py-2 px-3 text-right tabular-nums font-bold text-foreground">{totalPen !== null ? `${totalPen}%` : "—"}</td>
                       <td className="py-2 px-3 text-right tabular-nums font-bold text-foreground">{totalActive.toLocaleString()}</td>
                       <td className="py-2 px-3 text-right tabular-nums font-bold text-foreground">{fmtEur(totalMrr)}</td>
                       <td className="py-2 px-3 text-right tabular-nums font-bold text-foreground">{fmtEur(totalArpu)}</td>

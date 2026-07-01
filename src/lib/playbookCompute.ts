@@ -59,6 +59,7 @@ export interface PlaybookLiveData {
   national: NationalStats;
   tamBySector: Record<string, number>;
   tamBySize: Record<string, number>;
+  tamBySizeBySector: Record<string, Record<string, number>>;
   bestPractices: BestPractice[];
   normedRows: NormedRow[];
 }
@@ -1078,6 +1079,7 @@ export function computePlaybook(
     regions: sortedRegions,
     tamBySector: breakdown?.bySector ?? {},
     tamBySize:   breakdown?.bySize ?? {},
+    tamBySizeBySector: breakdown?.bySizeBySector ?? {},
     bestPractices,
     normedRows: allResolved,
     national: {
