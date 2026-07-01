@@ -129,26 +129,25 @@ function computeSize(empresaSize: number, totalSeats: number): string {
 }
 
 // ── Channel normalisation ────────────────────────────────────────────────────
-// Only deal_provenance (provenance_norm) = "Partners" counts as partner-sourced.
-// Partner name sub-splits Santander / Telefónica / Channel Partners within that.
-// Companies with a partner on invoice/deal but sourced via Outbound/Inbound/Paid
-// are classified by their actual provenance, not as partner deals.
+// partner_object_name takes priority: any company tagged to Santander/Telefónica
+// counts under that partner regardless of deal_provenance. This matches the
+// partner-side view (source_segment) where all partner-associated companies
+// are attributed to the partner.
 
 const CHANNEL_ORDER = [
   "Channel Partners", "Outbound", "Inbound", "Santander", "Paid", "Telefónica", "Others",
 ];
 
 function normChannel(provNorm: string, partnerName: string): string {
+  const pn = (partnerName ?? "").trim().toLowerCase();
+  if (pn.includes("santander")) return "Santander";
+  if (pn.includes("telefon") || pn.includes("movistar")) return "Telefónica";
+
   const prov = (provNorm ?? "").trim();
   if (prov === "Inbound")  return "Inbound";
   if (prov === "Outbound") return "Outbound";
   if (prov === "Paid")     return "Paid";
-  if (prov === "Partners" || prov === "Partner") {
-    const pn = (partnerName ?? "").trim().toLowerCase();
-    if (pn.includes("santander")) return "Santander";
-    if (pn.includes("telefon") || pn.includes("movistar")) return "Telefónica";
-    return "Channel Partners";
-  }
+  if (prov === "Partners" || prov === "Partner") return "Channel Partners";
   return "Others";
 }
 
