@@ -1310,7 +1310,7 @@ function SummaryView({ data }: { data: PlaybookLiveData }) {
                     <td className="py-2 px-3 text-right tabular-nums font-bold text-foreground">{totalPipelineCh.toLocaleString()}</td>
                     <td className="py-2 px-3 text-right tabular-nums font-bold text-foreground">{totalActiveCh.toLocaleString()}</td>
                     <td className="py-2 px-3 text-right tabular-nums font-bold text-foreground">{fmtEur(totalMrrCh)}</td>
-                    <td className="py-2 px-3 text-right tabular-nums font-bold text-foreground">{fmtEur(NATIONAL.arpu)}</td>
+                    <td className="py-2 px-3 text-right tabular-nums font-bold text-foreground">{fmtEur(totalActiveCh > 0 ? Math.round(totalMrrCh / totalActiveCh) : 0)}</td>
                     <td className="py-2 px-3 text-right tabular-nums font-bold text-foreground">
                       {totalPipelineCh > 0 ? `${Math.round(totalActiveCh / totalPipelineCh * 1000) / 10}%` : "—"}
                     </td>
